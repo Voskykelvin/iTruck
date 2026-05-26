@@ -27,3 +27,14 @@ html[data-theme="dark"] .filter-group select,html[data-theme="dark"] .decision-g
 /* Accessible green text on light surfaces */
 .market-search span,.back-link,.request-summary small,.owner-profile-card small{color:var(--primary-light-text,#15803D)}
 html[data-theme="dark"] .market-search span,html[data-theme="dark"] .back-link,html[data-theme="dark"] .request-summary small,html[data-theme="dark"] .owner-profile-card small{color:#22C55E}
+
+/* Orange accent layer */
+.filter-chips button.active,.filter-chips button:hover,.profile-tags span,.profile-routes span,.request-card-head>span,.request-summary,.vehicle-type,.truck-card-top>strong{background:#FFF7ED;color:#7C2D12;border-color:rgba(249,115,22,.22)}
+.market-search:focus-within,.filter-group select:focus,.profile-request-form input:focus,.profile-request-form textarea:focus{border-color:#F97316;box-shadow:0 0 0 4px rgba(249,115,22,.12),0 18px 38px rgba(15,23,42,.08);outline:0}
+.market-search span,.back-link,.request-summary small,.owner-profile-card small{color:#C2410C}
+.toggle-row input:checked+span{background:rgba(249,115,22,.72)}
+.trust-line span{background:#FFF7ED;color:#7C2D12}
+.request-panel{border-color:rgba(249,115,22,.24);box-shadow:0 18px 52px rgba(249,115,22,.08)}
+.truck-card-tools>strong{background:#FFF7ED;border-color:rgba(249,115,22,.22);color:#7C2D12}
+html[data-theme="dark"] .filter-chips button.active,html[data-theme="dark"] .filter-chips button:hover,html[data-theme="dark"] .request-card-head>span,html[data-theme="dark"] .profile-tags span,html[data-theme="dark"] .profile-routes span,html[data-theme="dark"] .request-summary,html[data-theme="dark"] .truck-card-top>strong,html[data-theme="dark"] .truck-card-tools>strong{background:rgba(249,115,22,.16);color:#FED7AA;border-color:rgba(249,115,22,.3)}
+html[data-theme="dark"] .market-search span,html[data-theme="dark"] .back-link,html[data-theme="dark"] .request-summary small,html[data-theme="dark"] .owner-profile-card small{color:#FDBA74}

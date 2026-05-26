@@ -16,6 +16,9 @@ const truckSchema = new mongoose.Schema({
   routes: [String],
   country: String,
   pricePerKm: { type: Number, default: 1.5 },
+  ratingAverage: { type: Number, default: 0, min: 0, max: 5 },
+  ratingCount: { type: Number, default: 0, min: 0 },
+  completedTrips: { type: Number, default: 0, min: 0 },
   isVerified: { type: Boolean, default: false },
   isAvailable: { type: Boolean, default: true },
   location: { lat: Number, lng: Number, city: String },
@@ -26,5 +29,6 @@ truckSchema.index({ owner: 1, createdAt: -1 });
 truckSchema.index({ type: 1, isVerified: 1, isAvailable: 1 });
 truckSchema.index({ country: 1, type: 1 });
 truckSchema.index({ routes: 1 });
+truckSchema.index({ ratingAverage: -1, ratingCount: -1 });
 
 module.exports = mongoose.model('Truck', truckSchema);

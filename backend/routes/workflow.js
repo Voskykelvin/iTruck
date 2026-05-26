@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const WorkflowRecord = require('../models/WorkflowRecord');
+const Booking = require('../models/Booking');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect } = require('../middleware/auth');
 
@@ -55,6 +56,11 @@ async function createRecord(collection, req, res, next) {
       payload: req.body
     });
 
+    if (collection === 'messages') {
+      const io = req.app.get('io');
+      if (io && item.booking) io.to(`booking:${item.booking}`).emit('message:new', item);
+    }
+
     res.status(201).json({ item });
   } catch (err) {
     next(err);
@@ -84,10 +90,53 @@ async function listRecords(req, res, next) {
   }
 }
 
+async function listMessages(req, res, next) {
+  try {
+    if (requireDatabase(req, res)) return;
+
+    const bookingId = req.query.booking || req.query.bookingId || req.query.shipmentId;
+
+    if (!mongoReady()) {
+      const items = memoryStore.messages.filter(item => {
+        const payload = item.payload || {};
+        if (!bookingId) return true;
+        return [payload.booking, payload.bookingId, payload.shipmentId].map(String).includes(String(bookingId));
+      });
+      return res.json({ items, mode: 'memory' });
+    }
+
+    if (!bookingId || !mongoose.Types.ObjectId.isValid(bookingId)) {
+      return res.json({ items: [] });
+    }
+
+    if (req.user.role !== 'admin') {
+      const canAccess = await Booking.exists({
+        _id: bookingId,
+        $or: [
+          { client: req.user._id },
+          { owner: req.user._id },
+          { 'bids.owner': req.user._id }
+        ]
+      });
+      if (!canAccess) return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    const items = await WorkflowRecord.find({ type: 'message', booking: bookingId })
+      .populate('user', 'firstName lastName email role')
+      .sort('createdAt')
+      .limit(100);
+
+    res.json({ items });
+  } catch (err) {
+    next(err);
+  }
+}
+
 router.post('/requests', (req, res, next) => createRecord('requests', req, res, next));
 router.post('/bids', (req, res, next) => createRecord('bids', req, res, next));
 router.post('/messages', (req, res, next) => createRecord('messages', req, res, next));
 router.post('/reports', (req, res, next) => createRecord('reports', req, res, next));
+router.get('/messages', listMessages);
 router.get('/', listRecords);
 
 module.exports = router;

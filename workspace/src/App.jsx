@@ -89,10 +89,63 @@ function saveLocal(type, data) {
   localStorage.setItem(key, JSON.stringify(list));
 }
 
+function chatKey(shipmentId) {
+  return `itruck_chat_${shipmentId || 'draft'}`;
+}
+
+function formatMessageTime(value = new Date().toISOString()) {
+  return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function defaultChatMessages(shipment) {
+  return [
+    {
+      id: `${shipment.id}-driver-start`,
+      author: 'driver',
+      name: shipment.driver || 'Driver',
+      text: `Loading confirmed for ${shipment.route}. I will share checkpoint updates here.`,
+      createdAt: new Date(Date.now() - 1000 * 60 * 55).toISOString()
+    },
+    {
+      id: `${shipment.id}-ops-check`,
+      author: 'ops',
+      name: 'iTruck Ops',
+      text: 'Waybill, cargo photos, and route status are attached to this shipment thread.',
+      createdAt: new Date(Date.now() - 1000 * 60 * 38).toISOString()
+    }
+  ];
+}
+
+function readLocalChat(shipment) {
+  const saved = JSON.parse(localStorage.getItem(chatKey(shipment.id)) || '[]');
+  return saved.length ? saved : defaultChatMessages(shipment);
+}
+
+function persistLocalChat(shipmentId, messages) {
+  localStorage.setItem(chatKey(shipmentId), JSON.stringify(messages.slice(-80)));
+}
+
+function normalizeWorkflowMessage(item, currentUserId) {
+  const payload = item.payload || {};
+  const user = item.user || {};
+  const authorId = String(user._id || payload.user || payload.senderId || '');
+  const mine = authorId && currentUserId && authorId === String(currentUserId);
+
+  return {
+    id: item._id || item.id || `message-${Date.now()}`,
+    author: mine || payload.sender === 'me' ? 'me' : 'driver',
+    name: mine ? 'You' : [user.firstName, user.lastName].filter(Boolean).join(' ') || payload.senderName || 'Driver',
+    text: payload.text || payload.message || '',
+    createdAt: item.createdAt || payload.createdAt || new Date().toISOString()
+  };
+}
+
 function normalizeTruck(truck) {
   const price = truck.price || (truck.pricePerKm ? `$${Number(truck.pricePerKm).toFixed(2)}/km` : 'Quote');
   const routes = truck.routes || [];
+  const photos = truck.photos || (truck.photo ? [truck.photo] : []);
   const verified = truck.verified ?? truck.isVerified ?? false;
+  const ratingCount = Number(truck.ratingCount || truck.completedTrips || truck.trips || 0);
   return {
     id: truck._id || truck.id || truck.plate || truck.plateNumber,
     type: truck.type || 'Lorry',
@@ -103,8 +156,11 @@ function normalizeTruck(truck) {
     price,
     pricePerKm: Number(truck.pricePerKm || String(price).replace(/[^0-9.]/g, '')) || 0,
     capacity: truck.capacity || (truck.capacityTonnes ? `${truck.capacityTonnes} tonnes` : 'Capacity on request'),
-    rating: Number(truck.rating || 4.5),
-    trips: Number(truck.trips || truck.totalTrips || 40),
+    rating: Number(truck.ratingAverage || truck.rating || 4.5),
+    ratingCount,
+    trips: Number(truck.completedTrips || truck.trips || truck.totalTrips || ratingCount || 40),
+    photos,
+    photo: photos[0] || '',
     routeFit: Number(truck.routeFit || Math.min(98, 64 + (verified ? 16 : 0) + Math.min(12, routes.length * 4))),
     availability: truck.availability || (truck.isAvailable === false ? 'Offline' : 'Available now'),
     documentStatus: truck.documentStatus || (verified ? 'Docs verified' : 'Docs pending'),
@@ -144,6 +200,8 @@ function normalizeBookingShipment(booking) {
 
   return {
     id: bookingRef(booking),
+    bookingId: booking._id || booking.id || booking.bookingId,
+    truckId: booking.truck?._id || booking.truckId || booking.truck,
     route: bookingRoute(booking),
     origin: booking.pickup || 'Pickup pending',
     destination: booking.destination || 'Destination pending',
@@ -288,6 +346,27 @@ function App() {
 
         {page}
       </main>
+
+      <nav className="mobile-bottom-nav" aria-label="Primary mobile navigation">
+        {navItems.map(item => {
+          const Icon = item.icon;
+          const active = route.startsWith(item.path);
+          return (
+            <button
+              key={item.path}
+              className={active ? 'active' : ''}
+              type="button"
+              onClick={() => {
+                navigate(item.path);
+                setMenuOpen(false);
+              }}
+            >
+              <Icon size={18} />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
 
       <button className={`menu-scrim ${menuOpen ? 'show' : ''}`} type="button" aria-label="Close menu" onClick={() => setMenuOpen(false)} />
       {toast ? <div className="toast">{toast}</div> : null}
@@ -643,6 +722,29 @@ function MarketplacePage({ notify }) {
       });
   }, [trucks, search, type, verified, sort]);
 
+  async function submitRating(truck, score) {
+    const currentCount = Number(truck.ratingCount || 0);
+    const currentAverage = Number(truck.rating || 0);
+    const nextCount = currentCount + 1;
+    const localRating = Number((((currentAverage * currentCount) + score) / nextCount).toFixed(2));
+
+    try {
+      const data = await api.rateTruck(truck.id, { score, comment: 'Rated from iTruck workspace' });
+      const updatedTruck = normalizeTruck(data.truck || { ...truck, ratingAverage: localRating, ratingCount: nextCount });
+      setTrucks(current => current.map(item => (normalizeTruck(item).id === truck.id ? updatedTruck : item)));
+      notify(`${truck.name} rating updated to ${updatedTruck.rating.toFixed(1)}`);
+    } catch (err) {
+      setTrucks(current => current.map(item => {
+        const normalized = normalizeTruck(item);
+        return normalized.id === truck.id
+          ? { ...normalized, rating: localRating, ratingCount: nextCount }
+          : item;
+      }));
+      saveLocal('ratings', { truckId: truck.id, score, comment: 'Rated from iTruck workspace' });
+      notify('Rating saved locally until API sync is available');
+    }
+  }
+
   return (
     <section className="market-layout">
       <aside className="filter-panel">
@@ -674,6 +776,23 @@ function MarketplacePage({ notify }) {
         <div className="cards-grid truck-grid">
           {filtered.map(truck => (
             <article className="truck-card" key={truck.id}>
+              <div className={`truck-media ${truck.photo ? '' : 'is-empty'}`}>
+                {truck.photo ? (
+                  <img
+                    src={truck.photo}
+                    alt={`${truck.name} ${truck.plate}`}
+                    loading="lazy"
+                    onError={event => {
+                      event.currentTarget.style.display = 'none';
+                      event.currentTarget.parentElement.classList.add('is-empty');
+                    }}
+                  />
+                ) : null}
+                <div className="truck-media-fallback">
+                  <Truck size={28} />
+                  <span>{truck.type}</span>
+                </div>
+              </div>
               <div className="truck-head">
                 <StatusBadge tone={truck.verified ? 'success' : 'warn'}>{truck.verified ? 'Verified' : 'Pending'}</StatusBadge>
                 <strong>{truck.routeFit}% fit</strong>
@@ -683,8 +802,21 @@ function MarketplacePage({ notify }) {
               <small>{truck.plate} - {truck.capacity}</small>
               <div className="decision-grid">
                 <span>Rate<strong>{truck.price}</strong></span>
-                <span>Rating<strong>{truck.rating.toFixed(1)} / {truck.trips}</strong></span>
+                <span>Rating<strong>{truck.rating.toFixed(1)} / {truck.ratingCount || truck.trips}</strong></span>
                 <span>Status<strong>{truck.availability}</strong></span>
+              </div>
+              <div className="rating-strip" aria-label={`Rate ${truck.name}`}>
+                {[1, 2, 3, 4, 5].map(score => (
+                  <button
+                    type="button"
+                    key={score}
+                    className={score <= Math.round(truck.rating) ? 'active' : ''}
+                    onClick={() => submitRating(truck, score)}
+                    aria-label={`Rate ${truck.name} ${score} out of 5`}
+                  >
+                    {score}
+                  </button>
+                ))}
               </div>
               <div className="chips">{truck.routes.slice(0, 2).map(route => <span key={route}>{route}</span>)}</div>
               <div className="trust-line">
@@ -708,9 +840,11 @@ function MarketplacePage({ notify }) {
   );
 }
 
-function TrackingPage({ notify }) {
+function TrackingPage({ notify, user }) {
   const [selected, setSelected] = useState(0);
   const [shipments, setShipments] = useState(workspaceShipments);
+  const [messages, setMessages] = useState([]);
+  const [draftMessage, setDraftMessage] = useState('');
 
   useEffect(() => {
     api.listBookings()
@@ -721,6 +855,63 @@ function TrackingPage({ notify }) {
   }, []);
 
   const shipment = shipments[selected] || shipments[0];
+  const shipmentMessageKey = shipment?.bookingId || shipment?.id || '';
+
+  useEffect(() => {
+    if (!shipment) return;
+
+    let active = true;
+    setMessages(readLocalChat(shipment));
+
+    api.listMessages(shipmentMessageKey)
+      .then(data => {
+        if (!active) return;
+        const items = Array.isArray(data.items) ? data.items : [];
+        if (items.length) {
+          const normalized = items.map(item => normalizeWorkflowMessage(item, user?._id));
+          setMessages(normalized);
+          persistLocalChat(shipment.id, normalized);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [shipmentMessageKey, shipment, user?._id]);
+
+  async function sendChatMessage(event) {
+    event.preventDefault();
+    if (!shipment || !draftMessage.trim()) return;
+
+    const text = draftMessage.trim();
+    const nextMessage = {
+      id: `local-message-${Date.now()}`,
+      author: 'me',
+      name: 'You',
+      text,
+      createdAt: new Date().toISOString()
+    };
+
+    const nextMessages = [...messages, nextMessage];
+    setMessages(nextMessages);
+    persistLocalChat(shipment.id, nextMessages);
+    setDraftMessage('');
+
+    try {
+      await api.sendMessage({
+        booking: shipment.bookingId,
+        bookingId: shipment.bookingId,
+        shipmentId: shipment.id,
+        route: shipment.route,
+        text,
+        sender: 'me',
+        status: 'sent'
+      });
+    } catch (err) {
+      saveLocal('messages', { shipmentId: shipment.id, route: shipment.route, text, status: 'local' });
+    }
+  }
 
   if (!shipment) {
     return (
@@ -765,23 +956,42 @@ function TrackingPage({ notify }) {
         </div>
       </section>
 
-      <Panel title="Shipment Detail" eyebrow="Control">
-        <div className="facts-grid">
-          <span>Driver</span><strong>{shipment.driver}</strong>
-          <span>Cargo</span><strong>{shipment.cargo}</strong>
-          <span>Vehicle</span><strong>{shipment.vehicle} - {shipment.plate}</strong>
-          <span>Payment</span><strong>{shipment.payment}</strong>
-        </div>
-        <div className="progress"><span style={{ width: `${shipment.progress}%` }} /></div>
-        <div className="doc-list compact">
-          {shipment.documents.map(item => <span key={item}>{item}</span>)}
-        </div>
-        <div className="stack-actions">
-          <button className="primary" type="button" onClick={() => notify('Delivery confirmation recorded')}>Confirm Delivery</button>
-          <button className="secondary" type="button" onClick={() => notify('Driver contact opened')}>Contact Driver</button>
-          <button className="ghost" type="button" onClick={() => notify('Issue report sent to operations')}>Report Issue</button>
-        </div>
-      </Panel>
+      <aside className="tracking-side">
+        <Panel title="Shipment Detail" eyebrow="Control">
+          <div className="facts-grid">
+            <span>Driver</span><strong>{shipment.driver}</strong>
+            <span>Cargo</span><strong>{shipment.cargo}</strong>
+            <span>Vehicle</span><strong>{shipment.vehicle} - {shipment.plate}</strong>
+            <span>Payment</span><strong>{shipment.payment}</strong>
+          </div>
+          <div className="progress"><span style={{ width: `${shipment.progress}%` }} /></div>
+          <div className="doc-list compact">
+            {shipment.documents.map(item => <span key={item}>{item}</span>)}
+          </div>
+          <div className="stack-actions">
+            <button className="primary" type="button" onClick={() => notify('Delivery confirmation recorded')}>Confirm Delivery</button>
+            <button className="secondary" type="button" onClick={() => notify('Driver contact opened')}>Contact Driver</button>
+            <button className="ghost" type="button" onClick={() => notify('Issue report sent to operations')}>Report Issue</button>
+          </div>
+        </Panel>
+
+        <Panel title="Driver Chat" eyebrow="In-house Text">
+          <div className="chat-thread">
+            {messages.map(message => (
+              <div className={`chat-message ${message.author === 'me' ? 'me' : 'them'}`} key={message.id}>
+                <p>{message.text}</p>
+                <small>{message.name} - {formatMessageTime(message.createdAt)}</small>
+              </div>
+            ))}
+          </div>
+          <form className="chat-compose" onSubmit={sendChatMessage}>
+            <input value={draftMessage} onChange={event => setDraftMessage(event.target.value)} placeholder="Type a message..." />
+            <button className="primary" type="submit" aria-label="Send message">
+              <Send size={18} />
+            </button>
+          </form>
+        </Panel>
+      </aside>
     </section>
   );
 }

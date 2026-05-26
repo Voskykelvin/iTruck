@@ -1,11 +1,21 @@
 const express = require('express');
+const mongoose = require('mongoose');
+const { body } = require('express-validator');
 const Truck = require('../models/Truck');
+const Booking = require('../models/Booking');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
+const validate = require('../middleware/validate');
 const { demoTrucks } = require('../data/demo-users');
 
 const router = express.Router();
 const memoryTrucks = [...demoTrucks];
+
+const ratingValidation = [
+  body('score').isFloat({ min: 1, max: 5 }).withMessage('Rating score must be between 1 and 5'),
+  body('comment').optional().trim().isLength({ max: 1000 }).withMessage('Rating comment is too long'),
+  body('bookingId').optional().trim().isString()
+];
 
 function filterTrucks(trucks, query) {
   return trucks.filter(truck => {
@@ -54,6 +64,58 @@ router.get('/fleet', protect, async (req, res, next) => {
     }
 
     res.json({ trucks: await Truck.find({ owner: req.user._id }) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/ratings', protect, ratingValidation, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+
+    const score = Number(req.body.score);
+    const comment = req.body.comment || '';
+
+    if (!mongoReady()) {
+      const truck = memoryTrucks.find(item => String(item._id || item.id || item.plateNumber || item.plate) === String(req.params.id));
+      if (!truck) return res.status(404).json({ message: 'Truck not found' });
+
+      const ratingCount = Number(truck.ratingCount || 0);
+      const currentAverage = Number(truck.ratingAverage || truck.rating || 0);
+      const nextCount = ratingCount + 1;
+      truck.ratingAverage = Number((((currentAverage * ratingCount) + score) / nextCount).toFixed(2));
+      truck.ratingCount = nextCount;
+      truck.rating = truck.ratingAverage;
+      return res.json({ truck, mode: 'memory' });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'Invalid truck id' });
+    }
+
+    const truck = await Truck.findById(req.params.id);
+    if (!truck) return res.status(404).json({ message: 'Truck not found' });
+
+    const ratingCount = Number(truck.ratingCount || 0);
+    const currentAverage = Number(truck.ratingAverage || 0);
+    const nextCount = ratingCount + 1;
+    truck.ratingAverage = Number((((currentAverage * ratingCount) + score) / nextCount).toFixed(2));
+    truck.ratingCount = nextCount;
+    await truck.save();
+
+    if (req.body.bookingId && mongoose.Types.ObjectId.isValid(req.body.bookingId)) {
+      const bookingFilter = { _id: req.body.bookingId, truck: truck._id };
+      if (req.user.role !== 'admin') {
+        bookingFilter.$or = [
+          { client: req.user._id },
+          { owner: req.user._id },
+          { 'bids.owner': req.user._id }
+        ];
+      }
+      await Booking.findOneAndUpdate(bookingFilter, { rating: { score, comment } });
+    }
+
+    res.json({ truck });
   } catch (err) {
     next(err);
   }

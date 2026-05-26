@@ -110,3 +110,18 @@ input[type="checkbox"],input[type="radio"]{width:20px;height:20px;min-width:20px
   .topbar{align-items:flex-start;flex-direction:column}
 }
 html[data-theme="dark"] .sidebar{background:rgba(17,24,39,.96);border-top-color:rgba(148,163,184,.18)}html[data-theme="dark"] .sidebar a,html[data-theme="dark"] .sidebar button{color:#CBD5E1}
+
+/* Orange accent layer */
+:root{--primary:#F97316;--primary-dark:#C2410C;--accent:#F97316;--gold:#F97316;--copper-soft:#FFF7ED;--primary-light-text:#C2410C}
+.brand-mark{background:linear-gradient(135deg,#C2410C,#F97316);color:#FFFFFF}
+.eyebrow,.product-pillars span,.panel-heading a,.back-link,.contact-stack a{color:#C2410C}
+.primary-btn,.accent-btn{background:linear-gradient(180deg,#F97316 0%,#C2410C 100%);border-color:rgba(194,65,12,.26);color:#FFFFFF;box-shadow:0 12px 24px rgba(249,115,22,.2)}
+.primary-btn:hover,.accent-btn:hover{box-shadow:0 16px 34px rgba(249,115,22,.25)}
+.secondary-btn{background:#FFF7ED;border-color:rgba(249,115,22,.24);color:#7C2D12}
+.sidebar a.active,.sidebar button.active,.trust-grid strong,.product-pillars article,.trust-strip span{background:#FFF7ED;color:#7C2D12;border-color:rgba(249,115,22,.24)}
+.progress span{background:linear-gradient(90deg,#F97316,#C2410C)}
+.toast{border-left-color:#F97316}
+input[type="checkbox"],input[type="radio"]{accent-color:#F97316}
+html[data-theme="dark"] .primary-btn,html[data-theme="dark"] .accent-btn{background:linear-gradient(180deg,#F97316 0%,#C2410C 100%);color:#FFFFFF}
+html[data-theme="dark"] .eyebrow,html[data-theme="dark"] .product-pillars span,html[data-theme="dark"] .panel-heading a,html[data-theme="dark"] .back-link,html[data-theme="dark"] .contact-stack a{color:#FDBA74}
+html[data-theme="dark"] .sidebar a.active,html[data-theme="dark"] .sidebar button.active{background:rgba(249,115,22,.16);color:#FED7AA}
