@@ -50,3 +50,23 @@ test('wallet debit atomically checks balance and decrements', async () => {
     status: 'completed'
   }));
 });
+
+test('wallet withdrawal atomically reserves funds and creates pending payout', async () => {
+  User.findOneAndUpdate.mockResolvedValue({ _id: 'owner-1', walletBalance: 420 });
+
+  const wallet = new WalletService();
+  await wallet.withdraw('owner-1', 250, 'mpesa', { destination: '+254700000000' });
+
+  expect(User.findOneAndUpdate).toHaveBeenCalledWith(
+    { _id: 'owner-1', walletBalance: { $gte: 250 } },
+    { $inc: { walletBalance: -250 } },
+    { new: true }
+  );
+  expect(Transaction.create).toHaveBeenCalledWith(expect.objectContaining({
+    user: 'owner-1',
+    type: 'withdrawal',
+    method: 'mpesa',
+    amount: 250,
+    status: 'pending'
+  }));
+});

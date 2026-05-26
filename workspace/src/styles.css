@@ -590,6 +590,36 @@ textarea {
   font-size: 13px;
 }
 
+.payout-form {
+  display: grid;
+  gap: 12px;
+}
+
+.wallet-card {
+  display: grid;
+  gap: 5px;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--navy);
+  color: #ffffff;
+}
+
+.wallet-card.compact {
+  padding: 14px;
+}
+
+.wallet-card span,
+.wallet-card small {
+  color: #d6e8d0;
+}
+
+.wallet-card strong {
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1;
+}
+
 .booking-grid {
   align-items: start;
 }

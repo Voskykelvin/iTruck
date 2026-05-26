@@ -54,6 +54,35 @@ class WalletService {
       status: 'completed'
     });
   }
+
+  async withdraw(userId, amount, method = 'mpesa', payoutDetails = {}, description = 'Owner wallet withdrawal') {
+    const amountNum = parsePositiveAmount(amount);
+    const user = await User.findOneAndUpdate(
+      { _id: userId, walletBalance: { $gte: amountNum } },
+      { $inc: { walletBalance: -amountNum } },
+      { new: true }
+    );
+
+    if (!user) {
+      const err = new Error('Insufficient wallet balance');
+      err.status = 400;
+      throw err;
+    }
+
+    return Transaction.create({
+      user: userId,
+      type: 'withdrawal',
+      method,
+      amount: amountNum,
+      description,
+      reference: `wd-${Date.now()}`,
+      status: 'pending',
+      metadata: {
+        payoutDetails,
+        requestedAt: new Date().toISOString()
+      }
+    });
+  }
 }
 
 module.exports = {
