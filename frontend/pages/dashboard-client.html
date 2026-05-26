@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#F8FAFC">
+  <title>iTruck - Client Workspace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="manifest" href="../manifest.json">
+  <link rel="apple-touch-icon" href="../assets/icon-192.png">
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+</head>
+<body>
+  <div class="page-shell">
+    <aside class="sidebar">
+      <a class="brand" href="../index.html"><span class="brand-mark">iT</span> iTruck</a>
+      <nav>
+        <a class="active" href="dashboard-client.html">Client Dashboard</a>
+        <a href="dashboard-owner.html">Owner Dashboard</a>
+        <a href="book-truck.html">Book Truck</a>
+        <a href="tracking.html">Tracking</a>
+        <a href="listings.html">Browse Trucks</a>
+        <a href="profile.html">Profile</a>
+      </nav>
+    </aside>
+    <main class="main-panel workspace">
+      <section class="workspace-hero client-hero">
+        <div>
+          <p class="eyebrow">Client Workspace</p>
+          <h1>Shipments that need your attention.</h1>
+          <p>Book transport, compare bids, follow active cargo, and keep payment and delivery documents in one place.</p>
+          <div class="quick-actions">
+            <a class="primary-btn" href="book-truck.html">New Booking</a>
+            <a class="secondary-btn" href="tracking.html">Track Shipment</a>
+          </div>
+        </div>
+        <div class="workspace-summary">
+          <span class="badge success">3 active</span>
+          <strong>Next delivery: Today 18:40</strong>
+          <small>Nairobi to Kampala - ITK-2044</small>
+        </div>
+      </section>
+
+      <section class="dashboard-grid workspace-metrics">
+        <article class="metric-card admin-kpi"><span>Total Shipments</span><strong>24</strong><small>+4 this month</small></article>
+        <article class="metric-card admin-kpi"><span>In Transit</span><strong>3</strong><small>2 on schedule</small></article>
+        <article class="metric-card admin-kpi"><span>Awaiting Action</span><strong>5</strong><small>Bids, documents, payment</small></article>
+        <article class="metric-card admin-kpi"><span>Wallet</span><strong>$4.2k</strong><small>Available balance</small></article>
+      </section>
+
+      <section class="workspace-layout">
+        <div class="workspace-main">
+          <section class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">Live Work</p><h2>Shipment Command</h2></div>
+              <a href="tracking.html">View map</a>
+            </div>
+            <div id="shipmentList" class="shipment-stack"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">Quotes</p><h2>Open Requests</h2></div>
+              <a href="book-truck.html">Create request</a>
+            </div>
+            <div id="quoteList" class="cards-grid"></div>
+          </section>
+        </div>
+
+        <aside class="workspace-side">
+          <section class="panel">
+            <p class="eyebrow">Action Queue</p>
+            <div id="actionQueue" class="action-list"></div>
+          </section>
+          <section class="panel">
+            <p class="eyebrow">Payments</p>
+            <div class="wallet-card">
+              <strong>$4,200</strong>
+              <span>Wallet balance</span>
+              <small>Escrow held: $1,260</small>
+            </div>
+            <div id="paymentList" class="mini-list"></div>
+          </section>
+          <section class="panel">
+            <p class="eyebrow">Documents</p>
+            <div class="doc-list">
+              <span>Waybill - ready</span>
+              <span>Insurance note - shared</span>
+              <span>Delivery proof - pending</span>
+            </div>
+          </section>
+        </aside>
+      </section>
+    </main>
+  </div>
+  <script src="../js/api.js"></script>
+  <script src="../js/auth-guard.js"></script>
+  <script src="../js/notifications-ui.js"></script>
+  <script src="../js/truck-data.js"></script>
+  <script src="../js/dashboard-client.js"></script>
+  <script src="../js/pwa.js"></script>
+</body>
+</html>

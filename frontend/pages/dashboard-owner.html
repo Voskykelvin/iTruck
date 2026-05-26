@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#F8FAFC">
+  <title>iTruck - Owner Workspace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="manifest" href="../manifest.json">
+  <link rel="apple-touch-icon" href="../assets/icon-192.png">
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+</head>
+<body>
+  <div class="page-shell">
+    <aside class="sidebar">
+      <a class="brand" href="../index.html"><span class="brand-mark">iT</span> iTruck</a>
+      <nav>
+        <a href="dashboard-client.html">Client Dashboard</a>
+        <a class="active" href="dashboard-owner.html">Owner Dashboard</a>
+        <a href="book-truck.html">Book Truck</a>
+        <a href="tracking.html">Tracking</a>
+        <a href="listings.html">Browse Trucks</a>
+        <a href="profile.html">Profile</a>
+      </nav>
+    </aside>
+    <main class="main-panel workspace">
+      <section class="workspace-hero owner-hero">
+        <div>
+          <p class="eyebrow">Fleet Owner Workspace</p>
+          <h1>Keep trucks booked, verified, and earning.</h1>
+          <p>Review available loads, manage bids, monitor active trips, and keep fleet documents ready for higher-value jobs.</p>
+          <div class="quick-actions">
+            <button class="primary-btn" id="addTruck">Add Vehicle</button>
+            <button class="secondary-btn" id="setRoutes">Set Preferred Routes</button>
+          </div>
+        </div>
+        <div class="workspace-summary">
+          <span class="badge success">Verified fleet</span>
+          <strong>2 trucks ready today</strong>
+          <small>Nairobi, Mombasa, Kampala lanes</small>
+        </div>
+      </section>
+
+      <section class="dashboard-grid workspace-metrics">
+        <article class="metric-card admin-kpi"><span>Monthly Earnings</span><strong>$8.9k</strong><small>+18% vs last month</small></article>
+        <article class="metric-card admin-kpi"><span>Active Jobs</span><strong>7</strong><small>3 in transit</small></article>
+        <article class="metric-card admin-kpi"><span>Bid Win Rate</span><strong>42%</strong><small>12 bids submitted</small></article>
+        <article class="metric-card admin-kpi"><span>Rating</span><strong>4.8</strong><small>146 completed trips</small></article>
+      </section>
+
+      <section class="workspace-layout owner-layout">
+        <div class="workspace-main">
+          <section class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">Available Loads</p><h2>Job Board</h2></div>
+              <span class="badge">Live</span>
+            </div>
+            <div id="jobBoard" class="load-stack"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">Fleet</p><h2>Vehicle Readiness</h2></div>
+              <span class="badge success">Documents checked</span>
+            </div>
+            <div id="fleetGrid" class="fleet-workspace"></div>
+          </section>
+        </div>
+
+        <aside class="workspace-side">
+          <section class="panel">
+            <p class="eyebrow">Today</p>
+            <div id="ownerQueue" class="action-list"></div>
+          </section>
+          <section class="panel">
+            <p class="eyebrow">Earnings</p>
+            <div class="earnings-bars">
+              <div><span>Mon</span><b style="height:45%"></b></div>
+              <div><span>Tue</span><b style="height:70%"></b></div>
+              <div><span>Wed</span><b style="height:55%"></b></div>
+              <div><span>Thu</span><b style="height:82%"></b></div>
+              <div><span>Fri</span><b style="height:64%"></b></div>
+            </div>
+          </section>
+          <section class="panel">
+            <p class="eyebrow">Preferred Lanes</p>
+            <div class="doc-list">
+              <span>Nairobi to Kampala</span>
+              <span>Mombasa to Kigali</span>
+              <span>Nairobi to Dar es Salaam</span>
+            </div>
+          </section>
+        </aside>
+      </section>
+    </main>
+  </div>
+  <script src="../js/api.js"></script>
+  <script src="../js/auth-guard.js"></script>
+  <script src="../js/notifications-ui.js"></script>
+  <script src="../js/dashboard-owner.js"></script>
+  <script src="../js/pwa.js"></script>
+</body>
+</html>

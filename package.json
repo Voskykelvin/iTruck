@@ -1,0 +1,21 @@
+{
+  "name": "itruck",
+  "version": "1.0.0",
+  "description": "iTruck Africa premium logistics platform",
+  "scripts": {
+    "start": "npm --prefix backend start",
+    "dev": "npm --prefix backend run dev",
+    "app:dev": "npm --prefix workspace run dev",
+    "app:build": "npm --prefix workspace run build",
+    "app:preview": "npm --prefix workspace run preview",
+    "build": "npm --prefix workspace run build",
+    "seed": "npm --prefix backend run seed",
+    "test": "npm --prefix backend test",
+    "live:check": "npm --prefix backend run live:check",
+    "lint": "echo \"No lint config yet\"",
+    "docker:build": "docker build -t itruck .",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f app"
+  }
+}
