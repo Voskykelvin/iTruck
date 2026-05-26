@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: itruck-api
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npm --prefix backend install && npm --prefix workspace install && npm run app:build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LIVE_MODE
+        value: "true"
+      - key: DEMO_MODE
+        value: "false"
+      - key: JWT_EXPIRES
+        value: 7d
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: REDIS_URL
+        sync: false

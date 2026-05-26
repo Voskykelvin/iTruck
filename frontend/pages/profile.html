@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#F8FAFC">
+  <title>iTruck - Account Profile</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="manifest" href="../manifest.json">
+  <link rel="apple-touch-icon" href="../assets/icon-192.png">
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="stylesheet" href="../css/profile.css">
+</head>
+<body>
+  <div class="page-shell">
+    <aside class="sidebar">
+      <a class="brand" href="../index.html"><span class="brand-mark">iT</span> iTruck</a>
+      <nav>
+        <a href="dashboard-client.html">Client Dashboard</a>
+        <a href="dashboard-owner.html">Owner Dashboard</a>
+        <a href="book-truck.html">Book Truck</a>
+        <a href="tracking.html">Tracking</a>
+        <a href="listings.html">Browse Trucks</a>
+        <a class="active" href="profile.html">Profile</a>
+      </nav>
+    </aside>
+    <main class="main-panel profile-workspace">
+      <div class="topbar">
+        <div><p class="eyebrow">Account</p><h1>Profile & Verification</h1></div>
+        <button class="ghost-btn" id="logoutBtn">Log Out</button>
+      </div>
+
+      <section class="profile-hero">
+        <div class="avatar-block">
+          <label class="avatar-upload">
+            <input id="avatarInput" type="file" accept="image/*">
+            <span class="avatar" id="avatarPreview">SA</span>
+            <small>Upload photo</small>
+          </label>
+        </div>
+        <div>
+          <span class="badge success">Account active</span>
+          <h2 id="profileName">Super Admin</h2>
+          <p id="profileEmail">admin@itruck.africa</p>
+          <div class="profile-meta">
+            <span id="profileRole">Admin</span>
+            <span id="profileCountry">Kenya</span>
+            <span>Member since 2026</span>
+          </div>
+        </div>
+        <div class="verification-score">
+          <strong id="verificationScore">72%</strong>
+          <span>Verification ready</span>
+          <div class="progress"><span id="verificationBar" style="width:72%"></span></div>
+        </div>
+      </section>
+
+      <section class="profile-layout">
+        <div class="profile-main">
+          <section class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">Contact</p><h2>Personal & Company Details</h2></div>
+              <button class="secondary-btn" id="saveProfile">Save Changes</button>
+            </div>
+            <form class="profile-form" id="profileForm">
+              <label>First name<input name="firstName" placeholder="First name"></label>
+              <label>Last name<input name="lastName" placeholder="Last name"></label>
+              <label>Email<input name="email" type="email" placeholder="Email"></label>
+              <label>Phone<input name="phone" placeholder="+254..." ></label>
+              <label>Country<input name="country" placeholder="Country"></label>
+              <label>Company<input name="company" placeholder="Company or trading name"></label>
+              <label>Account type<select name="role"><option value="client">Client / Shipper</option><option value="owner">Fleet Owner</option><option value="admin">Admin</option></select></label>
+              <label>Preferred currency<select name="currency"><option>USD</option><option>KES</option><option>GHS</option><option>NGN</option><option>ZAR</option></select></label>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">Documents</p><h2>Verification Documents</h2></div>
+              <span class="badge">Local preview</span>
+            </div>
+            <div class="document-upload-grid" id="documentGrid"></div>
+          </section>
+        </div>
+
+        <aside class="profile-side">
+          <section class="panel">
+            <p class="eyebrow">Checklist</p>
+            <div class="checklist" id="verificationChecklist"></div>
+          </section>
+          <section class="panel">
+            <p class="eyebrow">Security</p>
+            <div class="settings-list">
+              <label><input type="checkbox" checked> Email login alerts</label>
+              <label><input type="checkbox"> Require 2-step approval for payouts</label>
+              <label><input type="checkbox" checked> SMS shipment updates</label>
+            </div>
+            <button class="ghost-btn" id="changePassword">Change Password</button>
+          </section>
+          <section class="panel">
+            <p class="eyebrow">Support</p>
+            <div class="contact-stack">
+              <a href="tel:+254700000000">Call iTruck Support</a>
+              <a href="mailto:support@itruck.africa">support@itruck.africa</a>
+            </div>
+          </section>
+        </aside>
+      </section>
+    </main>
+  </div>
+  <script src="../js/api.js"></script>
+  <script src="../js/auth-guard.js"></script>
+  <script src="../js/notifications-ui.js"></script>
+  <script src="../js/profile.js"></script>
+  <script src="../js/pwa.js"></script>
+</body>
+</html>

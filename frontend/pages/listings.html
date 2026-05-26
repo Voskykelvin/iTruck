@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0A0F1E">
+  <title>iTruck - Browse Trucks</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="manifest" href="../manifest.json">
+  <link rel="apple-touch-icon" href="../assets/icon-192.png">
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="stylesheet" href="../css/listings.css">
+</head>
+<body>
+  <div class="page-shell">
+    <aside class="sidebar">
+      <a class="brand" href="../index.html"><span class="brand-mark">iT</span> iTruck</a>
+      <nav>
+        <a class="" href="dashboard-client.html">Client Dashboard</a>
+        <a class="" href="dashboard-owner.html">Owner Dashboard</a>
+        <a class="" href="book-truck.html">Book Truck</a>
+        <a class="" href="tracking.html">Tracking</a>
+        <a class="active" href="listings.html">Browse Trucks</a>
+        <a class="" href="profile.html">Profile</a>
+      </nav>
+    </aside>
+    <main class="main-panel">
+      <div class="marketplace-topbar">
+        <div><p class="eyebrow">Marketplace</p><h1>Browse Trucks</h1><span id="resultCount" class="result-count">0 trucks available</span></div>
+        <form class="market-search" id="truckSearchForm" role="search">
+          <span aria-hidden="true">Find</span>
+          <input id="truckSearch" type="search" autocomplete="off" placeholder="Search route, owner, plate">
+          <button type="button" id="clearTruckSearch" aria-label="Clear search">x</button>
+        </form>
+      </div>
+      <section class="listings-layout">
+        <aside class="panel filter-panel">
+          <div class="filter-heading">
+            <div><p class="eyebrow">Filters</p><h2>Refine fleet</h2></div>
+            <button type="button" id="resetFilters">Reset</button>
+          </div>
+          <input type="hidden" id="typeFilter" value="">
+          <div class="filter-group">
+            <span>Vehicle type</span>
+            <div class="filter-chips" id="typeChips">
+              <button type="button" class="active" data-type="">All</button>
+              <button type="button" data-type="Matatu">Matatu</button>
+              <button type="button" data-type="Pickup">Pickup</button>
+              <button type="button" data-type="Lorry">Lorry</button>
+              <button type="button" data-type="Trailer">Trailer</button>
+              <button type="button" data-type="Bus">Bus</button>
+            </div>
+          </div>
+          <div class="filter-group">
+            <span>Decision filters</span>
+            <select id="sortTrucks">
+              <option value="best">Best fit first</option>
+              <option value="price">Lowest rate first</option>
+              <option value="rating">Highest rating first</option>
+              <option value="trips">Most completed trips</option>
+            </select>
+            <select id="minRating">
+              <option value="0">Any rating</option>
+              <option value="4.5">4.5+ rating</option>
+              <option value="4.8">4.8+ rating</option>
+            </select>
+          </div>
+          <label class="toggle-row"><input type="checkbox" id="verifiedOnly"><span></span><strong>Verified only</strong></label>
+        </aside>
+        <div id="truckResults" class="cards-grid"></div>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast"><span id="toastMsg"></span></div>
+  <script src="../js/api.js"></script>
+  <script src="../js/auth-guard.js"></script>
+  <script src="../js/notifications-ui.js"></script>
+  <script src="../js/truck-data.js"></script>
+  <script src="../js/listings.js"></script>
+  <script src="../js/pwa.js"></script>
+</body>
+</html>

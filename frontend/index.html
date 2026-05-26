@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0A0F1E">
+  <title>iTruck - Africa's Premium Logistics Network</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <link rel="stylesheet" href="css/styles.css">
+
+</head>
+<body>
+  <nav class="navbar" id="navbar">
+    <a class="brand" href="index.html"><span class="brand-mark">iT</span> iTruck</a>
+    <div class="nav-links">
+      <a href="#how">How It Works</a>
+      <a href="#fleet">Fleet</a>
+      <a href="#coverage">Coverage</a>
+      <a href="pages/listings.html">Browse Trucks</a>
+    </div>
+    <div class="nav-actions">
+      <button class="ghost-btn" data-open-modal="login">Log In</button>
+      <button class="primary-btn" onclick="scrollToSignup()">Get Started</button>
+    </div>
+    <button class="icon-btn hamburger" id="hamburger" aria-label="Menu" aria-expanded="false"><span></span><span></span><span></span></button>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <div class="particles" id="particles"></div>
+      <div class="hero-copy">
+        <p class="eyebrow">Pan-African Logistics Network</p>
+        <h1>Move freight across Africa with confidence.</h1>
+        <p class="hero-text">Book verified trucks, compare clear prices, and follow your shipment from pickup to delivery in one simple workspace.</p>
+        <div class="hero-actions">
+          <a class="primary-btn" href="pages/book-truck.html">Start Shipping</a>
+          <button class="secondary-btn" data-open-modal="owner">Register Your Fleet</button>
+        </div>
+        <div class="trust-strip">
+          <span>Verified owners</span>
+          <span>Escrow protected</span>
+          <span>Cross-border docs</span>
+          <span>GPS proof</span>
+        </div>
+        <div class="hero-stats">
+          <div><strong data-target="120">0</strong><span>Verified Trucks</span></div>
+          <div><strong data-target="12">0</strong><span>Priority Trade Lanes</span></div>
+          <div><strong data-target="97">0</strong><span>% On-Time Target</span></div>
+        </div>
+      </div>
+      <div class="hero-board">
+        <div class="freight-console" aria-label="Live freight command preview">
+          <div class="console-head">
+            <div>
+              <span class="live-dot"></span>
+              <strong>Control tower</strong>
+            </div>
+            <small>Live lane intelligence</small>
+          </div>
+          <div class="lane-card">
+            <span>Nairobi to Kampala</span>
+            <strong>12 verified trucks</strong>
+            <small>Best fit: Isuzu FVZ 34, pickup today 16:00</small>
+          </div>
+          <div class="console-grid">
+            <div><span>Quote</span><strong>$1,260</strong></div>
+            <div><span>ETA</span><strong>18h 40m</strong></div>
+            <div><span>Risk</span><strong>Low</strong></div>
+            <div><span>Docs</span><strong>Ready</strong></div>
+          </div>
+          <div class="exception-row">
+            <span>Action</span>
+            <strong>Border documents checked, escrow pending release</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="signup-band" id="signup">
+      <div class="section-heading">
+        <p class="eyebrow">Join iTruck</p>
+        <h2>Choose your role</h2>
+      </div>
+      <div class="role-grid">
+        <article class="role-card owner">
+          <p>For Fleet Owners</p>
+          <h3>I Own a Truck</h3>
+          <ul><li>Accept bookings 24/7</li><li>Route visibility across Africa</li><li>Instant payment on delivery</li></ul>
+          <button class="primary-btn" data-open-modal="owner">Register Your Fleet</button>
+        </article>
+        <article class="role-card client">
+          <p>For Shippers</p>
+          <h3>I Need a Truck</h3>
+          <ul><li>Book in under 2 minutes</li><li>Live cargo tracking</li><li>Transparent pricing</li></ul>
+          <button class="accent-btn" data-open-modal="client">Book a Vehicle</button>
+        </article>
+      </div>
+    </section>
+
+    <section id="fleet" class="content-band">
+      <div class="section-heading"><p class="eyebrow">Our Fleet</p><h2>Every vehicle, every load</h2></div>
+      <div class="fleet-grid">
+        <article><h3>Matatu / Minibus</h3><p>Short distance urban and rural runs.</p><strong>0 - 500 km</strong></article>
+        <article><h3>Lorry / Pickup</h3><p>Flexible medium-load routing.</p><strong>0 - 2,000 km</strong></article>
+        <article><h3>Large Truck</h3><p>Heavy cargo across borders.</p><strong>0 - 10,000 km</strong></article>
+        <article><h3>Trailer / Semi</h3><p>Bulk cargo and containers.</p><strong>Continental</strong></article>
+        <article><h3>Bus</h3><p>Passenger and mixed logistics.</p><strong>0 - 5,000 km</strong></article>
+        <article><h3>Specialised</h3><p>Refrigerated, flatbed, tanker, crane.</p><strong>Custom routes</strong></article>
+      </div>
+    </section>
+
+    <section class="trust-section">
+      <div class="section-heading">
+        <p class="eyebrow">Trust & Safety</p>
+        <h2>Reliable transport, from request to delivery</h2>
+      </div>
+      <div class="trust-grid">
+        <article><strong>01</strong><h3>Checked vehicles</h3><p>Truck owners can share vehicle documents, insurance details, routes, and availability before a client confirms a job.</p></article>
+        <article><strong>02</strong><h3>Clear payment steps</h3><p>Clients can choose wallet, card, M-Pesa, MTN MoMo, Airtel Money, or cash workflows with a clear record of each payment.</p></article>
+        <article><strong>03</strong><h3>Delivery updates</h3><p>Each shipment can include route progress, driver contact, cargo photos, issue reports, and proof of delivery.</p></article>
+      </div>
+    </section>
+
+    <section id="how" class="content-band split">
+      <div><p class="eyebrow">Simple Process</p><h2>How iTruck works</h2></div>
+      <div class="steps">
+        <article><b>01</b><h3>Create Account</h3><p>Verify your business or personal identity.</p></article>
+        <article><b>02</b><h3>Post Request</h3><p>Select vehicle type, route, cargo, and date.</p></article>
+        <article><b>03</b><h3>Get Matched</h3><p>Receive bids or confirm instant matches.</p></article>
+        <article><b>04</b><h3>Track & Receive</h3><p>Follow live GPS until delivery.</p></article>
+      </div>
+    </section>
+
+    <section id="coverage" class="coverage">
+      <div><p class="eyebrow">Coverage</p><h2>Across African trade lanes</h2><p>From Nairobi to Lagos, Cairo to Cape Town, iTruck is designed for regional routes, cross-border paperwork, low-bandwidth updates, and local payment methods.</p></div>
+      <div class="coverage-list"><span>East Africa</span><span>West Africa</span><span>Southern Africa</span><span>North Africa</span><span>Central Africa</span></div>
+    </section>
+
+    <section class="world-class-grid">
+      <article class="image-feature">
+        <img src="https://images.pexels.com/photos/11448562/pexels-photo-11448562.jpeg?auto=compress&cs=tinysrgb&w=900" alt="Truck travelling under an overpass">
+        <div><p class="eyebrow">Operations</p><h2>Manage each shipment from one place</h2><p>Clients see what needs attention. Owners see jobs, fleet availability, earnings, and documents. Admins can review approvals, payments, disputes, and activity history.</p></div>
+      </article>
+      <article class="image-feature reverse">
+        <img src="https://unsplash.com/photos/GBVDilE8yvI/download?force=true&w=900" alt="White truck on road during daytime">
+        <div><p class="eyebrow">Marketplace</p><h2>Find the right truck faster</h2><p>Preferred routes, vehicle capacity, cargo type, border crossings, owner rating, and availability help clients receive better matches and clearer prices.</p></div>
+      </article>
+    </section>
+
+    <section class="product-pillars">
+      <article><span>Booking</span><h3>Choose a route, cargo type, vehicle, and payment method with a clear estimate before you confirm.</h3></article>
+      <article><span>Tracking</span><h3>Follow the trip with status updates, driver contact, route milestones, and proof of delivery.</h3></article>
+      <article><span>Local fit</span><h3>Support for mobile money, SMS fallback, WhatsApp-style alerts, local currencies, and low-data workflows.</h3></article>
+      <article><span>Operations</span><h3>Admin queues for verification, payments, documents, disputes, audit logs, and route performance.</h3></article>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div>
+      <a class="brand" href="index.html"><span class="brand-mark">iT</span> iTruck</a>
+      <p>Transport bookings, truck matching, shipment updates, and payment records for teams moving goods across Africa.</p>
+    </div>
+    <div>
+      <h3>For Shippers</h3>
+      <a href="pages/book-truck.html">Book a truck</a>
+      <a href="pages/tracking.html">Track shipment</a>
+      <a href="pages/listings.html">Browse vehicles</a>
+    </div>
+    <div>
+      <h3>For Owners</h3>
+      <a href="pages/dashboard-owner.html">Fleet dashboard</a>
+      <a href="pages/profile.html">Verification</a>
+      <a href="pages/dashboard-owner.html">Job board</a>
+    </div>
+    <div>
+      <h3>Coverage</h3>
+      <span>East Africa</span>
+      <span>West Africa</span>
+      <span>Southern Africa</span>
+      <span>North Africa</span>
+      <span>Central Africa</span>
+    </div>
+    <p class="footer-bottom">iTruck Africa Ltd. Designed for regional freight, local payments, and long-distance road transport on priority African trade lanes.</p>
+  </footer>
+
+  <div class="modal-overlay" id="modalOverlay">
+    <form class="modal" id="modal-owner" data-auth-form="owner">
+      <button type="button" class="close" data-close-modal>x</button>
+      <h2>Register Fleet</h2>
+      <input name="firstName" placeholder="First name" required>
+      <input name="lastName" placeholder="Last name" required>
+      <input name="email" type="email" placeholder="Email" required>
+      <label class="phone-field">
+        <span>Phone</span>
+        <span class="phone-row">
+          <select name="countryCode" data-country-code aria-label="Country dial code" required>
+            <option value="+254" selected>+254 Kenya</option>
+            <option value="+234">+234 Nigeria</option>
+            <option value="+27">+27 South Africa</option>
+            <option value="+256">+256 Uganda</option>
+            <option value="+255">+255 Tanzania</option>
+            <option value="+233">+233 Ghana</option>
+            <option value="+20">+20 Egypt</option>
+            <option value="+212">+212 Morocco</option>
+            <option value="+251">+251 Ethiopia</option>
+            <option value="+243">+243 DRC Congo</option>
+          </select>
+          <input name="phone" placeholder="700 000 000" required>
+        </span>
+      </label>
+      <select name="country" data-country-select required>
+        <option value="Kenya" selected>Kenya</option>
+        <option value="Nigeria">Nigeria</option>
+        <option value="South Africa">South Africa</option>
+        <option value="Uganda">Uganda</option>
+        <option value="Tanzania">Tanzania</option>
+        <option value="Ghana">Ghana</option>
+        <option value="Egypt">Egypt</option>
+        <option value="Morocco">Morocco</option>
+        <option value="Ethiopia">Ethiopia</option>
+        <option value="DRC Congo">DRC Congo</option>
+      </select>
+      <input name="password" type="password" placeholder="Password" required>
+      <button class="primary-btn" type="submit">Create Owner Account</button>
+    </form>
+    <form class="modal" id="modal-client" data-auth-form="client">
+      <button type="button" class="close" data-close-modal>x</button>
+      <h2>Book as Shipper</h2>
+      <input name="firstName" placeholder="First name" required>
+      <input name="lastName" placeholder="Last name" required>
+      <input name="email" type="email" placeholder="Email" required>
+      <label class="phone-field">
+        <span>Phone</span>
+        <span class="phone-row">
+          <select name="countryCode" data-country-code aria-label="Country dial code" required>
+            <option value="+254" selected>+254 Kenya</option>
+            <option value="+234">+234 Nigeria</option>
+            <option value="+27">+27 South Africa</option>
+            <option value="+256">+256 Uganda</option>
+            <option value="+255">+255 Tanzania</option>
+            <option value="+233">+233 Ghana</option>
+            <option value="+20">+20 Egypt</option>
+            <option value="+212">+212 Morocco</option>
+            <option value="+251">+251 Ethiopia</option>
+            <option value="+243">+243 DRC Congo</option>
+          </select>
+          <input name="phone" placeholder="700 000 000" required>
+        </span>
+      </label>
+      <select name="country" data-country-select required>
+        <option value="Kenya" selected>Kenya</option>
+        <option value="Nigeria">Nigeria</option>
+        <option value="South Africa">South Africa</option>
+        <option value="Uganda">Uganda</option>
+        <option value="Tanzania">Tanzania</option>
+        <option value="Ghana">Ghana</option>
+        <option value="Egypt">Egypt</option>
+        <option value="Morocco">Morocco</option>
+        <option value="Ethiopia">Ethiopia</option>
+        <option value="DRC Congo">DRC Congo</option>
+      </select>
+      <input name="password" type="password" placeholder="Password" required>
+      <button class="accent-btn" type="submit">Create Client Account</button>
+    </form>
+    <form class="modal" id="modal-login" data-login-form><button type="button" class="close" data-close-modal>x</button><h2>Log In</h2><input name="email" type="email" placeholder="Email" required><input name="password" type="password" placeholder="Password" required><button class="primary-btn" type="submit">Log In</button></form>
+  </div>
+  <div class="toast" id="toast"><span id="toastMsg"></span></div>
+  <script src="js/api.js"></script>
+  <script src="js/main.js"></script>
+  <script src="js/pwa.js"></script>
+</body>
+</html>

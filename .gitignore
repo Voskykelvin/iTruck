@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.production
+backend/uploads/
+backend/coverage/
+*.log
+.vscode/
+.DS_Store
+Thumbs.db

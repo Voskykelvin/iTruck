@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#F8FAFC">
+  <title>iTruck - Offline</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <main class="offline-shell">
+    <section class="offline-panel">
+      <p class="eyebrow">Offline Mode</p>
+      <h1>You are offline, but your saved iTruck work is still here.</h1>
+      <p>Reconnect to sync new bookings, tracking messages, profile documents, and truck changes with the live platform.</p>
+      <div class="offline-actions">
+        <a class="primary-btn" href="pages/dashboard-client.html">Open Dashboard</a>
+        <button class="ghost-btn" type="button" id="retryConnection">Retry Connection</button>
+      </div>
+    </section>
+
+    <section class="offline-grid" aria-label="Saved offline data">
+      <article>
+        <span>Bookings</span>
+        <strong id="offlineBookings">0</strong>
+      </article>
+      <article>
+        <span>Vehicles</span>
+        <strong id="offlineVehicles">0</strong>
+      </article>
+      <article>
+        <span>Messages</span>
+        <strong id="offlineMessages">0</strong>
+      </article>
+      <article>
+        <span>Documents</span>
+        <strong id="offlineDocuments">0</strong>
+      </article>
+    </section>
+
+    <section class="offline-panel compact">
+      <p class="eyebrow">Latest Local Items</p>
+      <div class="offline-list" id="offlineList"></div>
+    </section>
+  </main>
+
+  <script>
+    function readList(key) {
+      try {
+        const value = JSON.parse(localStorage.getItem(key) || '[]');
+        return Array.isArray(value) ? value : [];
+      } catch (err) {
+        return [];
+      }
+    }
+
+    const groups = {
+      Bookings: readList('itruck_bookings'),
+      Vehicles: readList('itruck_vehicles'),
+      Messages: [
+        ...readList('itruck_messages'),
+        ...Object.keys(localStorage)
+          .filter(key => key.startsWith('itruck_chat_') || key.startsWith('itruck_socket_updates_'))
+          .flatMap(readList)
+      ],
+      Documents: readList('itruck_profile_documents')
+    };
+
+    document.getElementById('offlineBookings').textContent = groups.Bookings.length;
+    document.getElementById('offlineVehicles').textContent = groups.Vehicles.length;
+    document.getElementById('offlineMessages').textContent = groups.Messages.length;
+    document.getElementById('offlineDocuments').textContent = groups.Documents.length;
+
+    const latest = Object.entries(groups)
+      .flatMap(([type, items]) => items.map(item => ({ type, ...item })))
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+      .slice(0, 6);
+
+    const list = document.getElementById('offlineList');
+    const rows = latest.length
+      ? latest
+      : [{ type: 'No local items yet', route: 'Saved bookings and shipment updates will appear here during outages.' }];
+
+    rows.forEach(item => {
+      const row = document.createElement('div');
+      const title = document.createElement('strong');
+      const detail = document.createElement('span');
+      title.textContent = item.type;
+      detail.textContent = item.route || item.name || item.id || item.status || 'Saved locally';
+      row.append(title, detail);
+      list.appendChild(row);
+    });
+
+    document.getElementById('retryConnection').addEventListener('click', () => location.reload());
+  </script>
+</body>
+</html>
