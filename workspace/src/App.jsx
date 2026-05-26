@@ -1000,6 +1000,14 @@ function OwnerPage({ notify }) {
   const [fleet, setFleet] = useState(workspaceFleet.slice(0, 3));
   const [loads, setLoads] = useState(workspaceLoads);
   const [draftPlate, setDraftPlate] = useState('');
+  const [walletBalance, setWalletBalance] = useState(3180);
+  const [withdrawBusy, setWithdrawBusy] = useState(false);
+  const [withdrawDraft, setWithdrawDraft] = useState({
+    amount: 250,
+    method: 'mpesa',
+    destination: '+254700000000',
+    accountName: 'Fleet Owner'
+  });
 
   useEffect(() => {
     api.fleetTrucks()
@@ -1013,6 +1021,12 @@ function OwnerPage({ notify }) {
         if (Array.isArray(data.bookings)) setLoads(data.bookings.map(normalizeOpenLoad));
       })
       .catch(() => setLoads(workspaceLoads));
+
+    api.wallet()
+      .then(data => {
+        if (Number.isFinite(Number(data.balance))) setWalletBalance(Number(data.balance));
+      })
+      .catch(() => {});
   }, []);
 
   async function addTruck() {
@@ -1077,6 +1091,44 @@ function OwnerPage({ notify }) {
 
     saveLocal('pickup_updates', { label, status: 'confirmed' });
     notify('Pickup confirmation recorded for Kampala depot');
+  }
+
+  function updateWithdraw(key, value) {
+    setWithdrawDraft(current => ({ ...current, [key]: value }));
+  }
+
+  async function requestWithdrawal(event) {
+    event.preventDefault();
+    const amount = Number(withdrawDraft.amount);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      notify('Enter a withdrawal amount greater than zero');
+      return;
+    }
+
+    if (!withdrawDraft.destination.trim()) {
+      notify('Enter the payout phone or account');
+      return;
+    }
+
+    setWithdrawBusy(true);
+    const payload = {
+      ...withdrawDraft,
+      amount,
+      description: `Owner withdrawal to ${withdrawDraft.method}`
+    };
+
+    try {
+      await api.withdraw(payload);
+      setWalletBalance(current => Math.max(0, Number(current || 0) - amount));
+      notify(`Withdrawal request queued to ${withdrawDraft.method.toUpperCase()}`);
+    } catch (err) {
+      saveLocal('withdrawals', { ...payload, status: 'local-pending' });
+      setWalletBalance(current => Math.max(0, Number(current || 0) - amount));
+      notify('Withdrawal saved locally until API sync is available');
+    } finally {
+      setWithdrawBusy(false);
+    }
   }
 
   return (
@@ -1170,6 +1222,23 @@ function OwnerPage({ notify }) {
         </div>
 
         <aside className="side-stack">
+          <Panel title="Wallet Payout" eyebrow="Withdraw">
+            <form className="payout-form" onSubmit={requestWithdrawal}>
+              <div className="wallet-card compact">
+                <span>Available balance</span>
+                <strong>{money(walletBalance)}</strong>
+                <small>Payouts are queued for finance approval.</small>
+              </div>
+              <Input label="Amount USD" type="number" value={withdrawDraft.amount} onChange={value => updateWithdraw('amount', Number(value))} />
+              <Select label="Method" value={withdrawDraft.method} onChange={value => updateWithdraw('method', value)} options={['mpesa', 'mtn', 'bank', 'stripe']} />
+              <Input label="Phone or account" value={withdrawDraft.destination} onChange={value => updateWithdraw('destination', value)} />
+              <Input label="Account name" value={withdrawDraft.accountName} onChange={value => updateWithdraw('accountName', value)} />
+              <button className="primary full icon-label" type="submit" disabled={withdrawBusy}>
+                <Wallet size={18} />
+                <span>{withdrawBusy ? 'Queuing...' : 'Withdraw Cash'}</span>
+              </button>
+            </form>
+          </Panel>
           <Panel title="Owner Queue" eyebrow="Today">
             <div className="action-list">
               {['Submit bid - Construction steel', 'Upload insurance - Toyota Hilux', 'Confirm pickup - Kampala depot'].map(item => (

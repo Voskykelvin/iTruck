@@ -38,6 +38,8 @@ export const api = {
   createBooking: payload => request('/bookings', { method: 'POST', body: JSON.stringify(payload) }),
   createTruck: payload => request('/trucks', { method: 'POST', body: JSON.stringify(payload) }),
   rateTruck: (id, payload) => request(`/trucks/${encodeURIComponent(id)}/ratings`, { method: 'POST', body: JSON.stringify(payload) }),
+  wallet: () => request('/payments/wallet'),
+  withdraw: payload => request('/payments/withdraw', { method: 'POST', body: JSON.stringify(payload) }),
   workflow: query => request(`/workflow${query || ''}`),
   listMessages: bookingId => request(`/workflow/messages?booking=${encodeURIComponent(bookingId)}`),
   sendMessage: payload => request('/workflow/messages', { method: 'POST', body: JSON.stringify(payload) }),
