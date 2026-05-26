@@ -23,3 +23,13 @@ html[data-theme="dark"] .tracking-workspace,html[data-theme="dark"] .contact-wor
 /* Accessible green text on light surfaces */
 .contact-method span{color:var(--primary-light-text,#15803D)}
 html[data-theme="dark"] .contact-method span{color:#22C55E}
+
+/* Orange accent layer */
+.tracking-item.active,.tracking-timeline .active,.chat-message.user{background:#FFF7ED;color:#7C2D12;border-color:rgba(249,115,22,.24)}
+.tracking-timeline .done{background:#FFF7ED;color:#7C2D12}
+.progress span{background:linear-gradient(90deg,#F97316,#C2410C)}
+.modal-form input:focus,.modal-form select:focus,.modal-form textarea:focus,.driver-chat-form textarea:focus{outline:2px solid rgba(249,115,22,.18);border-color:#F97316}
+.contact-method:hover{border-color:rgba(249,115,22,.28)}
+.contact-method span{color:#C2410C}
+html[data-theme="dark"] .tracking-item.active,html[data-theme="dark"] .tracking-timeline .active,html[data-theme="dark"] .chat-message.user{background:rgba(249,115,22,.16);color:#FED7AA}
+html[data-theme="dark"] .contact-method span{color:#FDBA74}

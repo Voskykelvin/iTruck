@@ -48,3 +48,12 @@ html[data-theme="dark"] .panel-heading a,html[data-theme="dark"] .bid-award-bar 
 .interactive-row,.shipment-row,.load-row,.load-card,.fleet-row{cursor:pointer;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease}
 .interactive-row:hover,.shipment-row:hover,.load-row:hover,.load-card:hover,.fleet-row:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(15,23,42,.08)}
 .interactive-row:focus-visible{outline:3px solid rgba(34,197,94,.28);outline-offset:3px}
+
+/* Orange accent layer */
+.panel-heading a,.bid-award-bar span{color:#C2410C}
+.progress span,.earnings-bars b{background:linear-gradient(90deg,#F97316,#C2410C)}
+.workspace-hero,.owner-hero,.bid-review-card.selected{background:#FFF7ED;border-color:rgba(249,115,22,.24);box-shadow:0 0 0 3px rgba(249,115,22,.1)}
+.modal-form select:focus,.modal-form input:focus,.modal-form textarea:focus{outline:2px solid rgba(249,115,22,.18);border-color:#F97316}
+.interactive-row:focus-visible{outline:3px solid rgba(249,115,22,.28);outline-offset:3px}
+html[data-theme="dark"] .panel-heading a,html[data-theme="dark"] .bid-award-bar span{color:#FDBA74}
+html[data-theme="dark"] .bid-review-card.selected{background:rgba(249,115,22,.16)}

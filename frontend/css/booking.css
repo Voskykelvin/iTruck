@@ -20,4 +20,12 @@ html[data-theme="dark"] .service-grid label,html[data-theme="dark"] .quote-ack,h
 /* Touch-safe booking controls */
 .vehicle-option,.service-grid label,.quote-ack{min-height:44px}
 .service-grid input,.quote-ack input{width:20px;height:20px;min-width:20px;min-height:20px;accent-color:var(--primary-light-text,#15803D)}
+
+/* Orange accent layer */
+.vehicle-option.active,.service-grid label:has(input:checked),.quote-ack{border-color:rgba(249,115,22,.24);background:#FFF7ED;color:#7C2D12;box-shadow:0 0 0 3px rgba(249,115,22,.1)}
+.booking-insight,.document-checklist{background:#FFF7ED;color:#7C2D12;border-color:rgba(249,115,22,.22)}
+.estimate-head span{color:#C2410C}
+.quote-warning{border-color:rgba(249,115,22,.24)}
+.service-grid input,.quote-ack input{accent-color:#F97316}
+html[data-theme="dark"] .vehicle-option.active,html[data-theme="dark"] .service-grid label:has(input:checked),html[data-theme="dark"] .quote-ack,html[data-theme="dark"] .booking-insight{background:rgba(249,115,22,.16);color:#FED7AA;border-color:rgba(249,115,22,.3)}
 .support-strip span{color:#1D4ED8}

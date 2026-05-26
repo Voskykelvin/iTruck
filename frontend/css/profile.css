@@ -15,3 +15,8 @@ html[data-theme="dark"] .workspace-dialog{background:#111827;color:#F8FAFC}html[
 .settings-list input{width:20px;height:20px;min-width:20px;min-height:20px;accent-color:var(--primary-light-text,#15803D)}
 .document-card label,.avatar-upload{min-height:44px}
 html[data-theme="dark"] .contact-stack a{color:#22C55E}
+
+/* Orange accent layer */
+.contact-stack a{color:#C2410C}
+.settings-list input{accent-color:#F97316}
+html[data-theme="dark"] .contact-stack a{color:#FDBA74}
