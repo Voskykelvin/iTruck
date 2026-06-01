@@ -45,6 +45,8 @@ test('booking indexes cover client owner status dashboards', () => {
   expect(hasIndex(Booking, { client: 1, status: 1, createdAt: -1 })).toBe(true);
   expect(hasIndex(Booking, { owner: 1, status: 1, createdAt: -1 })).toBe(true);
   expect(hasIndex(Booking, { status: 1, owner: 1, createdAt: -1 })).toBe(true);
+  expect(hasIndex(Booking, { paymentStatus: 1, updatedAt: -1 })).toBe(true);
+  expect(Booking.schema.path('paymentStatus')).toBeDefined();
 });
 
 test('refresh token indexes and fields support device-scoped sessions', () => {

@@ -10,6 +10,8 @@ const transactionSchema = new mongoose.Schema(
     currency: { type: String, default: 'USD' },
     status: { type: String, enum: ['pending', 'completed', 'failed', 'refunded'], default: 'pending' },
     reference: String,
+    provider: String,
+    providerEventId: String,
     description: String,
     metadata: Object
   },
@@ -20,5 +22,6 @@ transactionSchema.index({ user: 1, createdAt: -1 });
 transactionSchema.index({ booking: 1, createdAt: -1 });
 transactionSchema.index({ status: 1, type: 1, createdAt: -1 });
 transactionSchema.index({ reference: 1 }, { sparse: true });
+transactionSchema.index({ provider: 1, providerEventId: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('Transaction', transactionSchema);

@@ -216,6 +216,7 @@ function normalizeBookingShipment(booking) {
     position: latest.city || (latest.lat && latest.lng ? `${latest.lat}, ${latest.lng}` : 'Awaiting GPS update'),
     speed: latest.speed ? `${latest.speed} km/h` : 'Speed pending',
     payment: booking.paymentMethod || 'Payment pending',
+    paymentStatus: booking.paymentStatus || 'unpaid',
     documents: booking.estimate?.requiredDocuments || demoDocuments.slice(0, 3)
   };
 }
@@ -409,7 +410,7 @@ function StatusBadge({ children, tone = 'default' }) {
   return <span className={`badge ${tone}`}>{children}</span>;
 }
 
-function ShipperPage({ notify }) {
+function ShipperPage({ notify, user }) {
   const [shipments, setShipments] = useState(workspaceShipments);
 
   useEffect(() => {
@@ -442,8 +443,16 @@ function ShipperPage({ notify }) {
     {
       label: 'Release payment after POD',
       run: () => {
-        saveLocal('payment_releases', { type: 'pod-release', status: 'queued' });
-        notify('Payment release queued after proof of delivery');
+        const delivered = shipments.find((item) => item.rawStatus === 'delivered');
+        if (user?.role === 'admin' && delivered?.bookingId) {
+          api
+            .releasePayment(delivered.bookingId)
+            .then(() => notify(`Payment released for ${delivered.id}`))
+            .catch((err) => notify(err.message));
+          return;
+        }
+        navigate('/app/admin');
+        notify('Payment release requires admin approval');
       }
     }
   ];
@@ -1155,6 +1164,46 @@ function TrackingPage({ notify, route, user }) {
     }
   }
 
+  async function confirmDelivery() {
+    if (!shipment?.bookingId) {
+      notify('Delivery confirmation needs a synced booking');
+      return;
+    }
+
+    try {
+      const data = await api.confirmDelivery(shipment.bookingId);
+      const updated = normalizeBookingShipment(data.booking || {});
+      setShipments((current) => current.map((item) => (item.bookingId === shipment.bookingId ? updated : item)));
+      notify('Delivery confirmed');
+    } catch (err) {
+      notify(err.message);
+    }
+  }
+
+  async function reportIssue() {
+    if (!shipment) return;
+
+    try {
+      await api.reportIssue({
+        booking: shipment.bookingId,
+        bookingId: shipment.bookingId,
+        shipmentId: shipment.id,
+        message: `Issue reported for ${shipment.route}`,
+        severity: 'normal',
+        status: 'submitted'
+      });
+      notify('Issue report sent to operations');
+    } catch (err) {
+      saveLocal('issue_reports', {
+        bookingId: shipment.bookingId,
+        shipmentId: shipment.id,
+        route: shipment.route,
+        status: 'local'
+      });
+      notify(err.message || 'Issue report saved locally');
+    }
+  }
+
   if (!shipment) {
     return (
       <Panel title="Live Tracking" eyebrow="Shipments">
@@ -1233,7 +1282,7 @@ function TrackingPage({ notify, route, user }) {
             ))}
           </div>
           <div className="stack-actions">
-            <button className="primary" type="button" onClick={() => notify('Delivery confirmation recorded')}>
+            <button className="primary" type="button" onClick={confirmDelivery}>
               Confirm Delivery
             </button>
             <button
@@ -1243,7 +1292,7 @@ function TrackingPage({ notify, route, user }) {
             >
               Contact Driver
             </button>
-            <button className="ghost" type="button" onClick={() => notify('Issue report sent to operations')}>
+            <button className="ghost" type="button" onClick={reportIssue}>
               Report Issue
             </button>
           </div>

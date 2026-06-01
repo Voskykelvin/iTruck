@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const STATUSES = ['pending', 'bidding', 'confirmed', 'in_transit', 'delivered', 'cancelled', 'disputed'];
+const PAYMENT_STATUSES = ['unpaid', 'pending', 'escrowed', 'release_pending', 'released', 'failed', 'refunded'];
 const STATUS_TRANSITIONS = {
   pending: ['bidding', 'cancelled', 'disputed'],
   bidding: ['confirmed', 'cancelled', 'disputed'],
@@ -50,6 +51,12 @@ const bookingSchema = new mongoose.Schema(
     optionalServices: [String],
     budget: Number,
     paymentMethod: String,
+    paymentStatus: { type: String, enum: PAYMENT_STATUSES, default: 'unpaid' },
+    paymentReference: String,
+    paymentAmount: Number,
+    paidAt: Date,
+    releasedAt: Date,
+    deliveredAt: Date,
     estimate: mongoose.Schema.Types.Mixed,
     quoteAcknowledged: { type: Boolean, default: false },
     status: {
@@ -95,11 +102,14 @@ bookingSchema.index({ owner: 1, createdAt: -1 });
 bookingSchema.index({ owner: 1, status: 1, createdAt: -1 });
 bookingSchema.index({ status: 1, createdAt: -1 });
 bookingSchema.index({ status: 1, owner: 1, createdAt: -1 });
+bookingSchema.index({ paymentStatus: 1, updatedAt: -1 });
+bookingSchema.index({ paymentReference: 1 }, { sparse: true });
 bookingSchema.index({ truck: 1, createdAt: -1 });
 bookingSchema.index({ 'bids.owner': 1, createdAt: -1 });
 bookingSchema.index({ 'documents.type': 1 });
 
 bookingSchema.statics.STATUSES = STATUSES;
+bookingSchema.statics.PAYMENT_STATUSES = PAYMENT_STATUSES;
 bookingSchema.statics.STATUS_TRANSITIONS = STATUS_TRANSITIONS;
 bookingSchema.statics.assertStatusTransition = assertStatusTransition;
 

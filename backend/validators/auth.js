@@ -16,7 +16,8 @@ const registerSchema = [
     .optional({ checkFalsy: true })
     .isIn(['personal', 'business', 'ngo'])
     .withMessage('Account type is invalid'),
-  body('company').optional({ checkFalsy: true }).trim().isLength({ max: 120 }).withMessage('Company is too long')
+  body('company').optional({ checkFalsy: true }).trim().isLength({ max: 120 }).withMessage('Company is too long'),
+  body('deviceId').optional({ checkFalsy: true }).trim().isUUID().withMessage('deviceId is invalid')
 ];
 
 const loginSchema = [

@@ -2,10 +2,11 @@ const express = require('express');
 const Booking = require('../models/Booking');
 const matching = require('../services/matching');
 const { mongoReady, requireDatabase } = require('../config/runtime');
-const { protect } = require('../middleware/auth');
+const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const {
   bookingIdSchema,
+  acceptBidSchema,
   createBookingSchema,
   listBookingsSchema,
   submitBidSchema,
@@ -71,6 +72,61 @@ function bookingVisibleTo(user, booking) {
   return false;
 }
 
+function bookingOpenForBids(booking) {
+  return ['pending', 'bidding'].includes(booking.status) && !booking.owner;
+}
+
+function canManageBookingStatus(user, booking) {
+  if (user.role === 'admin') return true;
+  return user.role === 'owner' && String(booking.owner) === String(user._id);
+}
+
+function canAcceptBid(user, booking) {
+  if (user.role === 'admin') return true;
+  return user.role === 'client' && String(booking.client?._id || booking.client) === String(user._id);
+}
+
+function canConfirmDelivery(user, booking) {
+  if (user.role === 'admin') return true;
+  return user.role === 'client' && String(booking.client?._id || booking.client) === String(user._id);
+}
+
+function findBid(booking, bidId) {
+  if (booking.bids?.id) return booking.bids.id(bidId);
+  return (booking.bids || []).find((bid) =>
+    [bid._id, bid.id, bid.owner, bid.truck].some((value) => value && String(value) === String(bidId))
+  );
+}
+
+function acceptBidOnBooking(booking, bidId) {
+  if (booking.status !== 'bidding') {
+    const err = new Error('Booking is not ready for bid acceptance');
+    err.status = 409;
+    throw err;
+  }
+
+  const bid = findBid(booking, bidId);
+  if (!bid) {
+    const err = new Error('Bid not found');
+    err.status = 404;
+    throw err;
+  }
+
+  booking.bids.forEach((item) => {
+    item.status = String(item._id || item.id || item.owner || item.truck) === String(bidId) ? 'accepted' : 'rejected';
+  });
+  bid.status = 'accepted';
+  booking.owner = bid.owner;
+  if (bid.truck) booking.truck = bid.truck;
+  if (typeof booking.transitionTo === 'function') {
+    booking.transitionTo('confirmed');
+  } else {
+    Booking.assertStatusTransition(booking.status, 'confirmed');
+    booking.status = 'confirmed';
+  }
+  return booking;
+}
+
 function normalizeOptionalServices(value) {
   if (Array.isArray(value)) return value;
   if (typeof value === 'string' && value.trim())
@@ -130,7 +186,7 @@ router.get('/', listBookingsSchema, validate, async (req, res, next) => {
   }
 });
 
-router.get('/open', async (req, res, next) => {
+router.get('/open', restrictTo('owner', 'admin'), async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
 
@@ -201,25 +257,30 @@ router.post('/', createBookingSchema, validate, async (req, res, next) => {
   }
 });
 
-router.post('/:id/bids', submitBidSchema, validate, async (req, res, next) => {
+router.post('/:id/bids', restrictTo('owner', 'admin'), submitBidSchema, validate, async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
       const booking = memoryBookings.find((item) => item._id === req.params.id);
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (!bookingOpenForBids(booking)) return res.status(409).json({ message: 'Booking is not open for bids' });
 
       booking.bids = booking.bids || [];
       booking.bids.push({ ...req.body, owner: req.user._id, status: 'pending', createdAt: new Date().toISOString() });
+      if (booking.status === 'pending') Booking.assertStatusTransition(booking.status, 'bidding');
+      if (booking.status === 'pending') booking.status = 'bidding';
       emitBooking(req, booking._id, 'bid-created', booking);
       return res.json({ booking, mode: 'memory' });
     }
 
-    const booking = await Booking.findByIdAndUpdate(
-      req.params.id,
-      { $push: { bids: { ...req.body, owner: req.user._id } } },
-      { new: true }
-    );
+    const booking = await Booking.findById(req.params.id);
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    if (!bookingOpenForBids(booking)) return res.status(409).json({ message: 'Booking is not open for bids' });
+
+    booking.bids.push({ ...req.body, owner: req.user._id });
+    if (booking.status === 'pending') booking.transitionTo('bidding');
+    await booking.save();
+
     emitBooking(req, booking._id, 'bid-created', booking);
     res.json({ booking });
   } catch (err) {
@@ -227,7 +288,76 @@ router.post('/:id/bids', submitBidSchema, validate, async (req, res, next) => {
   }
 });
 
-router.patch('/:id/status', updateStatusSchema, validate, async (req, res, next) => {
+router.patch(
+  '/:id/bids/:bidId/accept',
+  restrictTo('client', 'admin'),
+  acceptBidSchema,
+  validate,
+  async (req, res, next) => {
+    try {
+      if (requireDatabase(req, res)) return;
+      if (!mongoReady()) {
+        const booking = memoryBookings.find((item) => item._id === req.params.id);
+        if (!booking) return res.status(404).json({ message: 'Booking not found' });
+        if (!canAcceptBid(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+
+        acceptBidOnBooking(booking, req.params.bidId);
+        emitBooking(req, booking._id, 'bid-accepted', booking);
+        return res.json({ booking, mode: 'memory' });
+      }
+
+      const booking = await Booking.findById(req.params.id);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (!canAcceptBid(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+
+      acceptBidOnBooking(booking, req.params.bidId);
+      await booking.save();
+
+      emitBooking(req, booking._id, 'bid-accepted', booking);
+      res.json({ booking });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.patch(
+  '/:id/confirm-delivery',
+  restrictTo('client', 'admin'),
+  bookingIdSchema,
+  validate,
+  async (req, res, next) => {
+    try {
+      if (requireDatabase(req, res)) return;
+      if (!mongoReady()) {
+        const booking = memoryBookings.find((item) => item._id === req.params.id);
+        if (!booking) return res.status(404).json({ message: 'Booking not found' });
+        if (!canConfirmDelivery(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+
+        Booking.assertStatusTransition(booking.status, 'delivered');
+        booking.status = 'delivered';
+        booking.deliveredAt = new Date().toISOString();
+        emitBooking(req, booking._id, 'delivery-confirmed', booking);
+        return res.json({ booking, mode: 'memory' });
+      }
+
+      const booking = await Booking.findById(req.params.id);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (!canConfirmDelivery(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+
+      booking.transitionTo('delivered');
+      booking.deliveredAt = new Date();
+      await booking.save();
+
+      emitBooking(req, booking._id, 'delivery-confirmed', booking);
+      res.json({ booking });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, validate, async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
     if (!req.body.status && !req.body.location) {
@@ -237,7 +367,7 @@ router.patch('/:id/status', updateStatusSchema, validate, async (req, res, next)
     if (!mongoReady()) {
       const booking = memoryBookings.find((item) => item._id === req.params.id);
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
-      if (!bookingVisibleTo(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+      if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
 
       if (req.body.status) {
         Booking.assertStatusTransition(booking.status, req.body.status);
@@ -253,7 +383,7 @@ router.patch('/:id/status', updateStatusSchema, validate, async (req, res, next)
 
     const booking = await Booking.findById(req.params.id);
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
-    if (!bookingVisibleTo(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+    if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
 
     if (req.body.status) booking.transitionTo(req.body.status);
     if (req.body.location) booking.tracking.push(req.body.location);

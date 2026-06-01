@@ -74,3 +74,112 @@ test('marketplace estimate validates required route fields', async () => {
   expect(res.status).toBe(422);
   expect(res.body.errors.map((error) => error.field)).toEqual(expect.arrayContaining(['pickup', 'destination']));
 });
+
+test('unknown api routes return json 404 instead of the frontend app', async () => {
+  const res = await request(app).get('/api/not-a-real-route');
+
+  expect(res.status).toBe(404);
+  expect(res.body.status).toBe('fail');
+  expect(res.body.message).toContain('/api/not-a-real-route');
+});
+
+test('clients cannot submit carrier bids through booking routes', async () => {
+  const res = await request(app)
+    .post('/api/bookings/ITK-2031/bids')
+    .set('Authorization', authHeader({ id: 'demo-client-amina', role: 'client' }))
+    .send({ amount: 1200 });
+
+  expect(res.status).toBe(403);
+});
+
+test('clients cannot list open owner load board bookings', async () => {
+  const res = await request(app)
+    .get('/api/bookings/open')
+    .set('Authorization', authHeader({ id: 'demo-client-amina', role: 'client' }));
+
+  expect(res.status).toBe(403);
+});
+
+test('non-admin users cannot mutate wallet balances directly', async () => {
+  const res = await request(app)
+    .post('/api/payments/wallet/credit')
+    .set('Authorization', authHeader({ id: 'demo-owner-kelvin', role: 'owner' }))
+    .send({ amount: 100 });
+
+  expect(res.status).toBe(403);
+});
+
+test('non-admin users cannot release booking payments', async () => {
+  const res = await request(app)
+    .post('/api/payments/bookings/ITK-2044/release')
+    .set('Authorization', authHeader({ id: 'demo-client-amina', role: 'client' }));
+
+  expect(res.status).toBe(403);
+});
+
+test('clients cannot submit carrier bids through workflow routes', async () => {
+  const res = await request(app)
+    .post('/api/workflow/bids')
+    .set('Authorization', authHeader({ id: 'demo-client-amina', role: 'client' }))
+    .send({ bookingId: '507f1f77bcf86cd799439011', amount: 1200 });
+
+  expect(res.status).toBe(403);
+});
+
+test('booking clients can accept a pending bid and confirm the booking', async () => {
+  const res = await request(app)
+    .patch('/api/bookings/ITK-2031/bids/demo-owner-grace/accept')
+    .set('Authorization', authHeader({ id: 'demo-client-tunde', role: 'client' }));
+
+  expect(res.status).toBe(200);
+  expect(res.body.booking.status).toBe('confirmed');
+  expect(res.body.booking.owner).toBe('demo-owner-grace');
+  expect(res.body.booking.bids[0].status).toBe('accepted');
+});
+
+test('booking clients can confirm delivery after transit', async () => {
+  const res = await request(app)
+    .patch('/api/bookings/ITK-2044/confirm-delivery')
+    .set('Authorization', authHeader({ id: 'demo-client-amina', role: 'client' }));
+
+  expect(res.status).toBe(200);
+  expect(res.body.booking.status).toBe('delivered');
+});
+
+test('notification read endpoint is scoped to the current user and handles memory mode', async () => {
+  const res = await request(app)
+    .patch('/api/notifications/507f1f77bcf86cd799439011/read')
+    .set('Authorization', authHeader());
+
+  expect(res.status).toBe(404);
+});
+
+test('password updates require both current and new passwords', async () => {
+  const res = await request(app).patch('/api/users/password').set('Authorization', authHeader()).send({});
+
+  expect(res.status).toBe(422);
+  expect(res.body.errors.map((error) => error.field)).toEqual(
+    expect.arrayContaining(['currentPassword', 'newPassword'])
+  );
+});
+
+test('avatar uploads reject unsupported file types before storage', async () => {
+  const res = await request(app)
+    .post('/api/upload/avatar')
+    .set('Authorization', authHeader())
+    .attach('file', Buffer.from('not an image'), {
+      filename: 'avatar.exe',
+      contentType: 'application/x-msdownload'
+    });
+
+  expect(res.status).toBe(415);
+});
+
+test('admin document review validates supported statuses', async () => {
+  const res = await request(app)
+    .patch('/api/admin/users/demo-owner-james/documents/insurance')
+    .set('Authorization', authHeader({ id: 'demo-admin', role: 'admin' }))
+    .send({ status: 'maybe' });
+
+  expect(res.status).toBe(422);
+});

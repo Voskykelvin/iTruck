@@ -23,7 +23,15 @@ const truckSchema = new mongoose.Schema(
     isVerified: { type: Boolean, default: false },
     isAvailable: { type: Boolean, default: true },
     location: { lat: Number, lng: Number, city: String },
-    documents: [{ type: String, url: String, status: String }]
+    documents: [
+      {
+        type: String,
+        url: String,
+        status: { type: String, enum: ['pending', 'approved', 'rejected', 'expired'], default: 'pending' },
+        notes: String,
+        reviewedAt: Date
+      }
+    ]
   },
   { timestamps: true }
 );

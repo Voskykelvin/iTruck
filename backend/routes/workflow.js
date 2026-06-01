@@ -64,6 +64,10 @@ async function bookingVisibleToUser(user, bookingId) {
   });
 }
 
+function bookingOpenForBids(booking) {
+  return ['pending', 'bidding'].includes(booking.status) && !booking.owner;
+}
+
 async function createLoadRequest(req, res, next) {
   try {
     if (requireDatabase(req, res)) return;
@@ -71,9 +75,14 @@ async function createLoadRequest(req, res, next) {
       return res.status(201).json({ item: memoryRecord('requests', req), mode: 'memory' });
     }
 
+    const booking = bookingIdFrom(req.body);
+    if (booking && !(await bookingVisibleToUser(req.user, booking))) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
     const item = await LoadRequest.create({
       user: req.user._id,
-      booking: bookingIdFrom(req.body),
+      booking,
       status: req.body.status || 'submitted',
       pickup: req.body.pickup,
       destination: req.body.destination,
@@ -91,12 +100,13 @@ async function createLoadRequest(req, res, next) {
 
 async function submitBid(req, res, next) {
   try {
+    if (!['owner', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Only fleet owners can submit bids' });
+    }
+
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
       return res.status(201).json({ item: memoryRecord('bids', req), mode: 'memory' });
-    }
-    if (!['owner', 'admin'].includes(req.user.role)) {
-      return res.status(403).json({ message: 'Only fleet owners can submit bids' });
     }
 
     const bookingId = bookingIdFrom(req.body);
@@ -104,6 +114,7 @@ async function submitBid(req, res, next) {
 
     const booking = await Booking.findById(bookingId);
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    if (!bookingOpenForBids(booking)) return res.status(409).json({ message: 'Booking is not open for bids' });
 
     const amount = Number(req.body.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -176,9 +187,14 @@ async function createReport(req, res, next) {
       return res.status(201).json({ item: memoryRecord('reports', req), mode: 'memory' });
     }
 
+    const booking = bookingIdFrom(req.body);
+    if (booking && !(await bookingVisibleToUser(req.user, booking))) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
     const item = await IssueReport.create({
       user: req.user._id,
-      booking: bookingIdFrom(req.body),
+      booking,
       status: req.body.status || 'submitted',
       severity: req.body.severity || 'normal',
       message: messageTextFrom(req.body),

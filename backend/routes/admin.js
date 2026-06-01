@@ -7,7 +7,12 @@ const AuditLog = require('../models/AuditLog');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
-const { notifySchema, truckVerificationSchema, userStatusSchema } = require('../validators/admin');
+const {
+  documentReviewSchema,
+  notifySchema,
+  truckVerificationSchema,
+  userStatusSchema
+} = require('../validators/admin');
 const { demoUsers, demoTrucks } = require('../data/demo-users');
 
 const router = express.Router();
@@ -30,6 +35,26 @@ async function recordAudit(req, action, targetType, targetId, metadata = {}) {
     ip: req.ip,
     userAgent: req.get('user-agent')
   });
+}
+
+function upsertDocument(documents = [], type, patch) {
+  const existing = documents.find((item) => item.type === type);
+  if (existing) {
+    existing.status = patch.status;
+    if (patch.url) existing.url = patch.url;
+    if (patch.notes) existing.notes = patch.notes;
+    existing.reviewedAt = new Date();
+    return documents;
+  }
+
+  documents.push({
+    type,
+    status: patch.status,
+    url: patch.url,
+    notes: patch.notes,
+    reviewedAt: new Date()
+  });
+  return documents;
 }
 
 router.get('/stats', async (req, res, next) => {
@@ -157,6 +182,56 @@ router.patch('/trucks/:id/verification', truckVerificationSchema, validate, asyn
     if (!truck) return res.status(404).json({ message: 'Truck not found' });
 
     await recordAudit(req, 'truck.verification.updated', 'truck', truck._id, { isVerified: truck.isVerified });
+    res.json({ truck });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/users/:id/documents/:documentType', documentReviewSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) {
+      const user = demoUsers.find((item) => item._id === req.params.id);
+      if (!user) return res.status(404).json({ message: 'User not found' });
+      user.documents = upsertDocument(user.documents || [], req.params.documentType, req.body);
+      return res.json({ user, mode: 'memory' });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    user.documents = upsertDocument(user.documents || [], req.params.documentType, req.body);
+    await user.save();
+
+    await recordAudit(req, 'user.document.reviewed', 'document', user._id, {
+      documentType: req.params.documentType,
+      status: req.body.status
+    });
+    res.json({ user });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/trucks/:id/documents/:documentType', documentReviewSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) {
+      const truck = demoTrucks.find((item) => item._id === req.params.id);
+      if (!truck) return res.status(404).json({ message: 'Truck not found' });
+      truck.documents = upsertDocument(truck.documents || [], req.params.documentType, req.body);
+      return res.json({ truck, mode: 'memory' });
+    }
+
+    const truck = await Truck.findById(req.params.id);
+    if (!truck) return res.status(404).json({ message: 'Truck not found' });
+    truck.documents = upsertDocument(truck.documents || [], req.params.documentType, req.body);
+    await truck.save();
+
+    await recordAudit(req, 'truck.document.reviewed', 'document', truck._id, {
+      documentType: req.params.documentType,
+      status: req.body.status
+    });
     res.json({ truck });
   } catch (err) {
     next(err);
