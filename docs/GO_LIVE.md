@@ -10,6 +10,7 @@
 - Add production Google Maps integration with a Google Cloud API key.
 - Add shipment proof of delivery uploads.
 - Add client/owner notification preferences.
+- Public and owner fleet listings exclude archived trucks; use the archive endpoint instead of hard-deleting vehicles.
 
 ## Infrastructure
 
@@ -18,6 +19,7 @@
 - Set `NODE_ENV=production`, `LIVE_MODE=true`, and `DEMO_MODE=false`.
 - Configure `APP_URL`, `FRONTEND_URL`, and `ALLOWED_ORIGINS`.
 - Configure Cloudinary credentials; uploads are required to use cloud storage in live mode.
+- Configure at least one real payment provider, one SMS provider, one email provider, and Google Maps keys before running the final go-live check.
 - Deploy behind HTTPS using Nginx or a managed host.
 - Enable process monitoring and restart policy.
 
@@ -61,6 +63,7 @@
 ## Live Mode Behavior
 
 - `LIVE_MODE=true` or `NODE_ENV=production` requires `MONGODB_URI`, `JWT_SECRET`, `FRONTEND_URL`, and Cloudinary credentials.
+- `npm run live:check` also requires a configured payment provider, SMS provider, email provider, and maps key.
 - In live mode, the API exits if MongoDB cannot connect.
 - In live mode, protected routes return `503` instead of serving in-memory demo data if the database is unavailable.
 - In live mode, upload routes fail instead of returning mock local URLs if Cloudinary is not configured.

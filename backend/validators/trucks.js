@@ -21,10 +21,16 @@ const routesSchema = body('routes')
 const createTruckSchema = [
   body('type').isIn(TRUCK_TYPES).withMessage('Truck type is invalid'),
   requiredString('plateNumber', 32),
+  optionalString('registrationNumber', 32),
+  optionalString('chassisNumber', 64),
   optionalString('make', 80),
   optionalString('model', 80),
   optionalString('country', 80),
-  optionalPositiveNumber('capacityTonnes'),
+  body('capacityTonnes')
+    .optional({ checkFalsy: true })
+    .isFloat({ min: 0.1, max: 100 })
+    .withMessage('capacityTonnes must be between 0.1 and 100')
+    .toFloat(),
   optionalPositiveNumber('pricePerKm'),
   routesSchema,
   body('features')
@@ -57,7 +63,10 @@ const ratingSchema = [
   liveMongoIdBody('bookingId')
 ];
 
+const archiveTruckSchema = [...truckIdSchema, optionalString('reason', 240)];
+
 module.exports = {
+  archiveTruckSchema,
   createTruckSchema,
   listTrucksSchema,
   ratingSchema,

@@ -6,6 +6,7 @@ const BookingMessage = require('../models/BookingMessage');
 const IssueReport = require('../models/IssueReport');
 const Booking = require('../models/Booking');
 const RefreshToken = require('../models/RefreshToken');
+const Truck = require('../models/Truck');
 
 function hasIndex(Model, keys, options = {}) {
   return Model.schema
@@ -47,6 +48,18 @@ test('booking indexes cover client owner status dashboards', () => {
   expect(hasIndex(Booking, { status: 1, owner: 1, createdAt: -1 })).toBe(true);
   expect(hasIndex(Booking, { paymentStatus: 1, updatedAt: -1 })).toBe(true);
   expect(Booking.schema.path('paymentStatus')).toBeDefined();
+});
+
+test('truck indexes and schema fields support verified fleet operations', () => {
+  expect(hasIndex(Truck, { plateNumber: 1 }, { unique: true })).toBe(true);
+  expect(hasIndex(Truck, { registrationNumber: 1 }, { unique: true, sparse: true })).toBe(true);
+  expect(hasIndex(Truck, { chassisNumber: 1 }, { unique: true, sparse: true })).toBe(true);
+  expect(hasIndex(Truck, { owner: 1, archivedAt: 1, createdAt: -1 })).toBe(true);
+  expect(Truck.schema.path('archivedAt')).toBeDefined();
+  expect(Truck.schema.path('archiveReason')).toBeDefined();
+  expect(
+    new Truck({ type: 'Lorry', plateNumber: 'KDA 100A', capacityTonnes: 101 }).validateSync().errors.capacityTonnes
+  ).toBeDefined();
 });
 
 test('refresh token indexes and fields support device-scoped sessions', () => {

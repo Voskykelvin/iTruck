@@ -39,7 +39,10 @@ Deploy with live-mode settings:
 - `CLOUDINARY_API_KEY`
 - `CLOUDINARY_API_SECRET`
 - `REDIS_URL` if running more than one instance or using shared rate limits
-- `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` before payment testing
+- `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`, or equivalent M-Pesa/MTN MoMo live credentials
+- `AFRICASTALKING_API_KEY` and `AFRICASTALKING_USERNAME`, or a custom `SMS_PROVIDER_MODULE`
+- `EMAIL_PROVIDER_MODULE`, `SENDGRID_API_KEY`, or `RESEND_API_KEY`
+- `GOOGLE_MAPS_API_KEY` or `VITE_GOOGLE_MAPS_API_KEY`
 
 Run:
 
@@ -54,6 +57,7 @@ Then verify:
 - `/app` loads the React workspace.
 - Register, login, refresh, logout, and session revocation work with secure cookies.
 - Owner can create a truck but cannot self-verify it.
+- Owner can archive a truck and archived trucks no longer appear in public/fleet listings.
 - Admin can verify the truck and review user/truck documents.
 - Shipper can create a booking.
 - Owner can submit a bid.
@@ -75,4 +79,3 @@ These are not complete until verified against real services:
 - Cloudinary upload and document caching.
 - Stripe dashboard webhook delivery and retries.
 - Error monitoring/alerting destination.
-- Email/SMS provider credentials if those channels are enabled.
