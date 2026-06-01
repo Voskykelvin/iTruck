@@ -9,10 +9,11 @@ FROM node:20-alpine AS production
 WORKDIR /app
 ENV NODE_ENV=production
 COPY backend/package*.json ./backend/
-RUN cd backend && npm ci --omit=dev
-COPY backend ./backend
-COPY frontend ./frontend
-COPY --from=app-build /app/frontend/app ./frontend/app
+RUN cd backend && npm ci --omit=dev && npm cache clean --force
+COPY --chown=node:node backend ./backend
+COPY --chown=node:node frontend ./frontend
+COPY --from=app-build --chown=node:node /app/frontend/app ./frontend/app
 WORKDIR /app/backend
 EXPOSE 5000
+USER node
 CMD ["node", "server.js"]

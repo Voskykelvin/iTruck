@@ -14,6 +14,14 @@ const logger = pino({
     paths: [
       'req.headers.authorization',
       'req.headers.cookie',
+      'req.body.password',
+      'req.body.currentPassword',
+      'req.body.newPassword',
+      'req.body.token',
+      'req.body.refreshToken',
+      'req.body.pin',
+      'req.body.mpesaPassword',
+      'req.body.deviceId',
       'res.headers["set-cookie"]',
       'password',
       'token',
@@ -22,7 +30,12 @@ const logger = pino({
       'MONGODB_URI',
       'CLOUDINARY_API_SECRET',
       'STRIPE_SECRET_KEY',
-      'STRIPE_WEBHOOK_SECRET'
+      'STRIPE_WEBHOOK_SECRET',
+      'MPESA_CONSUMER_SECRET',
+      'MPESA_PASSKEY',
+      'AFRICASTALKING_API_KEY',
+      'SENDGRID_API_KEY',
+      'RESEND_API_KEY'
     ],
     censor: '[redacted]'
   }
