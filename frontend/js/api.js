@@ -167,6 +167,49 @@ class ITruckAPI {
     return this.request('/admin/stats');
   }
 
+  adminListUsers() {
+    return this.request('/admin/users');
+  }
+
+  adminListTrucks() {
+    return this.request('/admin/trucks');
+  }
+
+  adminListBookings() {
+    return this.request('/admin/bookings');
+  }
+
+  adminListPayments() {
+    return this.request('/admin/payments');
+  }
+
+  adminVerifyUser(userId, isActive) {
+    return this.request(`/admin/users/${userId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isActive })
+    });
+  }
+
+  adminVerifyTruck(truckId, isVerified) {
+    return this.request(`/admin/trucks/${truckId}/verification`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isVerified })
+    });
+  }
+
+  adminReviewDocument(userId, documentType, status, notes = '') {
+    return this.request(`/admin/users/${userId}/documents/${documentType}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, notes })
+    });
+  }
+
+  releasePayment(bookingId) {
+    return this.request(`/payments/bookings/${bookingId}/release`, {
+      method: 'POST'
+    });
+  }
+
   marketEstimate(data) {
     return this.request('/marketplace/estimate', { method: 'POST', body: JSON.stringify(data) });
   }
