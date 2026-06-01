@@ -93,6 +93,67 @@ function requireLiveSecrets() {
   }
 }
 
+function hasAllEnv(keys) {
+  return keys.every((key) => Boolean(process.env[key]));
+}
+
+function goLiveIntegrationStatus() {
+  const stripeReady = hasAllEnv(['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']);
+  const mpesaReady = hasAllEnv([
+    'MPESA_CONSUMER_KEY',
+    'MPESA_CONSUMER_SECRET',
+    'MPESA_SHORTCODE',
+    'MPESA_PASSKEY',
+    'MPESA_CALLBACK_URL'
+  ]);
+  const mtnReady = hasAllEnv([
+    'MTN_MOMO_SUBSCRIPTION_KEY',
+    'MTN_MOMO_API_USER',
+    'MTN_MOMO_API_KEY',
+    'MTN_MOMO_CALLBACK_URL'
+  ]);
+  const smsReady =
+    Boolean(process.env.SMS_PROVIDER_MODULE) || hasAllEnv(['AFRICASTALKING_API_KEY', 'AFRICASTALKING_USERNAME']);
+  const emailReady =
+    Boolean(process.env.EMAIL_PROVIDER_MODULE) ||
+    Boolean(process.env.SENDGRID_API_KEY) ||
+    Boolean(process.env.RESEND_API_KEY);
+  const mapsReady = Boolean(process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY);
+
+  return [
+    {
+      name: 'payments',
+      configured: stripeReady || mpesaReady || mtnReady,
+      hint: 'configure Stripe webhook secrets, M-Pesa credentials, or MTN MoMo credentials'
+    },
+    {
+      name: 'sms',
+      configured: smsReady,
+      hint: 'configure SMS_PROVIDER_MODULE or AFRICASTALKING_API_KEY and AFRICASTALKING_USERNAME'
+    },
+    {
+      name: 'email',
+      configured: emailReady,
+      hint: 'configure EMAIL_PROVIDER_MODULE, SENDGRID_API_KEY, or RESEND_API_KEY'
+    },
+    {
+      name: 'maps',
+      configured: mapsReady,
+      hint: 'configure GOOGLE_MAPS_API_KEY or VITE_GOOGLE_MAPS_API_KEY'
+    }
+  ];
+}
+
+function assertGoLiveIntegrations() {
+  const missing = goLiveIntegrationStatus().filter((item) => !item.configured);
+  if (missing.length) {
+    throw runtimeConfigError(
+      `Missing go-live integrations: ${missing.map((item) => `${item.name} (${item.hint})`).join('; ')}.`
+    );
+  }
+  return true;
+}
+
 function assertRuntimeConfig() {
   const mode = assertKnownMode();
 
@@ -109,8 +170,10 @@ function assertRuntimeConfig() {
 }
 
 module.exports = {
+  assertGoLiveIntegrations,
   assertRuntimeConfig,
   demoModeEnabled,
+  goLiveIntegrationStatus,
   hostedRuntimeDetected,
   isLiveMode,
   mongoReady,

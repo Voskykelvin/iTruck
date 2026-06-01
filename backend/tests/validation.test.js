@@ -52,6 +52,46 @@ test('truck creation ignores owner-controlled privileged fields', async () => {
   expect(res.body.truck.documents).toBeUndefined();
 });
 
+test('truck creation validates capacity and identity fields', async () => {
+  const res = await request(app)
+    .post('/api/trucks')
+    .set('Authorization', authHeader({ id: 'demo-owner-james', role: 'owner' }))
+    .send({
+      type: 'Lorry',
+      plateNumber: `CAP-${Date.now()}`,
+      registrationNumber: `REG-${Date.now()}`,
+      chassisNumber: `CHS-${Date.now()}`,
+      capacityTonnes: 150
+    });
+
+  expect(res.status).toBe(422);
+  expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ field: 'capacityTonnes' })]));
+});
+
+test('truck archive is a soft owner-scoped mutation', async () => {
+  const created = await request(app)
+    .post('/api/trucks')
+    .set('Authorization', authHeader({ id: 'demo-owner-james', role: 'owner' }))
+    .send({
+      type: 'Lorry',
+      plateNumber: `ARCH-${Date.now()}`,
+      capacityTonnes: 10
+    });
+
+  const truckId = created.body.truck._id;
+  const archived = await request(app)
+    .delete(`/api/trucks/${truckId}`)
+    .set('Authorization', authHeader({ id: 'demo-owner-james', role: 'owner' }))
+    .send({ reason: 'Sold vehicle' });
+
+  expect(archived.status).toBe(200);
+  expect(archived.body.truck.archivedAt).toBeDefined();
+  expect(archived.body.truck.isAvailable).toBe(false);
+
+  const fetched = await request(app).get(`/api/trucks/${truckId}`);
+  expect(fetched.status).toBe(404);
+});
+
 test('booking creation validates required flat payload fields', async () => {
   const res = await request(app).post('/api/bookings').set('Authorization', authHeader()).send({});
 

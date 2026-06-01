@@ -47,3 +47,25 @@ test('live mode validates required production secrets at startup', () => {
 
   expect(runtime.assertRuntimeConfig()).toBe('live');
 });
+
+test('go-live check requires external provider integrations', () => {
+  clearModeEnv();
+  process.env.APP_MODE = 'live';
+  process.env.MONGODB_URI = 'mongodb://localhost:27017/itruck-test';
+  process.env.JWT_SECRET = 'x'.repeat(40);
+  process.env.FRONTEND_URL = 'https://itruck.example';
+  process.env.CLOUDINARY_CLOUD_NAME = 'cloud';
+  process.env.CLOUDINARY_API_KEY = 'key';
+  process.env.CLOUDINARY_API_SECRET = 'secret';
+
+  expect(() => runtime.assertGoLiveIntegrations()).toThrow('payments');
+
+  process.env.STRIPE_SECRET_KEY = 'sk_test';
+  process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
+  process.env.AFRICASTALKING_API_KEY = 'sms-key';
+  process.env.AFRICASTALKING_USERNAME = 'itruck';
+  process.env.RESEND_API_KEY = 'email-key';
+  process.env.GOOGLE_MAPS_API_KEY = 'maps-key';
+
+  expect(runtime.assertGoLiveIntegrations()).toBe(true);
+});
