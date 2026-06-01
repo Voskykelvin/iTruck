@@ -73,6 +73,23 @@ function navigate(path) {
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
+async function copyToClipboard(value) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const input = document.createElement('textarea');
+  input.value = value;
+  input.setAttribute('readonly', '');
+  input.style.position = 'fixed';
+  input.style.opacity = '0';
+  document.body.appendChild(input);
+  input.select();
+  document.execCommand('copy');
+  input.remove();
+}
+
 function activateOnEnter(event, action) {
   if (!['Enter', ' '].includes(event.key)) return;
   event.preventDefault();
@@ -291,6 +308,16 @@ function App() {
     notify('Signed out');
   }, [notify]);
 
+  const checkAlerts = useCallback(async () => {
+    try {
+      const data = await api.notificationCount();
+      const count = Number(data.count || 0);
+      notify(count ? `${count} unread alert${count === 1 ? '' : 's'}` : 'No unread alerts');
+    } catch (err) {
+      notify(err.message || 'Sign in to view alerts');
+    }
+  }, [notify]);
+
   const page = useMemo(() => {
     const props = { notify, route, user, setUser };
     if (route.startsWith('/app/book')) return <BookingPage {...props} />;
@@ -340,7 +367,7 @@ function App() {
             <h1>{pageTitle(route)}</h1>
           </div>
           <div className="topbar-actions">
-            <button className="ghost icon-label" type="button" onClick={() => notify('Notifications queue checked')}>
+            <button className="ghost icon-label" type="button" onClick={checkAlerts}>
               <Bell size={18} />
               <span>Alerts</span>
             </button>
@@ -427,20 +454,59 @@ function ShipperPage({ notify, user }) {
   const activeCount = shipments.filter((item) => !['delivered', 'cancelled'].includes(item.rawStatus)).length;
   const inTransitCount = shipments.filter((item) => item.rawStatus === 'in_transit').length;
   const openRequests = shipments.filter((item) => ['pending', 'bidding'].includes(item.rawStatus));
+
+  function shipmentWithBooking(preferred) {
+    return preferred?.bookingId ? preferred : shipments.find((item) => item.bookingId) || null;
+  }
+
+  function openBidReview(item) {
+    const target = item || openRequests[0] || shipments.find((shipment) => shipment.rawStatus === 'bidding');
+    if (target?.bookingId) {
+      navigate(`/app/marketplace?booking=${encodeURIComponent(target.bookingId)}`);
+      notify(`Carrier options opened for ${target.route}`);
+      return;
+    }
+
+    navigate('/app/marketplace');
+    notify('Marketplace opened for bid comparison');
+  }
+
+  async function downloadShipmentDocument(type, preferred) {
+    const target = shipmentWithBooking(preferred);
+    if (!target) {
+      navigate('/app/tracking');
+      notify('Open a synced booking before generating shipment documents');
+      return;
+    }
+
+    try {
+      await api.downloadDocument(type, target.bookingId);
+      notify(`${statusLabel(type)} downloaded for ${target.id}`);
+    } catch (err) {
+      notify(err.message);
+    }
+  }
+
+  async function openWaybillAndPhotos() {
+    const target = shipmentWithBooking(shipments[0]);
+    if (!target) {
+      navigate('/app/tracking');
+      notify('Open tracking after a synced booking to review documents');
+      return;
+    }
+
+    await downloadShipmentDocument('waybill', target);
+    navigate(`/app/tracking?shipment=${encodeURIComponent(target.id)}`);
+  }
+
   const actionQueue = [
     {
       label: 'Compare bids - Mombasa to Dar es Salaam',
-      run: () => {
-        saveLocal('action_reviews', { type: 'bid-review', route: 'Mombasa to Dar es Salaam' });
-        notify('Bid comparison opened for Mombasa to Dar es Salaam');
-      }
+      run: () => openBidReview()
     },
     {
       label: 'Confirm waybill and cargo photos',
-      run: () => {
-        saveLocal('document_checks', { type: 'waybill-cargo-photos', status: 'confirmed' });
-        notify('Waybill and cargo photo check recorded');
-      }
+      run: openWaybillAndPhotos
     },
     {
       label: 'Release payment after POD',
@@ -459,9 +525,15 @@ function ShipperPage({ notify, user }) {
     }
   ];
   const readinessDocs = [
-    ['Waybill ready', 'Waybill opened'],
-    ['Insurance note shared', 'Insurance note opened'],
-    ['Delivery proof pending', 'Delivery proof checklist opened']
+    ['Waybill ready', () => downloadShipmentDocument('waybill')],
+    [
+      'Insurance note shared',
+      () => {
+        navigate('/app/profile?document=Insurance');
+        notify('Insurance verification opened');
+      }
+    ],
+    ['Delivery proof pending', () => downloadShipmentDocument('pod')]
   ];
 
   return (
@@ -580,18 +652,7 @@ function ShipperPage({ notify, user }) {
                     <h3>{item.route}</h3>
                     <p>{item.vehicle}</p>
                     <strong>{item.payment}</strong>
-                    <button
-                      className="secondary"
-                      type="button"
-                      onClick={() => {
-                        saveLocal('action_reviews', {
-                          type: 'open-request-bids',
-                          bookingId: item.id,
-                          route: item.route
-                        });
-                        notify(`Bid review opened for ${item.route}`);
-                      }}
-                    >
+                    <button className="secondary" type="button" onClick={() => openBidReview(item)}>
                       Review Bids
                     </button>
                   </article>
@@ -618,8 +679,8 @@ function ShipperPage({ notify, user }) {
           </Panel>
           <Panel title="Documents" eyebrow="Readiness">
             <div className="doc-list">
-              {readinessDocs.map(([label, message]) => (
-                <button type="button" key={label} onClick={() => notify(message)}>
+              {readinessDocs.map(([label, run]) => (
+                <button type="button" key={label} onClick={run}>
                   {label}
                 </button>
               ))}
@@ -872,6 +933,7 @@ function MarketplacePage({ notify, route }) {
   }, [trucks, search, type, verified, sort]);
 
   const selectedTruckKey = useMemo(() => new URLSearchParams(route.split('?')[1] || '').get('truck'), [route]);
+  const selectedBookingKey = useMemo(() => new URLSearchParams(route.split('?')[1] || '').get('booking'), [route]);
   const selectedTruck = useMemo(() => {
     if (!selectedTruckKey) return null;
     return trucks
@@ -935,6 +997,23 @@ function MarketplacePage({ notify, route }) {
       </aside>
 
       <div className="stack">
+        {selectedBookingKey ? (
+          <section className="truck-profile-panel">
+            <div>
+              <StatusBadge tone="warn">Bid Review</StatusBadge>
+              <h2>Carrier options for {selectedBookingKey}</h2>
+              <p>Compare verified trucks, rates, route fit, and response time before requesting a carrier.</p>
+            </div>
+            <div className="button-row">
+              <button className="primary" type="button" onClick={() => navigate('/app/book')}>
+                Create Follow-up Request
+              </button>
+              <button className="ghost" type="button" onClick={() => navigate('/app/shipper')}>
+                Back to Shipments
+              </button>
+            </div>
+          </section>
+        ) : null}
         {selectedTruck ? (
           <section className="truck-profile-panel">
             <div>
@@ -1206,6 +1285,16 @@ function TrackingPage({ notify, route, user }) {
     }
   }
 
+  async function shareTrackingLink() {
+    const url = `${window.location.origin}/app/tracking?shipment=${encodeURIComponent(shipment.id)}`;
+    try {
+      await copyToClipboard(url);
+      notify('Tracking link copied');
+    } catch (_err) {
+      notify('Unable to copy tracking link');
+    }
+  }
+
   if (!shipment) {
     return (
       <Panel title="Live Tracking" eyebrow="Shipments">
@@ -1246,7 +1335,7 @@ function TrackingPage({ notify, route, user }) {
             <StatusBadge tone="success">{shipment.status}</StatusBadge>
             <strong>{shipment.route}</strong>
           </div>
-          <button className="ghost icon-label" type="button" onClick={() => notify('Tracking link copied')}>
+          <button className="ghost icon-label" type="button" onClick={shareTrackingLink}>
             <MessageSquare size={18} />
             <span>Share</span>
           </button>
@@ -1331,6 +1420,7 @@ function TrackingPage({ notify, route, user }) {
 function OwnerPage({ notify }) {
   const [fleet, setFleet] = useState(workspaceFleet.slice(0, 3));
   const [loads, setLoads] = useState(workspaceLoads);
+  const [ownerBookings, setOwnerBookings] = useState([]);
   const [draftPlate, setDraftPlate] = useState('');
   const [walletBalance, setWalletBalance] = useState(3180);
   const [withdrawBusy, setWithdrawBusy] = useState(false);
@@ -1355,6 +1445,13 @@ function OwnerPage({ notify }) {
         if (Array.isArray(data.bookings)) setLoads(data.bookings.map(normalizeOpenLoad));
       })
       .catch(() => setLoads(workspaceLoads));
+
+    api
+      .listBookings()
+      .then((data) => {
+        if (Array.isArray(data.bookings)) setOwnerBookings(data.bookings.map(normalizeBookingShipment));
+      })
+      .catch(() => {});
 
     api
       .wallet()
@@ -1403,7 +1500,7 @@ function OwnerPage({ notify }) {
     };
 
     try {
-      await api.submitBid(payload);
+      await api.submitBookingBid(load.id, { amount: payload.amount, message: payload.message });
       notify(`Bid saved for ${load.route}`);
     } catch (_err) {
       saveLocal('bids', payload);
@@ -1419,13 +1516,48 @@ function OwnerPage({ notify }) {
     }
 
     if (label.startsWith('Upload insurance')) {
-      saveLocal('insurance_tasks', { label, status: 'queued' });
-      notify('Insurance upload task queued for Toyota Hilux');
+      navigate('/app/profile?document=Insurance');
+      notify('Insurance upload opened');
       return;
     }
 
-    saveLocal('pickup_updates', { label, status: 'confirmed' });
-    notify('Pickup confirmation recorded for Kampala depot');
+    confirmPickupStarted();
+  }
+
+  function openTruckReadiness(truck) {
+    navigate(`/app/profile?document=${encodeURIComponent('Vehicle logbook')}&vehicle=${encodeURIComponent(truck.id)}`);
+    notify(`${truck.plate} readiness opened`);
+  }
+
+  async function confirmPickupStarted() {
+    const target =
+      ownerBookings.find((booking) => booking.rawStatus === 'confirmed') ||
+      ownerBookings.find((booking) => booking.rawStatus === 'in_transit');
+
+    if (!target?.bookingId) {
+      navigate('/app/tracking');
+      notify('No assigned confirmed pickup is ready to start');
+      return;
+    }
+
+    if (target.rawStatus === 'in_transit') {
+      navigate(`/app/tracking?shipment=${encodeURIComponent(target.id)}`);
+      notify(`Pickup already active for ${target.id}`);
+      return;
+    }
+
+    try {
+      const data = await api.updateBookingStatus(target.bookingId, {
+        status: 'in_transit',
+        location: { lat: -1.2921, lng: 36.8219, speed: 0, heading: 0 }
+      });
+      const updated = normalizeBookingShipment(data.booking || {});
+      setOwnerBookings((current) => current.map((item) => (item.bookingId === target.bookingId ? updated : item)));
+      notify(`Pickup started for ${updated.id}`);
+      navigate(`/app/tracking?shipment=${encodeURIComponent(updated.id)}`);
+    } catch (err) {
+      notify(err.message);
+    }
   }
 
   function updateWithdraw(key, value) {
@@ -1540,8 +1672,8 @@ function OwnerPage({ notify }) {
                   key={truck.id}
                   role="button"
                   tabIndex={0}
-                  onClick={() => notify(`${truck.plate} readiness opened`)}
-                  onKeyDown={(event) => activateOnEnter(event, () => notify(`${truck.plate} readiness opened`))}
+                  onClick={() => openTruckReadiness(truck)}
+                  onKeyDown={(event) => activateOnEnter(event, () => openTruckReadiness(truck))}
                 >
                   <div>
                     <StatusBadge tone={truck.verified ? 'success' : 'warn'}>{truck.documentStatus}</StatusBadge>
@@ -1561,7 +1693,7 @@ function OwnerPage({ notify }) {
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        notify(`${truck.plate} readiness opened`);
+                        openTruckReadiness(truck);
                       }}
                     >
                       Manage
@@ -1865,11 +1997,34 @@ function AdminPage({ notify }) {
   );
 }
 
-function ProfilePage({ notify, user, setUser, signOut }) {
+function ProfilePage({ notify, route, user, setUser, signOut }) {
   const [email, setEmail] = useState(user.email || (DEMO_MODE ? 'admin@itruck.africa' : ''));
   const [password, setPassword] = useState(DEMO_MODE ? 'Admin2025!' : '');
   const [busy, setBusy] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState('');
+  const [pendingDocument, setPendingDocument] = useState('');
+  const pendingDocumentRef = useRef('');
+  const documentInputRef = useRef(null);
   const verificationItems = ['Owner KYC', 'Driver ID', 'Vehicle logbook', 'Insurance', 'Route history'];
+
+  const selectPendingDocument = useCallback((item) => {
+    pendingDocumentRef.current = item;
+    setPendingDocument(item);
+  }, []);
+
+  useEffect(() => {
+    const requestedDocument = new URLSearchParams(route.split('?')[1] || '').get('document');
+    if (!requestedDocument) return;
+
+    if (!user.email) {
+      notify('Sign in before uploading verification documents');
+      return;
+    }
+
+    selectPendingDocument(requestedDocument);
+    const timer = window.setTimeout(() => documentInputRef.current?.click(), 250);
+    return () => window.clearTimeout(timer);
+  }, [notify, route, selectPendingDocument, user.email]);
 
   async function login(event) {
     event.preventDefault();
@@ -1883,6 +2038,39 @@ function ProfilePage({ notify, user, setUser, signOut }) {
       notify(err.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  function openVerificationUpload(item) {
+    if (!user.email) {
+      notify('Sign in before uploading verification documents');
+      return;
+    }
+
+    selectPendingDocument(item);
+    documentInputRef.current?.click();
+  }
+
+  async function uploadVerificationDocument(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    const documentType = pendingDocumentRef.current || pendingDocument;
+    if (!file || !documentType) return;
+
+    setUploadingDocument(documentType);
+    try {
+      const data = await api.uploadCargo([file]);
+      saveLocal('profile_documents', {
+        item: documentType,
+        user: user.email || email,
+        fileName: file.name,
+        url: data.urls?.[0]
+      });
+      notify(`${documentType} uploaded for review`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setUploadingDocument('');
     }
   }
 
@@ -1904,6 +2092,13 @@ function ProfilePage({ notify, user, setUser, signOut }) {
         </form>
       </Panel>
       <Panel title="Verification" eyebrow="Trust">
+        <input
+          ref={documentInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,application/pdf"
+          onChange={uploadVerificationDocument}
+          style={{ display: 'none' }}
+        />
         <div className="verification-card">
           <CheckCircle2 size={28} />
           <strong>{user.email ? `${user.firstName || 'User'} ${user.lastName || ''}` : 'Demo mode'}</strong>
@@ -1916,16 +2111,10 @@ function ProfilePage({ notify, user, setUser, signOut }) {
             <button
               type="button"
               key={item}
-              onClick={() => {
-                saveLocal('verification_reviews', {
-                  item,
-                  user: user.email || email,
-                  openedAt: new Date().toISOString()
-                });
-                notify(`${item} verification opened`);
-              }}
+              disabled={Boolean(uploadingDocument)}
+              onClick={() => openVerificationUpload(item)}
             >
-              {item}
+              {uploadingDocument === item ? 'Uploading...' : item}
             </button>
           ))}
         </div>

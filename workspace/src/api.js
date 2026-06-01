@@ -63,6 +63,48 @@ async function request(path, options = {}, retry = true) {
   return data;
 }
 
+async function downloadFile(path, filename, retry = true) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      credentials: 'include',
+      headers: {
+        'X-Device-Id': getDeviceId(),
+        ...(token() ? { Authorization: `Bearer ${token()}` } : {})
+      }
+    });
+  } catch (_err) {
+    throw new Error('Unable to reach iTruck API');
+  }
+
+  if (response.status === 401 && retry) {
+    const refreshed = await tryRefresh();
+    if (refreshed) return downloadFile(path, filename, false);
+    clearSession();
+  }
+
+  if (!response.ok) {
+    const type = response.headers.get('content-type') || '';
+    const data = type.includes('application/json') ? await response.json().catch(() => ({})) : await response.text();
+    throw new Error(data.message || data || 'Download failed');
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return { filename };
+}
+
+function documentFilename(type, bookingId) {
+  return `${bookingId}-${type}.pdf`;
+}
+
 export const api = {
   request,
   health: () => request('/health'),
@@ -71,9 +113,15 @@ export const api = {
   fleetTrucks: () => request('/trucks/fleet'),
   listBookings: () => request('/bookings'),
   listOpenBookings: () => request('/bookings/open'),
+  getBooking: (bookingId) => request(`/bookings/${encodeURIComponent(bookingId)}`),
   createBooking: (payload) => request('/bookings', { method: 'POST', body: JSON.stringify(payload) }),
   confirmDelivery: (bookingId) =>
     request(`/bookings/${encodeURIComponent(bookingId)}/confirm-delivery`, { method: 'PATCH' }),
+  updateBookingStatus: (bookingId, payload) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
   createTruck: (payload) => request('/trucks', { method: 'POST', body: JSON.stringify(payload) }),
   rateTruck: (id, payload) =>
     request(`/trucks/${encodeURIComponent(id)}/ratings`, { method: 'POST', body: JSON.stringify(payload) }),
@@ -92,6 +140,24 @@ export const api = {
   workflow: (query) => request(`/workflow${query || ''}`),
   listMessages: (bookingId) => request(`/workflow/messages?booking=${encodeURIComponent(bookingId)}`),
   sendMessage: (payload) => request('/workflow/messages', { method: 'POST', body: JSON.stringify(payload) }),
+  listNotifications: (limit = 20) => request(`/notifications?limit=${encodeURIComponent(limit)}`),
+  notificationCount: () => request('/notifications/count'),
+  markNotificationRead: (id) => request(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' }),
+  downloadDocument: (type, bookingId) =>
+    downloadFile(
+      `/documents/${encodeURIComponent(type)}/${encodeURIComponent(bookingId)}`,
+      documentFilename(type, bookingId)
+    ),
+  uploadCargo: (files) => {
+    const body = new FormData();
+    Array.from(files || []).forEach((file) => body.append('files', file));
+    return request('/upload/cargo', { method: 'POST', body });
+  },
+  uploadAvatar: (file) => {
+    const body = new FormData();
+    body.append('file', file);
+    return request('/upload/avatar', { method: 'POST', body });
+  },
   adminStats: () => request('/admin/stats'),
   adminListUsers: () => request('/admin/users'),
   adminListTrucks: () => request('/admin/trucks'),
@@ -119,6 +185,8 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   adminNotify: (payload) => request('/admin/notify', { method: 'POST', body: JSON.stringify(payload) }),
+  submitBookingBid: (bookingId, payload) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/bids`, { method: 'POST', body: JSON.stringify(payload) }),
   submitBid: (payload) => request('/workflow/bids', { method: 'POST', body: JSON.stringify(payload) }),
   reportIssue: (payload) => request('/workflow/reports', { method: 'POST', body: JSON.stringify(payload) }),
   login: (payload) =>
