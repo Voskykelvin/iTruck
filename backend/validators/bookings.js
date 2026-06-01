@@ -10,6 +10,7 @@ const {
 } = require('./common');
 
 const bookingIdSchema = [liveMongoIdParam('id')];
+const acceptBidSchema = [...bookingIdSchema, liveMongoIdParam('bidId')];
 
 const createBookingSchema = [
   requiredString('pickup', 160),
@@ -77,6 +78,7 @@ const listBookingsSchema = [
 ];
 
 module.exports = {
+  acceptBidSchema,
   bookingIdSchema,
   createBookingSchema,
   listBookingsSchema,

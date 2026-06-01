@@ -46,6 +46,18 @@ function bookingPayload(booking) {
   };
 }
 
+function bookingVisibleTo(user, booking) {
+  if (user.role === 'admin') return true;
+  if (user.role === 'client') return String(booking.client?._id || booking.client) === String(user._id);
+  if (user.role === 'owner') {
+    return (
+      String(booking.owner?._id || booking.owner) === String(user._id) ||
+      (booking.bids || []).some((bid) => String(bid.owner?._id || bid.owner) === String(user._id))
+    );
+  }
+  return false;
+}
+
 async function loadBooking(req, res) {
   if (requireDatabase(req, res)) return null;
   if (!mongoReady()) return { payload: demoBooking(req), record: null };
@@ -53,6 +65,10 @@ async function loadBooking(req, res) {
   const booking = await Booking.findById(req.params.bookingId).populate('truck owner client');
   if (!booking) {
     res.status(404).json({ message: 'Booking not found' });
+    return null;
+  }
+  if (!bookingVisibleTo(req.user, booking)) {
+    res.status(403).json({ message: 'Forbidden' });
     return null;
   }
 

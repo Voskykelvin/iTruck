@@ -19,7 +19,15 @@ const userSchema = new mongoose.Schema(
     avatar: String,
     rating: { type: Number, default: 0, min: 0, max: 5 },
     totalTrips: { type: Number, default: 0 },
-    documents: [{ type: String, url: String, status: { type: String, default: 'pending' } }],
+    documents: [
+      {
+        type: String,
+        url: String,
+        status: { type: String, enum: ['pending', 'approved', 'rejected', 'expired'], default: 'pending' },
+        notes: String,
+        reviewedAt: Date
+      }
+    ],
     pushSubscription: Object,
     lastLogin: Date
   },

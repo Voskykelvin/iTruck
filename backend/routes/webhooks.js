@@ -1,10 +1,11 @@
 const express = require('express');
 const Stripe = require('stripe');
 const logger = require('../config/logger');
+const payment = require('../services/payment');
 
 const stripeRouter = express.Router();
 
-stripeRouter.post('/', (req, res, next) => {
+stripeRouter.post('/', async (req, res, next) => {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   const secretKey = process.env.STRIPE_SECRET_KEY;
 
@@ -19,15 +20,22 @@ stripeRouter.post('/', (req, res, next) => {
     return res.status(400).json({ message: 'Missing Stripe signature' });
   }
 
+  let event;
   try {
     const stripe = new Stripe(secretKey);
-    const event = stripe.webhooks.constructEvent(req.body, signature, webhookSecret);
-    logger.info({ eventId: event.id, eventType: event.type }, 'Stripe webhook verified');
-
-    return res.json({ received: true });
+    event = stripe.webhooks.constructEvent(req.body, signature, webhookSecret);
   } catch (err) {
     logger.warn({ err }, 'Stripe webhook signature verification failed');
     return res.status(400).json({ message: 'Invalid webhook signature' });
+  }
+
+  try {
+    await payment.payments.reconcileStripeEvent(event);
+    logger.info({ eventId: event.id, eventType: event.type }, 'Stripe webhook reconciled');
+    return res.json({ received: true });
+  } catch (err) {
+    logger.error({ err, eventId: event.id, eventType: event.type }, 'Stripe webhook reconciliation failed');
+    return next(err);
   }
 });
 

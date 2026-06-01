@@ -1,5 +1,5 @@
 const { body } = require('express-validator');
-const { optionalString, positiveAmount } = require('./common');
+const { liveMongoIdParam, optionalString, positiveAmount } = require('./common');
 
 const amountSchema = [positiveAmount('amount'), optionalString('description', 240)];
 
@@ -11,4 +11,6 @@ const withdrawalSchema = [
   optionalString('description', 240)
 ];
 
-module.exports = { amountSchema, withdrawalSchema };
+const releasePaymentSchema = [liveMongoIdParam('bookingId')];
+
+module.exports = { amountSchema, releasePaymentSchema, withdrawalSchema };

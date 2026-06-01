@@ -10,17 +10,27 @@ jest.mock('../models/Wallet', () => ({
 }));
 
 jest.mock('../models/Transaction', () => ({
-  create: jest.fn((payload) => Promise.resolve({ _id: 'tx-test', ...payload }))
+  create: jest.fn((payload) => Promise.resolve({ _id: 'tx-test', ...payload })),
+  findOne: jest.fn(),
+  findOneAndUpdate: jest.fn()
+}));
+
+jest.mock('../models/Booking', () => ({
+  findByIdAndUpdate: jest.fn()
 }));
 
 const Wallet = require('../models/Wallet');
 const Transaction = require('../models/Transaction');
-const { WalletService } = require('../services/payment');
+const Booking = require('../models/Booking');
+const { PaymentReconciliationService, WalletService } = require('../services/payment');
 
 beforeEach(() => {
   Wallet.findOneAndUpdate.mockReset();
   Wallet.updateOne.mockReset();
   Transaction.create.mockClear();
+  Transaction.findOne.mockReset();
+  Transaction.findOneAndUpdate.mockReset();
+  Booking.findByIdAndUpdate.mockReset();
 });
 
 test('wallet credit increments wallet balance and creates a transaction', async () => {
@@ -97,5 +107,56 @@ test('wallet withdrawal atomically reserves funds and creates pending payout', a
       amount: 250,
       status: 'pending'
     })
+  );
+});
+
+test('stripe reconciliation idempotently records completed escrow payments', async () => {
+  const bookingId = '507f1f77bcf86cd799439011';
+  const userId = '507f1f77bcf86cd799439012';
+  Transaction.findOneAndUpdate.mockResolvedValue({
+    _id: 'tx-stripe',
+    providerEventId: 'evt_1',
+    status: 'completed'
+  });
+  Booking.findByIdAndUpdate.mockResolvedValue({ _id: bookingId, paymentStatus: 'escrowed' });
+
+  const service = new PaymentReconciliationService();
+  const result = await service.reconcileStripeEvent({
+    id: 'evt_1',
+    type: 'payment_intent.succeeded',
+    livemode: true,
+    data: {
+      object: {
+        id: 'pi_1',
+        amount_received: 126000,
+        currency: 'usd',
+        metadata: { bookingId, userId }
+      }
+    }
+  });
+
+  expect(result._id).toBe('tx-stripe');
+  expect(Transaction.findOneAndUpdate).toHaveBeenCalledWith(
+    { provider: 'stripe', providerEventId: 'evt_1' },
+    expect.objectContaining({
+      $setOnInsert: expect.objectContaining({
+        booking: bookingId,
+        user: userId,
+        amount: 1260,
+        method: 'stripe'
+      })
+    }),
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+  expect(Booking.findByIdAndUpdate).toHaveBeenCalledWith(
+    bookingId,
+    {
+      $set: expect.objectContaining({
+        paymentStatus: 'escrowed',
+        paymentReference: 'pi_1',
+        paymentAmount: 1260
+      })
+    },
+    { new: true }
   );
 });

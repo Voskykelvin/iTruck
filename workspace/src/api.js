@@ -65,10 +65,14 @@ export const api = {
   listBookings: () => request('/bookings'),
   listOpenBookings: () => request('/bookings/open'),
   createBooking: (payload) => request('/bookings', { method: 'POST', body: JSON.stringify(payload) }),
+  confirmDelivery: (bookingId) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/confirm-delivery`, { method: 'PATCH' }),
   createTruck: (payload) => request('/trucks', { method: 'POST', body: JSON.stringify(payload) }),
   rateTruck: (id, payload) =>
     request(`/trucks/${encodeURIComponent(id)}/ratings`, { method: 'POST', body: JSON.stringify(payload) }),
   wallet: () => request('/payments/wallet'),
+  releasePayment: (bookingId) =>
+    request(`/payments/bookings/${encodeURIComponent(bookingId)}/release`, { method: 'POST' }),
   withdraw: (payload) => request('/payments/withdraw', { method: 'POST', body: JSON.stringify(payload) }),
   workflow: (query) => request(`/workflow${query || ''}`),
   listMessages: (bookingId) => request(`/workflow/messages?booking=${encodeURIComponent(bookingId)}`),

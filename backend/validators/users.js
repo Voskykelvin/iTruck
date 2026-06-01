@@ -15,14 +15,8 @@ const updateProfileSchema = [
 ];
 
 const updatePasswordSchema = [
-  body('currentPassword')
-    .optional({ checkFalsy: true })
-    .isLength({ min: 8, max: 128 })
-    .withMessage('currentPassword is invalid'),
-  body('newPassword')
-    .optional({ checkFalsy: true })
-    .isLength({ min: 8, max: 128 })
-    .withMessage('newPassword is invalid')
+  body('currentPassword').isLength({ min: 8, max: 128 }).withMessage('currentPassword is invalid'),
+  body('newPassword').isLength({ min: 8, max: 128 }).withMessage('newPassword is invalid')
 ];
 
 module.exports = { updatePasswordSchema, updateProfileSchema };

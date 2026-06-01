@@ -1,4 +1,4 @@
-const { body } = require('express-validator');
+const { body, param } = require('express-validator');
 const { liveMongoIdParam, optionalString } = require('./common');
 
 const userStatusSchema = [
@@ -17,4 +17,12 @@ const notifySchema = [
   body('priority').optional({ checkFalsy: true }).isIn(['low', 'normal', 'high']).withMessage('priority is invalid')
 ];
 
-module.exports = { notifySchema, truckVerificationSchema, userStatusSchema };
+const documentReviewSchema = [
+  liveMongoIdParam('id'),
+  param('documentType').trim().isLength({ min: 2, max: 80 }).withMessage('documentType is invalid'),
+  body('status').isIn(['pending', 'approved', 'rejected', 'expired']).withMessage('Document status is invalid'),
+  optionalString('url', 1000),
+  optionalString('notes', 1000)
+];
+
+module.exports = { documentReviewSchema, notifySchema, truckVerificationSchema, userStatusSchema };

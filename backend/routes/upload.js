@@ -10,8 +10,18 @@ const upload = multer({
 });
 
 const router = express.Router();
+const avatarTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const cargoTypes = new Set([...avatarTypes, 'application/pdf']);
 
 router.use(protect);
+
+function ensureAllowedFile(file, allowedTypes, label) {
+  if (!allowedTypes.has(file.mimetype)) {
+    const err = new Error(`${label} file type is not supported`);
+    err.status = 415;
+    throw err;
+  }
+}
 
 router.post(
   '/avatar',
@@ -21,6 +31,7 @@ router.post(
       return res.status(400).json({ message: 'No file uploaded. Use form-data field "file".' });
     }
 
+    ensureAllowedFile(req.file, avatarTypes, 'Avatar');
     const url = await cloudinary.uploadBuffer(req.file.buffer, { folder: 'itruck/avatars' });
     res.json({ url });
   })
@@ -35,6 +46,7 @@ router.post(
       return res.status(400).json({ message: 'No files uploaded. Use form-data field "files".' });
     }
 
+    files.forEach((file) => ensureAllowedFile(file, cargoTypes, 'Cargo'));
     const urls = await Promise.all(
       files.map((file) => cloudinary.uploadBuffer(file.buffer, { folder: 'itruck/cargo' }))
     );

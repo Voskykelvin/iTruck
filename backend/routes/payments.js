@@ -3,7 +3,7 @@ const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const asyncHandler = require('../config/asyncHandler');
 const payment = require('../services/payment');
-const { amountSchema, withdrawalSchema } = require('../validators/payments');
+const { amountSchema, releasePaymentSchema, withdrawalSchema } = require('../validators/payments');
 
 const router = express.Router();
 
@@ -18,6 +18,7 @@ router.get(
 
 router.post(
   '/wallet/debit',
+  restrictTo('admin'),
   amountSchema,
   validate,
   asyncHandler(async (req, res) => {
@@ -27,6 +28,7 @@ router.post(
 
 router.post(
   '/wallet/credit',
+  restrictTo('admin'),
   amountSchema,
   validate,
   asyncHandler(async (req, res) => {
@@ -53,6 +55,17 @@ router.post(
     );
 
     res.status(201).json({ transaction });
+  })
+);
+
+router.post(
+  '/bookings/:bookingId/release',
+  restrictTo('admin'),
+  releasePaymentSchema,
+  validate,
+  asyncHandler(async (req, res) => {
+    const result = await payment.wallet.releaseBookingPayment(req.params.bookingId, req.user._id);
+    res.status(result.alreadyReleased ? 200 : 201).json(result);
   })
 );
 
