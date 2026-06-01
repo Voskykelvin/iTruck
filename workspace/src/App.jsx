@@ -2311,11 +2311,11 @@ function OnboardingPage({ notify, user, setUser }) {
         <section className="intro-band compact-intro">
           <div>
             <p className="eyebrow">{roleName(role)} Setup</p>
-            <h2>{role === 'owner' ? 'Verify your fleet profile.' : 'Verify your shipping profile.'}</h2>
+            <h2>{role === 'owner' ? 'Get approved to bid on work.' : 'Get approved to ship.'}</h2>
             <p>
               {role === 'owner'
-                ? 'Upload owner documents, add vehicles, and wait for admin approval before taking work.'
-                : 'Upload shipper documents, then create shipment requests and review carrier bids.'}
+                ? 'Owner documents and vehicles go to admin review before your fleet starts taking loads.'
+                : 'Shipper documents go to admin review, then your bookings and carrier bids stay in one workspace.'}
             </p>
           </div>
           <div className="command-summary">
@@ -2327,7 +2327,7 @@ function OnboardingPage({ notify, user, setUser }) {
           </div>
         </section>
 
-        <Panel title="Verification Documents" eyebrow="Admin Review">
+        <Panel title="Documents for Admin Review" eyebrow="Verification">
           <div className="doc-list">
             {profileDocs.map((item) => {
               const slug = slugDocumentType(item);
@@ -2338,10 +2338,11 @@ function OnboardingPage({ notify, user, setUser }) {
               );
             })}
           </div>
+          <p className="muted-note">Approved documents unlock the correct workspace tools for this account role.</p>
         </Panel>
 
         {role === 'owner' ? (
-          <Panel title="Vehicle Registration" eyebrow="Fleet">
+          <Panel title="Vehicle Registration" eyebrow="Owner Review">
             <form className="modal-form" onSubmit={submitTruck}>
               <div className="form-grid">
                 <Input
@@ -2369,12 +2370,12 @@ function OnboardingPage({ notify, user, setUser }) {
               </div>
               <button className="primary icon-label" type="submit">
                 <Truck size={18} />
-                <span>Add Vehicle</span>
+                <span>Send Vehicle for Review</span>
               </button>
             </form>
           </Panel>
         ) : (
-          <Panel title="First Shipment" eyebrow="Start">
+          <Panel title="Shipping Workspace" eyebrow="Next Step">
             <div className="button-row">
               <button className="primary icon-label" type="button" onClick={() => navigate('/app/book')}>
                 <Plus size={18} />
@@ -2403,7 +2404,7 @@ function OnboardingPage({ notify, user, setUser }) {
           <div className="verification-card">
             <UserRound size={28} />
             <strong>{role === 'owner' ? 'Create a shipper profile' : 'Create an owner profile'}</strong>
-            <span>Use a separate role profile when you need the other side of the marketplace.</span>
+            <span>Keep each side separate so permissions, documents, and payments stay clean.</span>
           </div>
           <a className="secondary full icon-label" href="/#signup">
             <UserRound size={18} />
@@ -2637,7 +2638,7 @@ function DocumentsPage({ notify, user }) {
         style={{ display: 'none' }}
       />
       <div className="stack">
-        <Panel title={role === 'owner' ? 'Fleet Documents' : 'Shipment Documents'} eyebrow="Admin Ready">
+        <Panel title={role === 'owner' ? 'Fleet Documents' : 'Shipment Documents'} eyebrow="Admin Review">
           <div className="cards-grid">
             {role === 'owner'
               ? fleet.map((truck) => (
@@ -2686,16 +2687,20 @@ function DocumentsPage({ notify, user }) {
                   </article>
                 ))}
             {role === 'owner' && !fleet.length ? (
-              <EmptyState title="No vehicles yet" detail="Add a vehicle from onboarding or the owner dashboard." />
+              <EmptyState
+                title="No vehicles yet"
+                detail="Register a vehicle first so admin can review its documents."
+              />
             ) : null}
             {role !== 'owner' && !shipments.length ? (
-              <EmptyState title="No shipment documents" detail="Create a booking to generate documents." />
+              <EmptyState title="No shipment documents" detail="Create a booking to generate shipment paperwork." />
             ) : null}
           </div>
         </Panel>
       </div>
       <aside className="side-stack">
-        <Panel title="Profile Documents" eyebrow="Account">
+        <Panel title="Verification" eyebrow="Account">
+          <p className="muted-note">Profile and vehicle documents land in the admin queue for approval.</p>
           <button className="secondary full icon-label" type="button" onClick={() => navigate('/app/onboarding')}>
             <ShieldCheck size={18} />
             <span>Open Verification</span>

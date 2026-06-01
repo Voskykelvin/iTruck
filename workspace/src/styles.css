@@ -9,10 +9,10 @@
   --lime-text: #3f6212;
   --lime-soft: rgba(132, 204, 22, 0.12);
   --lime-border: rgba(132, 204, 22, 0.28);
-  --orange: #f97316;
-  --orange-dark: #c2410c;
-  --orange-soft: rgba(249, 115, 22, 0.12);
-  --orange-border: rgba(249, 115, 22, 0.28);
+  --orange: #fb923c;
+  --orange-dark: #c05621;
+  --orange-soft: rgba(251, 146, 60, 0.12);
+  --orange-border: rgba(251, 146, 60, 0.28);
   --ink: #132205;
   --text: #1a2e05;
   --muted: #58743a;
@@ -225,25 +225,25 @@ textarea {
 }
 
 .primary {
-  background: var(--orange);
+  background: var(--lime);
   color: #ffffff;
-  box-shadow: 0 10px 24px rgba(249, 115, 22, 0.22);
+  box-shadow: 0 10px 24px rgba(101, 163, 13, 0.22);
 }
 
 .primary:hover {
-  background: var(--orange-dark);
-  box-shadow: 0 14px 30px rgba(249, 115, 22, 0.26);
+  background: var(--lime-dark);
+  box-shadow: 0 14px 30px rgba(101, 163, 13, 0.26);
 }
 
 .secondary {
   border: 1px solid var(--orange-border);
   background: var(--orange-soft);
   color: var(--ink);
-  box-shadow: 0 8px 20px rgba(249, 115, 22, 0.14);
+  box-shadow: 0 8px 20px rgba(251, 146, 60, 0.12);
 }
 
 .secondary:hover {
-  border-color: rgba(249, 115, 22, 0.44);
+  border-color: rgba(251, 146, 60, 0.44);
   background: #ffedd5;
 }
 
@@ -292,6 +292,12 @@ textarea {
 .quick-actions {
   display: grid;
   gap: 10px;
+}
+
+.muted-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .button-row button {
@@ -478,7 +484,7 @@ textarea {
 .doc-list button:focus-visible,
 .truck-card button:focus-visible,
 .quote-card button:focus-visible {
-  outline: 3px solid rgba(249, 115, 22, 0.28);
+  outline: 3px solid rgba(101, 163, 13, 0.28);
   outline-offset: 3px;
 }
 
@@ -676,8 +682,8 @@ textarea {
 .field textarea:focus,
 .add-row input:focus,
 .search-field:focus-within {
-  border-color: rgba(249, 115, 22, 0.44);
-  outline: 3px solid rgba(249, 115, 22, 0.12);
+  border-color: rgba(101, 163, 13, 0.42);
+  outline: 3px solid rgba(101, 163, 13, 0.12);
 }
 
 .field textarea {
@@ -931,8 +937,8 @@ input[type='radio'] {
   overflow: hidden;
   border-bottom: 1px solid var(--line);
   background:
-    linear-gradient(135deg, rgba(249, 115, 22, 0.22), rgba(132, 204, 22, 0.18)),
-    repeating-linear-gradient(135deg, rgba(249, 115, 22, 0.22) 0 1px, transparent 1px 16px);
+    linear-gradient(135deg, rgba(132, 204, 22, 0.2), rgba(251, 146, 60, 0.16)),
+    repeating-linear-gradient(135deg, rgba(101, 163, 13, 0.18) 0 1px, transparent 1px 16px);
 }
 
 .truck-media img {
@@ -1178,7 +1184,7 @@ input[type='radio'] {
 
 .chat-compose input:focus {
   border-color: var(--orange-border);
-  outline: 3px solid rgba(249, 115, 22, 0.13);
+  outline: 3px solid rgba(251, 146, 60, 0.13);
 }
 
 .chat-compose button {
@@ -1660,27 +1666,31 @@ input[type='radio'] {
   }
 }
 
-/* Role-mode polish: match the live backend workspace tone and calm the typography. */
+/* Role-mode polish: keep the live workspace on the green iTruck identity with soft orange accents. */
 :root {
-  --bg: #f8fafc;
+  --bg: #f4fef0;
   --surface: #ffffff;
-  --surface-2: #f7f8fa;
-  --surface-3: #eef2f7;
-  --lime: #f97316;
-  --lime-mid: #ea580c;
-  --lime-dark: #c2410c;
-  --lime-text: #7c2d12;
-  --lime-soft: rgba(249, 115, 22, 0.1);
-  --lime-border: rgba(249, 115, 22, 0.22);
-  --ink: #111827;
-  --text: #243041;
-  --muted: #64748b;
-  --dim: #8593a7;
-  --line: rgba(15, 23, 42, 0.1);
-  --line-strong: rgba(15, 23, 42, 0.16);
+  --surface-2: #f0fdf4;
+  --surface-3: #dcfce7;
+  --lime: #84cc16;
+  --lime-mid: #65a30d;
+  --lime-dark: #4d7c0f;
+  --lime-text: #3f6212;
+  --lime-soft: rgba(132, 204, 22, 0.12);
+  --lime-border: rgba(101, 163, 13, 0.26);
+  --orange: #fb923c;
+  --orange-dark: #c05621;
+  --orange-soft: rgba(251, 146, 60, 0.12);
+  --orange-border: rgba(251, 146, 60, 0.28);
+  --ink: #132205;
+  --text: #1f3510;
+  --muted: #58743a;
+  --dim: #78965d;
+  --line: rgba(77, 124, 15, 0.14);
+  --line-strong: rgba(77, 124, 15, 0.24);
   --navy: #111827;
-  --shadow-sm: 0 1px 4px rgba(15, 23, 42, 0.06);
-  --shadow-md: 0 14px 34px rgba(15, 23, 42, 0.08);
+  --shadow-sm: 0 1px 4px rgba(15, 82, 0, 0.07);
+  --shadow-md: 0 14px 34px rgba(15, 82, 0, 0.08);
   --font-main: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-heading: 'Manrope', 'Inter', system-ui, sans-serif;
 }
@@ -1697,11 +1707,11 @@ input[type='radio'] {
 }
 
 .brand {
-  color: var(--ink);
+  color: var(--lime-dark);
 }
 
 .brand span {
-  background: linear-gradient(135deg, var(--navy), var(--orange));
+  background: linear-gradient(135deg, var(--lime-mid), var(--lime-dark));
 }
 
 .intro-band {
@@ -1710,8 +1720,8 @@ input[type='radio'] {
     linear-gradient(
       135deg,
       rgba(255, 255, 255, 0.98) 0%,
-      rgba(248, 250, 252, 0.98) 66%,
-      rgba(255, 247, 237, 0.88) 100%
+      rgba(240, 253, 244, 0.96) 66%,
+      rgba(255, 247, 237, 0.76) 100%
     ),
     var(--surface);
 }
@@ -1724,9 +1734,51 @@ input[type='radio'] {
 .app-sidebar nav button.active,
 .mobile-bottom-nav button.active,
 .tracking-list button.active {
-  background: var(--orange-soft);
+  background: var(--lime-soft);
+  border-color: var(--lime-border);
+  color: var(--lime-dark);
+}
+
+.app-sidebar nav button.active {
+  box-shadow: inset 3px 0 0 var(--orange);
+}
+
+.primary {
+  background: linear-gradient(180deg, var(--lime) 0%, var(--lime-dark) 100%);
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(101, 163, 13, 0.22);
+}
+
+.primary:hover {
+  background: linear-gradient(180deg, var(--lime-mid) 0%, var(--lime-dark) 100%);
+  box-shadow: 0 14px 30px rgba(101, 163, 13, 0.26);
+}
+
+.secondary {
   border-color: var(--orange-border);
+  background: var(--orange-soft);
   color: var(--orange-dark);
+  box-shadow: 0 8px 20px rgba(251, 146, 60, 0.12);
+}
+
+.secondary:hover {
+  border-color: rgba(251, 146, 60, 0.44);
+  background: #ffedd5;
+}
+
+.ghost:hover {
+  border-color: var(--lime-border);
+  background: var(--lime-soft);
+}
+
+.text-button,
+.eyebrow,
+.panel-heading a {
+  color: var(--orange-dark);
+}
+
+.progress span {
+  background: linear-gradient(90deg, var(--lime-mid), var(--orange));
 }
 
 .action-item,
@@ -1744,7 +1796,7 @@ input[type='radio'] {
 }
 
 .verification-card {
-  background: linear-gradient(135deg, #111827, #1f2937);
+  background: linear-gradient(135deg, #365314, #4d7c0f);
 }
 
 .secondary {
