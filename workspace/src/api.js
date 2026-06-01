@@ -63,14 +63,18 @@ async function request(path, options = {}, retry = true) {
   return data;
 }
 
-async function downloadFile(path, filename, retry = true) {
+async function downloadFile(path, filename, options = {}, retry = true) {
+  const isForm = options.body instanceof FormData;
   let response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
+      ...options,
       credentials: 'include',
       headers: {
+        ...(options.body && !isForm ? { 'Content-Type': 'application/json' } : {}),
         'X-Device-Id': getDeviceId(),
-        ...(token() ? { Authorization: `Bearer ${token()}` } : {})
+        ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
+        ...(options.headers || {})
       }
     });
   } catch (_err) {
@@ -79,7 +83,7 @@ async function downloadFile(path, filename, retry = true) {
 
   if (response.status === 401 && retry) {
     const refreshed = await tryRefresh();
-    if (refreshed) return downloadFile(path, filename, false);
+    if (refreshed) return downloadFile(path, filename, options, false);
     clearSession();
   }
 
@@ -148,6 +152,11 @@ export const api = {
       `/documents/${encodeURIComponent(type)}/${encodeURIComponent(bookingId)}`,
       documentFilename(type, bookingId)
     ),
+  downloadDraftDocument: (type, payload) =>
+    downloadFile(`/documents/draft/${encodeURIComponent(type)}`, `draft-${type}.pdf`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
   uploadCargo: (files) => {
     const body = new FormData();
     Array.from(files || []).forEach((file) => body.append('files', file));
@@ -185,6 +194,10 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   adminNotify: (payload) => request('/admin/notify', { method: 'POST', body: JSON.stringify(payload) }),
+  acceptBookingBid: (bookingId, bidId) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/bids/${encodeURIComponent(bidId)}/accept`, {
+      method: 'PATCH'
+    }),
   submitBookingBid: (bookingId, payload) =>
     request(`/bookings/${encodeURIComponent(bookingId)}/bids`, { method: 'POST', body: JSON.stringify(payload) }),
   submitBid: (payload) => request('/workflow/bids', { method: 'POST', body: JSON.stringify(payload) }),

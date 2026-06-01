@@ -10,6 +10,15 @@ const { bookingDocumentSchema } = require('../validators/documents');
 const router = express.Router();
 router.use(protect);
 
+const documentFactories = {
+  waybill: docs.createWaybill,
+  pod: docs.createPOD,
+  invoice: docs.createInvoice,
+  customs: docs.createCustoms,
+  'receiver-confirmation': docs.createReceiverConfirmation,
+  'packing-list': docs.createPackingList
+};
+
 function streamPdf(res, filename, doc) {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
@@ -37,12 +46,40 @@ function bookingPayload(booking) {
     pickup: booking.pickup,
     destination: booking.destination,
     cargo: booking.cargo,
+    weight: booking.weight,
+    requirements: booking.requirements,
+    cargoValue: booking.cargoValue,
+    vehicleType: booking.vehicleType,
+    receiverName: booking.receiverName,
+    receiverPhone: booking.receiverPhone,
+    communicationPreference: booking.communicationPreference,
     vehicle: booking.vehicleType || booking.truck?.plateNumber || 'Assigned vehicle',
     driver: booking.owner
       ? `${booking.owner.firstName || ''} ${booking.owner.lastName || ''}`.trim()
       : 'Assigned driver',
     amount: booking.budget || booking.estimate?.total || 0,
     paymentMethod: booking.paymentMethod
+  };
+}
+
+function draftPayload(body = {}) {
+  return {
+    id: 'DRAFT',
+    bookingId: 'DRAFT',
+    route: body.route || [body.pickup, body.destination].filter(Boolean).join(' to ') || 'Draft route',
+    pickup: body.pickup,
+    destination: body.destination,
+    cargo: body.cargo,
+    weight: body.weight,
+    requirements: body.requirements,
+    cargoValue: body.cargoValue,
+    vehicleType: body.vehicleType,
+    receiverName: body.receiverName,
+    receiverPhone: body.receiverPhone,
+    communicationPreference: body.communicationPreference,
+    paymentMethod: body.paymentMethod,
+    amount: body.budget || body.estimate?.total || 0,
+    total: body.estimate?.total ? `${body.estimate.currency || 'USD'} ${body.estimate.total}` : undefined
   };
 }
 
@@ -113,14 +150,31 @@ async function renderDocument(req, res, next, type, create) {
   }
 }
 
+router.post('/draft/:type', (req, res, next) => {
+  try {
+    const create = documentFactories[req.params.type];
+    if (!create) return res.status(404).json({ message: 'Document type not found' });
+
+    streamPdf(res, `draft-${req.params.type}.pdf`, create(draftPayload(req.body)));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/waybill/:bookingId', bookingDocumentSchema, validate, (req, res, next) =>
   renderDocument(req, res, next, 'waybill', docs.createWaybill)
 );
 router.get('/pod/:bookingId', bookingDocumentSchema, validate, (req, res, next) =>
   renderDocument(req, res, next, 'pod', docs.createPOD)
 );
+router.get('/receiver-confirmation/:bookingId', bookingDocumentSchema, validate, (req, res, next) =>
+  renderDocument(req, res, next, 'receiver-confirmation', docs.createReceiverConfirmation)
+);
 router.get('/invoice/:bookingId', bookingDocumentSchema, validate, (req, res, next) =>
   renderDocument(req, res, next, 'invoice', docs.createInvoice)
+);
+router.get('/packing-list/:bookingId', bookingDocumentSchema, validate, (req, res, next) =>
+  renderDocument(req, res, next, 'packing-list', docs.createPackingList)
 );
 router.get('/customs/:bookingId', bookingDocumentSchema, validate, (req, res, next) =>
   renderDocument(req, res, next, 'customs', docs.createCustoms)

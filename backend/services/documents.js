@@ -91,6 +91,29 @@ function createPOD(booking) {
   ]);
 }
 
+function createReceiverConfirmation(booking) {
+  return createDocument('Receiver Confirmation', booking, [
+    {
+      heading: 'Receiver',
+      items: [
+        ['Receiver name', booking.receiverName || booking.receiver || 'Receiving officer'],
+        ['Receiver phone', booking.receiverPhone || 'Not provided'],
+        ['Destination', booking.destination || 'Delivery destination'],
+        ['Expected handover', booking.pickupWindow || booking.deliveredAt || 'To be confirmed']
+      ]
+    },
+    {
+      heading: 'Acknowledgement',
+      items: [
+        ['Cargo', booking.cargo || 'General cargo'],
+        ['Condition', booking.condition || 'To be confirmed at delivery'],
+        ['Confirmation method', booking.communicationPreference || 'Digital confirmation'],
+        ['Signature', 'Pending receiver signature']
+      ]
+    }
+  ]);
+}
+
 function createInvoice(booking) {
   return createDocument('Commercial Invoice', booking, [
     {
@@ -108,6 +131,29 @@ function createInvoice(booking) {
         ['Insurance', booking.insurance || '$32'],
         ['Platform fee', booking.platformFee || '$23'],
         ['Total', booking.total || '$975']
+      ]
+    }
+  ]);
+}
+
+function createPackingList(booking) {
+  return createDocument('Packing List', booking, [
+    {
+      heading: 'Cargo Package',
+      items: [
+        ['Cargo', booking.cargo || 'General cargo'],
+        ['Weight', booking.weight || 'Not provided'],
+        ['Handling', booking.requirements || 'Standard'],
+        ['Packaging', booking.packaging || 'To be confirmed']
+      ]
+    },
+    {
+      heading: 'Shipment',
+      items: [
+        ['Pickup', booking.pickup || 'Pickup pending'],
+        ['Destination', booking.destination || 'Destination pending'],
+        ['Vehicle type', booking.vehicleType || booking.vehicle || 'Vehicle pending'],
+        ['Cargo value', booking.cargoValue || booking.declaredValue || 'Not declared']
       ]
     }
   ]);
@@ -135,4 +181,12 @@ function createCustoms(booking) {
   ]);
 }
 
-module.exports = { createWaybill, createPOD, createInvoice, createCustoms, toBuffer };
+module.exports = {
+  createWaybill,
+  createPOD,
+  createReceiverConfirmation,
+  createInvoice,
+  createPackingList,
+  createCustoms,
+  toBuffer
+};

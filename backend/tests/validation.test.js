@@ -108,6 +108,28 @@ test('notification read route rejects invalid object ids', async () => {
   expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ field: 'id' })]));
 });
 
+test('draft document route renders quote review documents as pdfs', async () => {
+  const res = await request(app).post('/api/documents/draft/packing-list').set('Authorization', authHeader()).send({
+    pickup: 'Nairobi',
+    destination: 'Kampala',
+    cargo: 'Retail stock',
+    weight: '8 tonnes',
+    receiverName: 'Amina Warehouse'
+  });
+
+  expect(res.status).toBe(200);
+  expect(res.headers['content-type']).toContain('application/pdf');
+});
+
+test('receiver confirmation document route is available for synced bookings', async () => {
+  const res = await request(app)
+    .get('/api/documents/receiver-confirmation/ITK-2044')
+    .set('Authorization', authHeader());
+
+  expect(res.status).toBe(200);
+  expect(res.headers['content-type']).toContain('application/pdf');
+});
+
 test('marketplace estimate validates required route fields', async () => {
   const res = await request(app).post('/api/marketplace/estimate').send({ vehicleType: 'Lorry' });
 
