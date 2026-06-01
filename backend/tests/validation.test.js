@@ -149,6 +149,26 @@ test('non-admin users cannot mutate wallet balances directly', async () => {
   expect(res.status).toBe(403);
 });
 
+test('wallet routes use memory fallback when the demo database is offline', async () => {
+  const balance = await request(app)
+    .get('/api/payments/wallet')
+    .set('Authorization', authHeader({ id: 'demo-client-amina', role: 'client' }));
+
+  expect(balance.status).toBe(200);
+  expect(balance.body.balance).toBe(4200);
+  expect(balance.body.mode).toBe('memory');
+
+  const withdrawal = await request(app)
+    .post('/api/payments/withdraw')
+    .set('Authorization', authHeader({ id: 'demo-owner-james', role: 'owner' }))
+    .set('Idempotency-Key', 'test-withdraw-001')
+    .send({ amount: 25, method: 'mpesa', destination: '+254711000000' });
+
+  expect(withdrawal.status).toBe(201);
+  expect(withdrawal.body.mode).toBe('memory');
+  expect(withdrawal.body.transaction.status).toBe('pending');
+});
+
 test('non-admin users cannot release booking payments', async () => {
   const res = await request(app)
     .post('/api/payments/bookings/ITK-2044/release')
