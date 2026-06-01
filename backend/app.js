@@ -34,8 +34,8 @@ function sendReactApp(req, res, next) {
 }
 
 function sendFrontendIndex(req, res) {
-  if (fs.existsSync(reactAppIndex)) return res.sendFile(reactAppIndex);
-  return res.sendFile(legacyIndex);
+  if (fs.existsSync(legacyIndex)) return res.sendFile(legacyIndex);
+  return res.sendFile(reactAppIndex);
 }
 
 function corsOptions() {
