@@ -1630,19 +1630,174 @@ function OwnerPage({ notify }) {
 
 function AdminPage({ notify }) {
   const [stats, setStats] = useState(null);
-  const riskControls = [
-    ['Duplicate listing checks', 'Duplicate listing scan opened'],
-    ['Payment release approval', 'Payment release approval queue opened'],
-    ['High-value cargo review', 'High-value cargo review opened'],
-    ['Carrier document expiry alerts', 'Carrier document expiry alerts opened']
-  ];
+  const [adminData, setAdminData] = useState({
+    users: [],
+    trucks: [],
+    bookings: [],
+    payments: [],
+    logs: []
+  });
+  const [busyAction, setBusyAction] = useState('');
+
+  const loadAdminData = useCallback(async () => {
+    const [statsResult, usersResult, trucksResult, bookingsResult, paymentsResult, logsResult] =
+      await Promise.allSettled([
+        api.adminStats(),
+        api.adminListUsers(),
+        api.adminListTrucks(),
+        api.adminListBookings(),
+        api.adminListPayments(),
+        api.adminAuditLogs()
+      ]);
+
+    if (statsResult.status === 'fulfilled') setStats(statsResult.value);
+    else setStats(null);
+
+    setAdminData({
+      users: usersResult.status === 'fulfilled' ? usersResult.value.users || [] : [],
+      trucks: trucksResult.status === 'fulfilled' ? trucksResult.value.trucks || [] : [],
+      bookings: bookingsResult.status === 'fulfilled' ? bookingsResult.value.bookings || [] : [],
+      payments: paymentsResult.status === 'fulfilled' ? paymentsResult.value.transactions || [] : [],
+      logs: logsResult.status === 'fulfilled' ? logsResult.value.logs || [] : []
+    });
+  }, []);
 
   useEffect(() => {
-    api
-      .adminStats()
-      .then(setStats)
-      .catch(() => setStats(null));
-  }, []);
+    loadAdminData();
+  }, [loadAdminData]);
+
+  function recordId(record) {
+    return record?._id || record?.id || record?.bookingId || '';
+  }
+
+  function personName(user) {
+    return [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'selected owner';
+  }
+
+  function needsDocumentReview(record) {
+    return (record?.documents || []).some((doc) => ['pending', 'expired'].includes(doc.status));
+  }
+
+  const pendingOwners = adminData.users.filter(
+    (user) => user.role === 'owner' && (!user.isVerified || needsDocumentReview(user))
+  );
+  const unverifiedTrucks = adminData.trucks.filter((truck) => truck.isVerified === false || needsDocumentReview(truck));
+  const delayedBookings = adminData.bookings.filter((booking) => ['in_transit', 'disputed'].includes(booking.status));
+  const releaseReadyBookings = adminData.bookings.filter(
+    (booking) => booking.status === 'delivered' && booking.paymentStatus === 'escrowed'
+  );
+  const highValueBookings = adminData.bookings.filter(
+    (booking) => Number(booking.cargoValue || booking.budget || booking.paymentAmount || 0) >= 5000
+  );
+  const duplicatePlates = adminData.trucks.length - new Set(adminData.trucks.map((truck) => truck.plateNumber)).size;
+
+  const operationQueue = [
+    {
+      key: 'kyc',
+      label: 'Verify owner KYC',
+      detail: pendingOwners.length
+        ? `${personName(pendingOwners[0])} needs KYC or document review`
+        : 'No owner KYC reviews waiting',
+      tone: pendingOwners.length ? 'success' : 'default'
+    },
+    {
+      key: 'delay',
+      label: 'Resolve route delay',
+      detail: delayedBookings[0]
+        ? `${bookingRef(delayedBookings[0])} needs route follow-up`
+        : 'No delayed routes need review',
+      tone: delayedBookings.length ? 'warn' : 'default'
+    },
+    {
+      key: 'escrow',
+      label: 'Release escrow',
+      detail: releaseReadyBookings.length
+        ? `${bookingRef(releaseReadyBookings[0])} is delivered and escrowed`
+        : 'No delivered escrow booking is release-ready',
+      tone: releaseReadyBookings.length ? 'success' : 'default'
+    }
+  ];
+
+  async function runAdminOperation(key) {
+    setBusyAction(key);
+    try {
+      if (key === 'kyc') {
+        const owner = pendingOwners[0];
+        if (!owner) {
+          notify('No owner KYC reviews are waiting');
+          return;
+        }
+        await api.adminReviewUserDocument(recordId(owner), 'kyc', {
+          status: 'approved',
+          notes: 'Reviewed from operations workspace'
+        });
+        notify(`Owner KYC review recorded for ${personName(owner)}`);
+        await loadAdminData();
+        return;
+      }
+
+      if (key === 'delay') {
+        const booking = delayedBookings[0];
+        await api.adminNotify({
+          title: 'Route delay review',
+          message: booking
+            ? `${bookingRef(booking)} route delay queued for operator follow-up`
+            : 'Route delay queue checked',
+          priority: booking ? 'high' : 'normal'
+        });
+        notify(booking ? `Route delay follow-up queued for ${bookingRef(booking)}` : 'Route delay queue checked');
+        await loadAdminData();
+        return;
+      }
+
+      if (key === 'escrow') {
+        const booking = releaseReadyBookings[0];
+        if (!booking) {
+          notify('No delivered escrow booking is ready for release');
+          return;
+        }
+        await api.releasePayment(recordId(booking));
+        notify(`Payment release submitted for ${bookingRef(booking)}`);
+        await loadAdminData();
+      }
+    } catch (err) {
+      notify(err.message || 'Admin action failed');
+    } finally {
+      setBusyAction('');
+    }
+  }
+
+  async function runRiskControl(label) {
+    setBusyAction(label);
+    try {
+      if (label === 'Duplicate listing checks') {
+        await api.adminListTrucks();
+        notify(`${duplicatePlates} possible duplicate plate listing${duplicatePlates === 1 ? '' : 's'} found`);
+      } else if (label === 'Payment release approval') {
+        await api.adminListPayments();
+        notify(
+          `${releaseReadyBookings.length} booking${releaseReadyBookings.length === 1 ? '' : 's'} ready for release review`
+        );
+      } else if (label === 'High-value cargo review') {
+        await api.adminListBookings();
+        notify(`${highValueBookings.length} high-value booking${highValueBookings.length === 1 ? '' : 's'} found`);
+      } else {
+        await api.adminListTrucks();
+        notify(`${unverifiedTrucks.length} carrier document review${unverifiedTrucks.length === 1 ? '' : 's'} waiting`);
+      }
+    } catch (err) {
+      notify(err.message || 'Risk control check failed');
+    } finally {
+      setBusyAction('');
+    }
+  }
+
+  const riskControls = [
+    'Duplicate listing checks',
+    'Payment release approval',
+    'High-value cargo review',
+    'Carrier document expiry alerts'
+  ];
 
   return (
     <div className="page-grid">
@@ -1660,33 +1815,30 @@ function AdminPage({ notify }) {
       <section className="workspace-layout">
         <Panel title="Operations Queue" eyebrow="Admin">
           <div className="shipment-stack">
-            {[
-              ['Verify owner KYC', 'Grace Wanjiku - logbook and insurance ready', 'success'],
-              ['Resolve route delay', 'ITK-2044 border document check', 'warn'],
-              ['Release escrow', 'ITK-2028 POD received', 'default']
-            ].map((item) => (
+            {operationQueue.map((item) => (
               <article
                 className="shipment-row"
-                key={item[0]}
+                key={item.key}
                 role="button"
                 tabIndex={0}
-                onClick={() => notify(`${item[0]} opened`)}
-                onKeyDown={(event) => activateOnEnter(event, () => notify(`${item[0]} opened`))}
+                onClick={() => runAdminOperation(item.key)}
+                onKeyDown={(event) => activateOnEnter(event, () => runAdminOperation(item.key))}
               >
                 <div>
-                  <StatusBadge tone={item[2]}>{item[0]}</StatusBadge>
-                  <h3>{item[0]}</h3>
-                  <p>{item[1]}</p>
+                  <StatusBadge tone={item.tone}>{item.label}</StatusBadge>
+                  <h3>{item.label}</h3>
+                  <p>{item.detail}</p>
                 </div>
                 <button
                   className="secondary"
                   type="button"
+                  disabled={busyAction === item.key}
                   onClick={(event) => {
                     event.stopPropagation();
-                    notify(`${item[0]} opened`);
+                    runAdminOperation(item.key);
                   }}
                 >
-                  Review
+                  {busyAction === item.key ? 'Working...' : 'Review'}
                 </button>
               </article>
             ))}
@@ -1694,18 +1846,18 @@ function AdminPage({ notify }) {
         </Panel>
         <Panel title="Risk Controls" eyebrow="Trust">
           <div className="doc-list">
-            {riskControls.map(([label, message]) => (
-              <button
-                type="button"
-                key={label}
-                onClick={() => {
-                  saveLocal('risk_controls', { control: label, openedAt: new Date().toISOString() });
-                  notify(message);
-                }}
-              >
-                {label}
+            {riskControls.map((label) => (
+              <button type="button" key={label} disabled={busyAction === label} onClick={() => runRiskControl(label)}>
+                {busyAction === label ? 'Checking...' : label}
               </button>
             ))}
+          </div>
+        </Panel>
+        <Panel title="Admin Activity" eyebrow="Audit">
+          <div className="doc-list compact">
+            <span>{adminData.logs.length} audit log entries loaded</span>
+            <span>{adminData.payments.length} payment records loaded</span>
+            <span>{unverifiedTrucks.length} truck reviews pending</span>
           </div>
         </Panel>
       </section>

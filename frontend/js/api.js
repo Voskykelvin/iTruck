@@ -47,6 +47,12 @@ function fallbackDeviceUuid() {
   );
 }
 
+function idempotencyKey(scope) {
+  const suffix =
+    window.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  return `${scope}:${suffix}`;
+}
+
 function bindWorkspaceRoutes() {
   window.iTruckRoute.rewriteLinks();
 }
@@ -183,11 +189,15 @@ class ITruckAPI {
     return this.request('/admin/payments');
   }
 
-  adminVerifyUser(userId, isActive) {
+  adminSetUserActive(userId, isActive) {
     return this.request(`/admin/users/${userId}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ isActive })
     });
+  }
+
+  adminVerifyUser(userId, isActive) {
+    return this.adminSetUserActive(userId, isActive);
   }
 
   adminVerifyTruck(truckId, isVerified) {
@@ -206,7 +216,8 @@ class ITruckAPI {
 
   releasePayment(bookingId) {
     return this.request(`/payments/bookings/${bookingId}/release`, {
-      method: 'POST'
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('release') }
     });
   }
 
