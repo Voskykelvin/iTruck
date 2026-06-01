@@ -34,7 +34,7 @@ function demoBooking(req) {
     destination: 'Kampala',
     cargo: 'Retail stock',
     vehicle: 'Isuzu FVZ 34',
-    driver: 'James Mwangi'
+    driver: 'Assigned driver'
   };
 }
 

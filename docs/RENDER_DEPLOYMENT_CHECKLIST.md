@@ -5,14 +5,13 @@
 - [ ] Confirm GitHub repo is up to date
   - Run: `git status` → Should show "nothing to commit"
   - Run: `git push` → Confirm latest changes are on main branch
-  
 - [ ] Confirm you have all credentials ready:
-  - [ ] MongoDB URI: `mongodb+srv://kelvinvosky2_db_user:Kelvintheanalyst.@cluster0.hd9pn4m.mongodb.net/?appName=Cluster0`
-  - [ ] JWT Secret: `099181d7e3e73ddbc0aa215a44d24761335db81bf641e404eb540420925b18ff`
-  - [ ] Cloudinary Cloud: `dusnqn0kt`
-  - [ ] Cloudinary Key: `562758338428912`
-  - [ ] Cloudinary Secret: `R1CovvAt6WWr2YCpFU4kSWpdAQA`
-  - [ ] Google Maps API: `AIzaSyAzBiDXNg9nMUwS7yrwzCxAc3A74P_2t8E`
+  - [ ] MongoDB URI: `mongodb+srv://USER:PASSWORD@HOST/itruck?appName=APP`
+  - [ ] JWT Secret: `paste-a-strong-32-character-secret`
+  - [ ] Cloudinary Cloud: `your-cloud-name`
+  - [ ] Cloudinary Key: `your-api-key`
+  - [ ] Cloudinary Secret: `your-api-secret`
+  - [ ] Google Maps API: `your-google-maps-api-key`
 
 ---
 
@@ -32,7 +31,7 @@
 2. Select **Web Service**
 3. Choose **Build and deploy from a Git repository**
 4. Click **Connect GitHub**
-5. Select your GitHub account (should see `Voskykelvin`)
+5. Select your GitHub account
 6. Find and click **iTruck** repo
 7. Click **Connect**
 
@@ -61,38 +60,46 @@ Click **Add Environment Variable** for each:
 #### Required Secrets (7 total)
 
 **1. MONGODB_URI**
+
 - Key: `MONGODB_URI`
-- Value: `mongodb+srv://kelvinvosky2_db_user:Kelvinthekalvinist.@cluster0.hd9pn4m.mongodb.net/?appName=Cluster0`
-- ⚠️ **Copy exactly, including the password**
+- Value: `mongodb+srv://USER:PASSWORD@HOST/itruck?appName=APP`
+- ⚠️ **Copy your Render/MongoDB value exactly, including special characters**
 
 **2. JWT_SECRET**
+
 - Key: `JWT_SECRET`
-- Value: `099181d7e3e73ddbc0aa215a44d24761335db81bf641e404eb540420925b18ff`
+- Value: `paste-a-strong-32-character-secret`
 
 **3. CLOUDINARY_CLOUD_NAME**
+
 - Key: `CLOUDINARY_CLOUD_NAME`
-- Value: `dusnqn0kt`
+- Value: `your-cloud-name`
 
 **4. CLOUDINARY_API_KEY**
+
 - Key: `CLOUDINARY_API_KEY`
-- Value: `562758338428912`
+- Value: `your-api-key`
 
 **5. CLOUDINARY_API_SECRET**
+
 - Key: `CLOUDINARY_API_SECRET`
-- Value: `R1CovvAt6WWr2YCpFU4kSWpdAQA`
+- Value: `your-api-secret`
 
 **6. FRONTEND_URL**
+
 - Key: `FRONTEND_URL`
 - Value: `https://itruck-api.onrender.com` (Render will assign your URL after deploy)
 - **Note:** Update this after deployment with your actual Render domain
 
 **7. ALLOWED_ORIGINS**
+
 - Key: `ALLOWED_ORIGINS`
 - Value: `https://itruck-api.onrender.com` (same as FRONTEND_URL)
 
 #### Optional Secrets (leave blank for now, but good to know)
 
 These can be added later in Phase 2:
+
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `REDIS_URL`
@@ -105,6 +112,7 @@ These can be added later in Phase 2:
 3. Render starts building — **watch the logs**
 
 **You should see:**
+
 ```
 Building iTruck...
 Installing dependencies...
@@ -117,6 +125,7 @@ Listening on port 5000
 ### Step 6: Wait for Deployment
 
 **Timeline:**
+
 - Initial build: 1-2 minutes
 - Deployment: 30-60 seconds
 - Total: ~2-3 minutes
@@ -146,11 +155,13 @@ Your initial FRONTEND_URL was placeholder. Update it:
 ### Step 3: Test Live App
 
 Open in browser:
+
 ```
 https://itruck-api-abc123.onrender.com/app
 ```
 
 You should see:
+
 - ✅ React app loads
 - ✅ Homepage displays
 - ✅ Can click "Book" or "Register Fleet"
@@ -158,13 +169,15 @@ You should see:
 ### Step 4: Test API Health
 
 Open in browser:
+
 ```
 https://itruck-api-abc123.onrender.com/api/health
 ```
 
 You should see JSON response:
+
 ```json
-{"status": "ok", "mode": "live", "database": "connected"}
+{ "status": "ok", "mode": "live", "database": "connected" }
 ```
 
 ### Step 5: Test Registration
@@ -190,11 +203,13 @@ You should see JSON response:
 ### "Build Failed" or "Deployment Failed"
 
 **Check logs:**
+
 1. Click service in Render
 2. Click **Logs** tab
 3. Look for red errors
 
 **Common issues:**
+
 - `MONGODB_URI` is wrong → Check password includes dots/special chars
 - `JWT_SECRET` too short → Must be 32+ chars
 - `render.yaml` not found → Confirm it's in root of repo
@@ -204,11 +219,13 @@ You should see JSON response:
 ### "Cannot connect to MongoDB"
 
 **Possible causes:**
+
 - IP not whitelisted in MongoDB Atlas
 - Database credentials wrong
 - Network timeout
 
 **Fix:**
+
 1. Go to MongoDB Atlas → Network Access
 2. Add `0.0.0.0/0` (allow all IPs)
 3. Test connection from Render logs
@@ -231,17 +248,20 @@ You should see JSON response:
 ## 📊 Monitoring After Launch
 
 ### Daily Checks
+
 - [ ] Visit homepage — loads fast
 - [ ] Register test account — works
 - [ ] Try login — works
 - [ ] Check Render logs for errors
 
 ### Weekly Checks
+
 - [ ] Monitor Render dashboard for memory/CPU usage
 - [ ] Check error logs in Render
 - [ ] Verify database isn't full (MongoDB quota)
 
 ### Monthly Tasks
+
 - [ ] Rotate JWT_SECRET if compromised
 - [ ] Update dependencies for security patches
 - [ ] Backup MongoDB
@@ -251,6 +271,7 @@ You should see JSON response:
 ## 🎉 You're Live!
 
 Once verified, you now have:
+
 - ✅ Live production API at: `https://itruck-api-*.onrender.com`
 - ✅ React app at: `https://itruck-api-*.onrender.com/app`
 - ✅ Real MongoDB database
@@ -259,7 +280,8 @@ Once verified, you now have:
 - ✅ Real-time notifications (Socket.io)
 - ✅ All middleware (auth, validation, rate limiting)
 
-**Next phase:** 
+**Next phase:**
+
 - Invite beta users
 - Monitor for bugs
 - Gather feedback

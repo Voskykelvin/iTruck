@@ -262,7 +262,7 @@ npm run app:build
 
 This builds `workspace/` into `frontend/app/`, which is what Express serves at `/app`.
 
-### Seed Demo Data
+### Seed Local Data
 
 Use the destructive seed only for local development databases:
 
@@ -276,17 +276,17 @@ Use the safe upsert installer when you do not want to wipe existing records:
 npm --prefix backend run install:users
 ```
 
-Demo admin:
+Local seed admin:
 
 ```text
 admin@itruck.africa
-Admin2025!
+ChangeMeAdmin123!
 ```
 
-Demo owners and clients use:
+Local seed owners and clients use:
 
 ```text
-Demo2025!
+ChangeMeUser123!
 ```
 
 ## Scripts
@@ -299,7 +299,7 @@ npm run dev        # Start backend with nodemon
 npm run app:dev    # Start React workspace with Vite
 npm run app:build  # Build React workspace into frontend/app
 npm run build      # Alias for workspace build
-npm run seed       # Seed local demo data
+npm run seed       # Seed local data
 npm test           # Run backend tests
 npm run live:check # Validate required live environment variables
 npm run docker:up  # Start docker-compose services
@@ -536,12 +536,7 @@ The MVP is built around the workflows needed to support these models: booking, b
 
 ## Project Origin
 
-This reconstruction was built from:
-
-- `i truck kevin - Google Drive.pdf`
-- `iTruck-Project-Reference (5).md`
-
-The PDF extraction contained a mix of source-like code and rendered page text. This project is therefore a runnable reconstruction aligned with the project reference and product goals, not a byte-for-byte restoration of every original snippet.
+This reconstruction was built from the original project reference material and then hardened into a runnable MVP aligned with the current product goals.
 
 ## Recommended Next Steps
 

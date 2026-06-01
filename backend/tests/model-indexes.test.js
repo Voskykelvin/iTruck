@@ -59,7 +59,7 @@ test('truck indexes and schema fields support verified fleet operations', () => 
   expect(Truck.schema.path('archivedAt')).toBeDefined();
   expect(Truck.schema.path('archiveReason')).toBeDefined();
   expect(
-    new Truck({ type: 'Lorry', plateNumber: 'KDA 100A', capacityTonnes: 101 }).validateSync().errors.capacityTonnes
+    new Truck({ type: 'Lorry', plateNumber: 'TRK 100', capacityTonnes: 101 }).validateSync().errors.capacityTonnes
   ).toBeDefined();
 });
 

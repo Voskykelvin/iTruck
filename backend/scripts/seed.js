@@ -12,35 +12,35 @@ async function run() {
   await Wallet.deleteMany({});
 
   const admin = await User.create({
-    firstName: 'Super',
+    firstName: 'Platform',
     lastName: 'Admin',
     email: 'admin@itruck.africa',
     phone: '+254700000000',
     country: 'Kenya',
     role: 'admin',
-    password: 'Admin2025!',
+    password: 'ChangeMeAdmin123!',
     isVerified: true
   });
 
   const owner = await User.create({
-    firstName: 'James',
-    lastName: 'Mwangi',
-    email: 'james@itruck.africa',
+    firstName: 'Verified',
+    lastName: 'Carrier',
+    email: 'owner.one@example.com',
     phone: '+254711000000',
     country: 'Kenya',
     role: 'owner',
-    password: 'Demo2025!',
+    password: 'ChangeMeUser123!',
     isVerified: true
   });
 
   const client = await User.create({
-    firstName: 'Amina',
-    lastName: 'Osei',
-    email: 'amina@example.com',
+    firstName: 'Verified',
+    lastName: 'Shipper',
+    email: 'shipper.one@example.com',
     phone: '+233200000000',
     country: 'Ghana',
     role: 'client',
-    password: 'Demo2025!'
+    password: 'ChangeMeUser123!'
   });
 
   await Wallet.create([
@@ -54,7 +54,7 @@ async function run() {
     type: 'Lorry',
     make: 'Isuzu',
     model: 'FVZ 34',
-    plateNumber: 'KDA 442Q',
+    plateNumber: 'TRK 001',
     capacityTonnes: 12,
     country: 'Kenya',
     isVerified: true,

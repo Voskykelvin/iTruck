@@ -3,15 +3,18 @@
 ## Pre-Deployment Checklist
 
 ### 1. Environment Variables
+
 Before deploying, ensure all production secrets are configured:
 
 **Critical (no fallback):**
+
 - [ ] `MONGODB_URI` — Production MongoDB connection string
 - [ ] `JWT_SECRET` — Strong 32+ character secret ✅ Already set
 - [ ] `FRONTEND_URL` — Your production domain (e.g., https://itruck.africa)
 - [ ] `CLOUDINARY_*` — Image upload credentials ✅ Already configured
 
 **Optional (has fallback, required for Phase 2):**
+
 - [ ] `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` — Payment processing
 - [ ] `AFRICASTALKING_*` or `SMS_PROVIDER_MODULE` — SMS notifications
 - [ ] `SENDGRID_API_KEY` or `EMAIL_PROVIDER_MODULE` — Email confirmations
@@ -19,19 +22,22 @@ Before deploying, ensure all production secrets are configured:
 - [ ] `REDIS_URL` — Caching & rate limiting
 
 ### 2. Code Readiness
+
 - [ ] Backend tests passing: `npm test` ✅ All 60 tests pass
 - [ ] Code linting: `npm run lint` ✅ Passes
 - [ ] Build artifacts generated: `npm run app:build` ✅ In `frontend/app/`
 - [ ] No `DEMO_MODE` in production code
 
 ### 3. Database Setup
+
 ```bash
 # Connect to your production MongoDB
 # Create indexes:
-node backend/scripts/install-users.js  # (optional: seed demo admin)
+node backend/scripts/install-users.js  # (optional: seed local admin)
 ```
 
 ### 4. Security Review
+
 - [ ] HTTPS/TLS enabled on domain
 - [ ] CORS properly configured (`ALLOWED_ORIGINS`)
 - [ ] Rate limiting enabled (Nginx config included)
@@ -46,12 +52,14 @@ node backend/scripts/install-users.js  # (optional: seed demo admin)
 ### Option A: Render.com (Recommended for first deploy)
 
 **Advantages:**
+
 - Zero-config Docker support
 - Built-in MongoDB database option
 - Free tier available for testing
 - Auto-deploys from Git
 
 **Steps:**
+
 1. Push your code to GitHub
 2. Create new Web Service on Render.com
 3. Connect GitHub repo
@@ -63,19 +71,21 @@ node backend/scripts/install-users.js  # (optional: seed demo admin)
 6. Deploy!
 
 **Set these in Render dashboard:**
+
 ```
 MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/itruck
-JWT_SECRET=099181d7e3e73ddbc0aa215a44d24761335db81bf641e404eb540420925b18ff
+JWT_SECRET=paste-a-strong-32-character-secret
 FRONTEND_URL=https://your-app.onrender.com
-CLOUDINARY_CLOUD_NAME=dusnqn0kt
-CLOUDINARY_API_KEY=562758338428912
-CLOUDINARY_API_SECRET=R1CovvAt6WWr2YCpFU4kSWpdAQA
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
 ALLOWED_ORIGINS=https://your-app.onrender.com
 ```
 
 ### Option B: Docker + Self-Hosted / VPS
 
 **Using the included Dockerfile:**
+
 ```bash
 # Build image
 docker build -t itruck:latest .
@@ -86,6 +96,7 @@ docker run -p 5000:5000 --env-file .env.production itruck:latest
 
 **With docker-compose (production):**
 Create `docker-compose.production.yml`:
+
 ```yaml
 version: '3.8'
 services:
@@ -107,7 +118,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./frontend:/usr/share/nginx/html:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro  # SSL certificates
+      - /etc/letsencrypt:/etc/letsencrypt:ro # SSL certificates
 ```
 
 ### Option C: Heroku / Railway / Fly.io
@@ -119,30 +130,35 @@ Same process as Render — connect repo, set secrets, deploy.
 ## Post-Deployment Verification
 
 ### 1. Health Check
+
 ```bash
 curl https://your-domain.example/api/health
 # Should return 200 with status
 ```
 
 ### 2. Frontend Loads
+
 ```bash
 curl https://your-domain.example/app/
 # Should return React app HTML
 ```
 
 ### 3. Authentication Works
+
 ```bash
 # Try login with a test account
 # Or register new shipper/owner
 ```
 
 ### 4. Image Upload Works
+
 ```bash
 # Create a truck listing with photo
 # Verify image appears from Cloudinary
 ```
 
 ### 5. Check Logs
+
 ```bash
 # On Render: Dashboard > Logs
 # On Docker: docker logs <container_id>
@@ -180,6 +196,7 @@ curl https://your-domain.example/app/
 If deployment fails:
 
 1. **Keep previous version tagged in Git**
+
    ```bash
    git tag -a v1.0-prod -m "First production release"
    git push origin v1.0-prod
@@ -199,16 +216,19 @@ If deployment fails:
 ## Monitoring & Maintenance
 
 ### Daily
+
 - Check error logs for crashes
 - Monitor API response times (< 500ms target)
 - Spot-check user registrations & bookings working
 
 ### Weekly
+
 - Review database growth
 - Check payment/SMS provider status pages
 - Backup MongoDB
 
 ### Monthly
+
 - Rotate JWT_SECRET (update in all replicas)
 - Review security logs
 - Update dependencies for patches
@@ -218,17 +238,20 @@ If deployment fails:
 ## Soft Launch Recommendations
 
 **Phase 1: Closed Beta (Week 1)**
+
 - Deploy to production with real domain
 - Test with 10-20 internal users (team, friends, trusted partners)
 - Fix bugs, iterate
 - **Do NOT advertise yet**
 
 **Phase 2: Limited Release (Week 2)**
+
 - Open registration to specific country/region only
 - Monitor for edge cases
 - Prepare customer support
 
 **Phase 3: Public Launch (Week 3+)**
+
 - Enable all markets
 - Marketing campaign
 - Scale infrastructure if needed

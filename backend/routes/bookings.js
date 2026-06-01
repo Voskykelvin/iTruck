@@ -22,8 +22,8 @@ router.use(protect);
 const memoryBookings = [
   {
     _id: 'ITK-2044',
-    client: 'demo-client-amina',
-    owner: 'demo-owner-james',
+    client: 'demo-client-primary',
+    owner: 'demo-owner-primary',
     truck: 'demo-truck-isuzu',
     pickup: 'Nairobi',
     destination: 'Kampala',
@@ -40,7 +40,7 @@ const memoryBookings = [
   },
   {
     _id: 'ITK-2031',
-    client: 'demo-client-tunde',
+    client: 'demo-client-secondary',
     pickup: 'Mombasa',
     destination: 'Dar es Salaam',
     vehicleType: 'Trailer',
@@ -51,9 +51,9 @@ const memoryBookings = [
     status: 'bidding',
     bids: [
       {
-        owner: 'demo-owner-grace',
+        owner: 'demo-owner-secondary',
         amount: 3040,
-        message: 'Trailer available tomorrow morning.',
+        message: 'Fleet is available for the requested pickup window.',
         status: 'pending',
         createdAt: new Date().toISOString()
       }

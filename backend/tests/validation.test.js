@@ -11,7 +11,7 @@ afterAll((done) => {
   return done();
 });
 
-function authHeader(user = { id: 'demo-client-amina', role: 'client' }) {
+function authHeader(user = { id: 'demo-client-primary', role: 'client' }) {
   const token = jwt.sign(user, process.env.JWT_SECRET || 'test-secret');
   return `Bearer ${token}`;
 }
@@ -35,7 +35,7 @@ test('truck list rejects invalid query filters before querying data', async () =
 test('truck creation ignores owner-controlled privileged fields', async () => {
   const res = await request(app)
     .post('/api/trucks')
-    .set('Authorization', authHeader({ id: 'demo-owner-kelvin', role: 'owner' }))
+    .set('Authorization', authHeader({ id: 'demo-owner-transient', role: 'owner' }))
     .send({
       type: 'Lorry',
       plateNumber: `TEST-${Date.now()}`,
@@ -46,7 +46,7 @@ test('truck creation ignores owner-controlled privileged fields', async () => {
     });
 
   expect(res.status).toBe(201);
-  expect(res.body.truck.owner).toBe('demo-owner-kelvin');
+  expect(res.body.truck.owner).toBe('demo-owner-transient');
   expect(res.body.truck.isVerified).toBe(false);
   expect(res.body.truck.ratingAverage).toBeUndefined();
   expect(res.body.truck.documents).toBeUndefined();
@@ -55,7 +55,7 @@ test('truck creation ignores owner-controlled privileged fields', async () => {
 test('truck creation validates capacity and identity fields', async () => {
   const res = await request(app)
     .post('/api/trucks')
-    .set('Authorization', authHeader({ id: 'demo-owner-james', role: 'owner' }))
+    .set('Authorization', authHeader({ id: 'demo-owner-primary', role: 'owner' }))
     .send({
       type: 'Lorry',
       plateNumber: `CAP-${Date.now()}`,
@@ -71,7 +71,7 @@ test('truck creation validates capacity and identity fields', async () => {
 test('truck archive is a soft owner-scoped mutation', async () => {
   const created = await request(app)
     .post('/api/trucks')
-    .set('Authorization', authHeader({ id: 'demo-owner-james', role: 'owner' }))
+    .set('Authorization', authHeader({ id: 'demo-owner-primary', role: 'owner' }))
     .send({
       type: 'Lorry',
       plateNumber: `ARCH-${Date.now()}`,
@@ -81,7 +81,7 @@ test('truck archive is a soft owner-scoped mutation', async () => {
   const truckId = created.body.truck._id;
   const archived = await request(app)
     .delete(`/api/trucks/${truckId}`)
-    .set('Authorization', authHeader({ id: 'demo-owner-james', role: 'owner' }))
+    .set('Authorization', authHeader({ id: 'demo-owner-primary', role: 'owner' }))
     .send({ reason: 'Sold vehicle' });
 
   expect(archived.status).toBe(200);
@@ -114,7 +114,7 @@ test('draft document route renders quote review documents as pdfs', async () => 
     destination: 'Kampala',
     cargo: 'Retail stock',
     weight: '8 tonnes',
-    receiverName: 'Amina Warehouse'
+    receiverName: 'Receiving Warehouse'
   });
 
   expect(res.status).toBe(200);
@@ -148,7 +148,7 @@ test('unknown api routes return json 404 instead of the frontend app', async () 
 test('clients cannot submit carrier bids through booking routes', async () => {
   const res = await request(app)
     .post('/api/bookings/ITK-2031/bids')
-    .set('Authorization', authHeader({ id: 'demo-client-amina', role: 'client' }))
+    .set('Authorization', authHeader({ id: 'demo-client-primary', role: 'client' }))
     .send({ amount: 1200 });
 
   expect(res.status).toBe(403);
@@ -157,7 +157,7 @@ test('clients cannot submit carrier bids through booking routes', async () => {
 test('clients cannot list open owner load board bookings', async () => {
   const res = await request(app)
     .get('/api/bookings/open')
-    .set('Authorization', authHeader({ id: 'demo-client-amina', role: 'client' }));
+    .set('Authorization', authHeader({ id: 'demo-client-primary', role: 'client' }));
 
   expect(res.status).toBe(403);
 });
@@ -165,7 +165,7 @@ test('clients cannot list open owner load board bookings', async () => {
 test('non-admin users cannot mutate wallet balances directly', async () => {
   const res = await request(app)
     .post('/api/payments/wallet/credit')
-    .set('Authorization', authHeader({ id: 'demo-owner-kelvin', role: 'owner' }))
+    .set('Authorization', authHeader({ id: 'demo-owner-transient', role: 'owner' }))
     .send({ amount: 100 });
 
   expect(res.status).toBe(403);
@@ -174,7 +174,7 @@ test('non-admin users cannot mutate wallet balances directly', async () => {
 test('wallet routes use memory fallback when the demo database is offline', async () => {
   const balance = await request(app)
     .get('/api/payments/wallet')
-    .set('Authorization', authHeader({ id: 'demo-client-amina', role: 'client' }));
+    .set('Authorization', authHeader({ id: 'demo-client-primary', role: 'client' }));
 
   expect(balance.status).toBe(200);
   expect(balance.body.balance).toBe(4200);
@@ -182,7 +182,7 @@ test('wallet routes use memory fallback when the demo database is offline', asyn
 
   const withdrawal = await request(app)
     .post('/api/payments/withdraw')
-    .set('Authorization', authHeader({ id: 'demo-owner-james', role: 'owner' }))
+    .set('Authorization', authHeader({ id: 'demo-owner-primary', role: 'owner' }))
     .set('Idempotency-Key', 'test-withdraw-001')
     .send({ amount: 25, method: 'mpesa', destination: '+254711000000' });
 
@@ -194,7 +194,7 @@ test('wallet routes use memory fallback when the demo database is offline', asyn
 test('non-admin users cannot release booking payments', async () => {
   const res = await request(app)
     .post('/api/payments/bookings/ITK-2044/release')
-    .set('Authorization', authHeader({ id: 'demo-client-amina', role: 'client' }));
+    .set('Authorization', authHeader({ id: 'demo-client-primary', role: 'client' }));
 
   expect(res.status).toBe(403);
 });
@@ -202,7 +202,7 @@ test('non-admin users cannot release booking payments', async () => {
 test('clients cannot submit carrier bids through workflow routes', async () => {
   const res = await request(app)
     .post('/api/workflow/bids')
-    .set('Authorization', authHeader({ id: 'demo-client-amina', role: 'client' }))
+    .set('Authorization', authHeader({ id: 'demo-client-primary', role: 'client' }))
     .send({ bookingId: '507f1f77bcf86cd799439011', amount: 1200 });
 
   expect(res.status).toBe(403);
@@ -210,19 +210,19 @@ test('clients cannot submit carrier bids through workflow routes', async () => {
 
 test('booking clients can accept a pending bid and confirm the booking', async () => {
   const res = await request(app)
-    .patch('/api/bookings/ITK-2031/bids/demo-owner-grace/accept')
-    .set('Authorization', authHeader({ id: 'demo-client-tunde', role: 'client' }));
+    .patch('/api/bookings/ITK-2031/bids/demo-owner-secondary/accept')
+    .set('Authorization', authHeader({ id: 'demo-client-secondary', role: 'client' }));
 
   expect(res.status).toBe(200);
   expect(res.body.booking.status).toBe('confirmed');
-  expect(res.body.booking.owner).toBe('demo-owner-grace');
+  expect(res.body.booking.owner).toBe('demo-owner-secondary');
   expect(res.body.booking.bids[0].status).toBe('accepted');
 });
 
 test('booking clients can confirm delivery after transit', async () => {
   const res = await request(app)
     .patch('/api/bookings/ITK-2044/confirm-delivery')
-    .set('Authorization', authHeader({ id: 'demo-client-amina', role: 'client' }));
+    .set('Authorization', authHeader({ id: 'demo-client-primary', role: 'client' }));
 
   expect(res.status).toBe(200);
   expect(res.body.booking.status).toBe('delivered');
@@ -248,8 +248,8 @@ test('password updates require both current and new passwords', async () => {
 test('users can submit verification documents for admin review', async () => {
   const res = await request(app)
     .patch('/api/users/documents/owner-kyc')
-    .set('Authorization', authHeader({ id: 'demo-owner-james', role: 'owner' }))
-    .send({ url: 'https://res.cloudinary.com/demo/raw/upload/owner-kyc.pdf', fileName: 'owner-kyc.pdf' });
+    .set('Authorization', authHeader({ id: 'demo-owner-primary', role: 'owner' }))
+    .send({ url: 'https://res.cloudinary.com/itruck/raw/upload/owner-kyc.pdf', fileName: 'owner-kyc.pdf' });
 
   expect(res.status).toBe(200);
   expect(res.body.user.documents).toEqual(
@@ -270,7 +270,7 @@ test('owners can attach truck documents for admin review', async () => {
   const res = await request(app)
     .patch(`/api/trucks/${created.body.truck._id}/documents/insurance`)
     .set('Authorization', authHeader({ id: 'demo-owner-docs', role: 'owner' }))
-    .send({ url: 'https://res.cloudinary.com/demo/raw/upload/insurance.pdf', fileName: 'insurance.pdf' });
+    .send({ url: 'https://res.cloudinary.com/itruck/raw/upload/insurance.pdf', fileName: 'insurance.pdf' });
 
   expect(res.status).toBe(200);
   expect(res.body.truck.documents).toEqual(
@@ -291,11 +291,11 @@ test('owners can attach vehicle photos to truck listings', async () => {
   const res = await request(app)
     .patch(`/api/trucks/${created.body.truck._id}/photos`)
     .set('Authorization', authHeader({ id: 'demo-owner-photos', role: 'owner' }))
-    .send({ url: 'https://res.cloudinary.com/demo/image/upload/truck-photo.webp', fileName: 'truck-photo.webp' });
+    .send({ url: 'https://res.cloudinary.com/itruck/image/upload/truck-photo.webp', fileName: 'truck-photo.webp' });
 
   expect(res.status).toBe(200);
   expect(res.body.truck.photos).toEqual(
-    expect.arrayContaining(['https://res.cloudinary.com/demo/image/upload/truck-photo.webp'])
+    expect.arrayContaining(['https://res.cloudinary.com/itruck/image/upload/truck-photo.webp'])
   );
 });
 
@@ -359,7 +359,7 @@ test('avatar uploads reject unsupported file types before storage', async () => 
 
 test('admin document review validates supported statuses', async () => {
   const res = await request(app)
-    .patch('/api/admin/users/demo-owner-james/documents/insurance')
+    .patch('/api/admin/users/demo-owner-primary/documents/insurance')
     .set('Authorization', authHeader({ id: 'demo-admin', role: 'admin' }))
     .send({ status: 'maybe' });
 

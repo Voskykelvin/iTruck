@@ -5,24 +5,24 @@ const User = require('../models/User');
 const Truck = require('../models/Truck');
 const Wallet = require('../models/Wallet');
 
-const password = 'Demo2025!';
+const password = 'ChangeMeUser123!';
 
 const users = [
   {
-    firstName: 'Super',
+    firstName: 'Platform',
     lastName: 'Admin',
     email: 'admin@itruck.africa',
     phone: '+254700000000',
     country: 'Kenya',
     role: 'admin',
-    password: 'Admin2025!',
+    password: 'ChangeMeAdmin123!',
     isVerified: true,
     walletBalance: 2500
   },
   {
-    firstName: 'Amina',
-    lastName: 'Osei',
-    email: 'amina@example.com',
+    firstName: 'Verified',
+    lastName: 'Shipper',
+    email: 'shipper.one@example.com',
     phone: '+233200000000',
     country: 'Ghana',
     role: 'client',
@@ -31,9 +31,9 @@ const users = [
     walletBalance: 4200
   },
   {
-    firstName: 'Tunde',
-    lastName: 'Nwosu',
-    email: 'tunde@example.com',
+    firstName: 'Regional',
+    lastName: 'Shipper',
+    email: 'shipper.two@example.com',
     phone: '+2348010000000',
     country: 'Nigeria',
     role: 'client',
@@ -42,9 +42,9 @@ const users = [
     walletBalance: 1850
   },
   {
-    firstName: 'James',
-    lastName: 'Mwangi',
-    email: 'james@itruck.africa',
+    firstName: 'Verified',
+    lastName: 'Carrier',
+    email: 'owner.one@example.com',
     phone: '+254711000000',
     country: 'Kenya',
     role: 'owner',
@@ -53,9 +53,9 @@ const users = [
     walletBalance: 8700
   },
   {
-    firstName: 'Grace',
-    lastName: 'Wanjiku',
-    email: 'grace@itruck.africa',
+    firstName: 'Regional',
+    lastName: 'Carrier',
+    email: 'owner.two@example.com',
     phone: '+254722000000',
     country: 'Kenya',
     role: 'owner',
@@ -67,11 +67,11 @@ const users = [
 
 const trucks = [
   {
-    ownerEmail: 'james@itruck.africa',
+    ownerEmail: 'owner.one@example.com',
     type: 'Lorry',
     make: 'Isuzu',
     model: 'FVZ 34',
-    plateNumber: 'KDA 442Q',
+    plateNumber: 'TRK 001',
     capacityTonnes: 12,
     country: 'Kenya',
     routes: ['Nairobi-Kampala', 'Mombasa-Nairobi'],
@@ -81,11 +81,11 @@ const trucks = [
     pricePerKm: 2.1
   },
   {
-    ownerEmail: 'grace@itruck.africa',
+    ownerEmail: 'owner.two@example.com',
     type: 'Trailer',
     make: 'Scania',
     model: 'R450',
-    plateNumber: 'KCB 991T',
+    plateNumber: 'TRK 002',
     capacityTonnes: 28,
     country: 'Kenya',
     routes: ['Nairobi-Lagos', 'Mombasa-Kigali'],
@@ -95,11 +95,11 @@ const trucks = [
     pricePerKm: 3.8
   },
   {
-    ownerEmail: 'james@itruck.africa',
+    ownerEmail: 'owner.one@example.com',
     type: 'Pickup',
     make: 'Toyota',
     model: 'Hilux',
-    plateNumber: 'KDG 128P',
+    plateNumber: 'TRK 003',
     capacityTonnes: 1.2,
     country: 'Kenya',
     routes: ['Nairobi-Naivasha', 'Nairobi-Nakuru'],
@@ -160,11 +160,11 @@ async function run() {
     }
   }
 
-  console.log('iTruck demo users installed');
+  console.log('iTruck local seed users installed');
   installed.forEach((line) => console.log(' - ' + line));
   console.log('');
-  console.log('Admin login: admin@itruck.africa / Admin2025!');
-  console.log('Demo password for clients and owners: Demo2025!');
+  console.log('Admin login: admin@itruck.africa / ChangeMeAdmin123!');
+  console.log('Local seed password for clients and owners: ChangeMeUser123!');
 
   await mongoose.disconnect();
 }
