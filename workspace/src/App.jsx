@@ -28,15 +28,63 @@ import ServiceWorkerUpdateToast from './components/ServiceWorkerUpdateToast.jsx'
 import SessionsManager from './components/SessionsManager.jsx';
 import { demoDocuments, demoFleet, demoLoads, demoShipments } from './data.js';
 
-const navItems = [
-  { path: '/app/shipper', label: 'Shipper', icon: LayoutDashboard },
-  { path: '/app/book', label: 'Book', icon: Plus },
-  { path: '/app/marketplace', label: 'Marketplace', icon: Search },
-  { path: '/app/tracking', label: 'Tracking', icon: Map },
-  { path: '/app/owner', label: 'Owner', icon: Truck },
-  { path: '/app/admin', label: 'Admin', icon: BarChart3 },
-  { path: '/app/profile', label: 'Profile', icon: UserRound }
+const roleNavigation = {
+  client: [
+    { path: '/app/shipper', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/app/book', label: 'Book', icon: Plus },
+    { path: '/app/bids', label: 'Bids', icon: BarChart3 },
+    { path: '/app/marketplace', label: 'Trucks', icon: Search },
+    { path: '/app/tracking', label: 'Orders', icon: Map },
+    { path: '/app/documents', label: 'Documents', icon: FileText },
+    { path: '/app/payments', label: 'Payments', icon: Wallet },
+    { path: '/app/messages', label: 'Messages', icon: MessageSquare },
+    { path: '/app/profile', label: 'Settings', icon: UserRound }
+  ],
+  owner: [
+    { path: '/app/owner', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/app/onboarding', label: 'Verification', icon: ShieldCheck },
+    { path: '/app/vehicles', label: 'Vehicles', icon: Truck },
+    { path: '/app/bids', label: 'Find Work', icon: Search },
+    { path: '/app/tracking', label: 'Jobs', icon: Map },
+    { path: '/app/documents', label: 'Documents', icon: FileText },
+    { path: '/app/payments', label: 'Payments', icon: Wallet },
+    { path: '/app/messages', label: 'Messages', icon: MessageSquare },
+    { path: '/app/profile', label: 'Settings', icon: UserRound }
+  ],
+  admin: [
+    { path: '/app/admin', label: 'Admin', icon: BarChart3 },
+    { path: '/app/shipper', label: 'Shipper', icon: LayoutDashboard },
+    { path: '/app/owner', label: 'Owner', icon: Truck },
+    { path: '/app/bids', label: 'Bids', icon: Search },
+    { path: '/app/documents', label: 'Documents', icon: FileText },
+    { path: '/app/payments', label: 'Payments', icon: Wallet },
+    { path: '/app/messages', label: 'Messages', icon: MessageSquare },
+    { path: '/app/profile', label: 'Settings', icon: UserRound }
+  ]
+};
+
+const commonRoutes = [
+  '/app/profile',
+  '/app/onboarding',
+  '/app/documents',
+  '/app/payments',
+  '/app/messages',
+  '/app/tracking'
 ];
+const roleRoutes = {
+  client: ['/app/shipper', '/app/book', '/app/marketplace', '/app/bids', ...commonRoutes],
+  owner: ['/app/owner', '/app/vehicles', '/app/bids', ...commonRoutes],
+  admin: [
+    '/app/admin',
+    '/app/shipper',
+    '/app/book',
+    '/app/marketplace',
+    '/app/owner',
+    '/app/vehicles',
+    '/app/bids',
+    ...commonRoutes
+  ]
+};
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
 const workspaceFleet = DEMO_MODE ? demoFleet : [];
@@ -88,6 +136,37 @@ function routeFromLocation() {
   return `${path}${window.location.search}`;
 }
 
+function pathOnly(route) {
+  return route.split('?')[0];
+}
+
+function roleForUser(user) {
+  return user?.role === 'owner' || user?.role === 'admin' ? user.role : 'client';
+}
+
+function dashboardPathForRole(role) {
+  if (role === 'owner') return '/app/owner';
+  if (role === 'admin') return '/app/admin';
+  return '/app/shipper';
+}
+
+function navForUser(user) {
+  return roleNavigation[roleForUser(user)] || roleNavigation.client;
+}
+
+function routeAllowedForUser(route, user) {
+  const role = roleForUser(user);
+  const path = pathOnly(route);
+  if (path === '/app' || path === '/app/') return true;
+  return (roleRoutes[role] || roleRoutes.client).some((allowed) => path === allowed || path.startsWith(`${allowed}/`));
+}
+
+function roleName(role) {
+  if (role === 'owner') return 'Owner';
+  if (role === 'admin') return 'Admin';
+  return 'Shipper';
+}
+
 function navigate(path) {
   window.history.pushState({}, '', path);
   window.dispatchEvent(new PopStateEvent('popstate'));
@@ -125,6 +204,14 @@ function saveLocal(type, data) {
   const list = JSON.parse(localStorage.getItem(key) || '[]');
   list.unshift({ id: `${type}-${Date.now()}`, ...data, createdAt: new Date().toISOString(), mode: 'local' });
   localStorage.setItem(key, JSON.stringify(list));
+}
+
+function slugDocumentType(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
 }
 
 function chatKey(shipmentId) {
@@ -328,6 +415,8 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState('');
   const [user, setUser] = useState(currentUser());
+  const activeRole = roleForUser(user);
+  const visibleNavItems = useMemo(() => navForUser(user), [user]);
 
   useEffect(() => {
     const syncRoute = () => setRoute(routeFromLocation());
@@ -361,16 +450,37 @@ function App() {
     }
   }, [notify]);
 
+  useEffect(() => {
+    if (!routeAllowedForUser(route, user)) {
+      const destination = dashboardPathForRole(activeRole);
+      notify(`${pageTitle(route)} is not part of ${roleName(activeRole)} mode`);
+      navigate(destination);
+    }
+  }, [activeRole, notify, route, user]);
+
   const page = useMemo(() => {
     const props = { notify, route, user, setUser };
+    if (route.startsWith('/app/onboarding')) return <OnboardingPage {...props} />;
+    if (route.startsWith('/app/bids')) return <BidsPage {...props} />;
+    if (route.startsWith('/app/documents')) return <DocumentsPage {...props} />;
+    if (route.startsWith('/app/payments')) return <PaymentsPage {...props} />;
+    if (route.startsWith('/app/messages')) return <MessagesPage {...props} />;
     if (route.startsWith('/app/book')) return <BookingPage {...props} />;
     if (route.startsWith('/app/marketplace')) return <MarketplacePage {...props} />;
     if (route.startsWith('/app/tracking')) return <TrackingPage {...props} />;
-    if (route.startsWith('/app/owner')) return <OwnerPage {...props} />;
+    if (route.startsWith('/app/owner') || route.startsWith('/app/vehicles')) return <OwnerPage {...props} />;
     if (route.startsWith('/app/admin')) return <AdminPage {...props} />;
     if (route.startsWith('/app/profile')) return <ProfilePage {...props} signOut={signOut} />;
-    return <ShipperPage {...props} />;
-  }, [notify, route, signOut, user]);
+    return activeRole === 'owner' ? <OwnerPage {...props} /> : <ShipperPage {...props} />;
+  }, [activeRole, notify, route, signOut, user]);
+
+  const primaryAction =
+    activeRole === 'owner'
+      ? { label: 'Find Work', path: '/app/bids', icon: Search }
+      : activeRole === 'admin'
+        ? { label: 'Admin Queue', path: '/app/admin', icon: BarChart3 }
+        : { label: 'New Load', path: '/app/book', icon: Plus };
+  const PrimaryActionIcon = primaryAction.icon;
 
   return (
     <div className="app-shell">
@@ -379,7 +489,7 @@ function App() {
           <span>iT</span> iTruck
         </a>
         <nav>
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const active = route.startsWith(item.path);
             return (
@@ -414,9 +524,9 @@ function App() {
               <Bell size={18} />
               <span>Alerts</span>
             </button>
-            <button className="primary icon-label" type="button" onClick={() => navigate('/app/book')}>
-              <Plus size={18} />
-              <span>New Load</span>
+            <button className="primary icon-label" type="button" onClick={() => navigate(primaryAction.path)}>
+              <PrimaryActionIcon size={18} />
+              <span>{primaryAction.label}</span>
             </button>
           </div>
         </header>
@@ -425,7 +535,7 @@ function App() {
       </main>
 
       <nav className="mobile-bottom-nav" aria-label="Primary mobile navigation">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const Icon = item.icon;
           const active = route.startsWith(item.path);
           return (
@@ -458,10 +568,15 @@ function App() {
 }
 
 function pageTitle(route) {
+  if (route.includes('/onboarding')) return 'Verification';
+  if (route.includes('/bids')) return 'Bids & Work';
+  if (route.includes('/documents')) return 'Documents';
+  if (route.includes('/payments')) return 'Payments';
+  if (route.includes('/messages')) return 'Messages';
   if (route.includes('/book')) return 'Book a Truck';
   if (route.includes('/marketplace')) return 'Truck Marketplace';
   if (route.includes('/tracking')) return 'Live Tracking';
-  if (route.includes('/owner')) return 'Fleet Owner';
+  if (route.includes('/owner') || route.includes('/vehicles')) return 'Fleet Owner';
   if (route.includes('/admin')) return 'Operations Admin';
   if (route.includes('/profile')) return 'Account & Verification';
   return 'Shipper Dashboard';
@@ -1830,6 +1945,11 @@ function OwnerPage({ notify }) {
   }
 
   async function placeBid(load) {
+    if (!load?.id) {
+      notify('Bid needs a synced booking');
+      return;
+    }
+
     const payload = {
       bookingId: load.id,
       route: load.route,
@@ -2097,6 +2217,691 @@ function OwnerPage({ notify }) {
         </aside>
       </section>
     </div>
+  );
+}
+
+function OnboardingPage({ notify, user, setUser }) {
+  const role = roleForUser(user);
+  const [uploading, setUploading] = useState('');
+  const [fleet, setFleet] = useState([]);
+  const [truckDraft, setTruckDraft] = useState({
+    plateNumber: '',
+    type: 'Lorry',
+    capacityTonnes: 8,
+    routes: 'Nairobi-Kampala'
+  });
+  const pendingDocRef = useRef('');
+  const profileDocInputRef = useRef(null);
+
+  useEffect(() => {
+    if (role !== 'owner') return;
+    api
+      .fleetTrucks()
+      .then((data) => Array.isArray(data.trucks) && setFleet(data.trucks.map(normalizeTruck)))
+      .catch(() => setFleet(workspaceFleet.slice(0, 2)));
+  }, [role]);
+
+  const profileDocs =
+    role === 'owner'
+      ? ['Owner KYC', 'Driver ID', 'Business registration', 'Insurance']
+      : ['Shipper KYC', 'Business registration', 'Tax certificate'];
+
+  function openProfileDoc(documentType) {
+    pendingDocRef.current = slugDocumentType(documentType);
+    profileDocInputRef.current?.click();
+  }
+
+  async function uploadProfileDoc(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !pendingDocRef.current) return;
+
+    setUploading(pendingDocRef.current);
+    try {
+      const data = await api.uploadProfileDocument(pendingDocRef.current, file);
+      if (data.user) {
+        setSession({ user: data.user });
+        setUser(data.user);
+      }
+      notify('Document sent to admin review');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setUploading('');
+    }
+  }
+
+  function updateTruckDraft(key, value) {
+    setTruckDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  async function submitTruck(event) {
+    event.preventDefault();
+    if (role !== 'owner') return;
+
+    const payload = {
+      ...truckDraft,
+      capacityTonnes: Number(truckDraft.capacityTonnes || 0),
+      routes: String(truckDraft.routes || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    };
+
+    try {
+      const data = await api.createTruck(payload);
+      setFleet((current) => [normalizeTruck(data.truck || payload), ...current]);
+      notify('Vehicle sent to admin review');
+      setTruckDraft((current) => ({ ...current, plateNumber: '' }));
+    } catch (err) {
+      notify(err.message);
+    }
+  }
+
+  return (
+    <section className="workspace-layout">
+      <input
+        ref={profileDocInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,application/pdf"
+        onChange={uploadProfileDoc}
+        style={{ display: 'none' }}
+      />
+      <div className="stack">
+        <section className="intro-band compact-intro">
+          <div>
+            <p className="eyebrow">{roleName(role)} Setup</p>
+            <h2>{role === 'owner' ? 'Verify your fleet profile.' : 'Verify your shipping profile.'}</h2>
+            <p>
+              {role === 'owner'
+                ? 'Upload owner documents, add vehicles, and wait for admin approval before taking work.'
+                : 'Upload shipper documents, then create shipment requests and review carrier bids.'}
+            </p>
+          </div>
+          <div className="command-summary">
+            <StatusBadge tone={user.isVerified ? 'success' : 'warn'}>
+              {user.isVerified ? 'Verified' : 'Admin review'}
+            </StatusBadge>
+            <strong>{user.email || 'No active session'}</strong>
+            <span>{role === 'owner' ? `${fleet.length} vehicle records` : 'Shipping profile'}</span>
+          </div>
+        </section>
+
+        <Panel title="Verification Documents" eyebrow="Admin Review">
+          <div className="doc-list">
+            {profileDocs.map((item) => {
+              const slug = slugDocumentType(item);
+              return (
+                <button type="button" key={item} disabled={uploading === slug} onClick={() => openProfileDoc(item)}>
+                  {uploading === slug ? 'Uploading...' : item}
+                </button>
+              );
+            })}
+          </div>
+        </Panel>
+
+        {role === 'owner' ? (
+          <Panel title="Vehicle Registration" eyebrow="Fleet">
+            <form className="modal-form" onSubmit={submitTruck}>
+              <div className="form-grid">
+                <Input
+                  label="Plate number"
+                  value={truckDraft.plateNumber}
+                  onChange={(value) => updateTruckDraft('plateNumber', value)}
+                />
+                <Select
+                  label="Vehicle type"
+                  value={truckDraft.type}
+                  onChange={(value) => updateTruckDraft('type', value)}
+                  options={vehicleTypes}
+                />
+                <Input
+                  label="Capacity tonnes"
+                  type="number"
+                  value={truckDraft.capacityTonnes}
+                  onChange={(value) => updateTruckDraft('capacityTonnes', Number(value))}
+                />
+                <Input
+                  label="Preferred routes"
+                  value={truckDraft.routes}
+                  onChange={(value) => updateTruckDraft('routes', value)}
+                />
+              </div>
+              <button className="primary icon-label" type="submit">
+                <Truck size={18} />
+                <span>Add Vehicle</span>
+              </button>
+            </form>
+          </Panel>
+        ) : (
+          <Panel title="First Shipment" eyebrow="Start">
+            <div className="button-row">
+              <button className="primary icon-label" type="button" onClick={() => navigate('/app/book')}>
+                <Plus size={18} />
+                <span>Book Shipment</span>
+              </button>
+              <button className="secondary icon-label" type="button" onClick={() => navigate('/app/bids')}>
+                <BarChart3 size={18} />
+                <span>Review Bids</span>
+              </button>
+            </div>
+          </Panel>
+        )}
+      </div>
+
+      <aside className="side-stack">
+        <Panel title="Role Access" eyebrow="Workspace">
+          <div className="doc-list compact">
+            {(roleNavigation[role] || roleNavigation.client).map((item) => (
+              <button type="button" key={item.path} onClick={() => navigate(item.path)}>
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </Panel>
+        <Panel title={role === 'owner' ? 'Need To Ship?' : 'Own Trucks?'} eyebrow="Optional">
+          <div className="verification-card">
+            <UserRound size={28} />
+            <strong>{role === 'owner' ? 'Create a shipper profile' : 'Create an owner profile'}</strong>
+            <span>Use a separate role profile when you need the other side of the marketplace.</span>
+          </div>
+          <a className="secondary full icon-label" href="/#signup">
+            <UserRound size={18} />
+            <span>{role === 'owner' ? 'Start Shipping' : 'Register Fleet'}</span>
+          </a>
+        </Panel>
+      </aside>
+    </section>
+  );
+}
+
+function BidsPage({ notify, user }) {
+  const role = roleForUser(user);
+  const [items, setItems] = useState([]);
+  const [busy, setBusy] = useState('');
+
+  useEffect(() => {
+    const loader = role === 'owner' ? api.listOpenBookings : api.listBookings;
+    loader()
+      .then((data) => {
+        const bookings = Array.isArray(data.bookings) ? data.bookings : [];
+        setItems(role === 'owner' ? bookings.map(normalizeOpenLoad) : bookings.map(normalizeBookingShipment));
+      })
+      .catch(() => setItems(role === 'owner' ? workspaceLoads : workspaceShipments));
+  }, [role]);
+
+  async function submitOwnerBid(load) {
+    if (!load?.id) {
+      notify('Bid needs a synced booking');
+      return;
+    }
+
+    setBusy(load.id);
+    try {
+      await api.submitBookingBid(load.id, {
+        amount: load.price || 1,
+        message: 'Available for pickup. Documents ready.'
+      });
+      notify(`Bid submitted for ${load.route}`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function acceptBid(booking, bid) {
+    setBusy(`${booking.bookingId}-${bid.id}`);
+    try {
+      const data = await api.acceptBookingBid(booking.bookingId, bid.id);
+      const updated = normalizeBookingShipment(data.booking || {});
+      setItems((current) => current.map((item) => (item.bookingId === updated.bookingId ? updated : item)));
+      notify(`Awarded ${bid.ownerName}`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  if (role === 'owner') {
+    return (
+      <section className="workspace-layout">
+        <div className="stack">
+          <Panel title="Available Loads" eyebrow="Find Work">
+            <div className="shipment-stack">
+              {items.length ? (
+                items.map((load) => (
+                  <article className="load-row" key={load.id || load.route}>
+                    <div>
+                      <StatusBadge tone={load.risk === 'High' ? 'warn' : 'success'}>{load.fit}</StatusBadge>
+                      <h3>{load.cargo}</h3>
+                      <p>{load.route}</p>
+                      <small>
+                        {load.distance} - {load.window}
+                      </small>
+                    </div>
+                    <div>
+                      <strong>{money(load.price)}</strong>
+                      <button
+                        className="primary"
+                        type="button"
+                        disabled={busy === load.id}
+                        onClick={() => submitOwnerBid(load)}
+                      >
+                        {busy === load.id ? 'Submitting...' : 'Place Bid'}
+                      </button>
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <EmptyState title="No open loads" detail="New shipper requests will appear here after verification." />
+              )}
+            </div>
+          </Panel>
+        </div>
+        <aside className="side-stack">
+          <Panel title="Owner Rules" eyebrow="Bidding">
+            <div className="doc-list compact">
+              <span>Bid on open work</span>
+              <span>Keep vehicle documents ready</span>
+              <span>Start pickup after award</span>
+            </div>
+          </Panel>
+        </aside>
+      </section>
+    );
+  }
+
+  return (
+    <section className="workspace-layout">
+      <div className="stack">
+        <Panel title="Bids Received" eyebrow="Shipper Review">
+          <div className="cards-grid">
+            {items.length ? (
+              items.map((booking) => (
+                <article className="quote-card" key={booking.id}>
+                  <StatusBadge tone={booking.bids?.length ? 'warn' : 'default'}>{booking.status}</StatusBadge>
+                  <h3>{booking.route}</h3>
+                  <p>{booking.cargo}</p>
+                  <small>{booking.bids?.length || 0} carrier bids</small>
+                  <div className="doc-list compact">
+                    {(booking.bids || []).map((bid) => (
+                      <button
+                        type="button"
+                        key={bid.id}
+                        disabled={busy === `${booking.bookingId}-${bid.id}` || bid.status === 'accepted'}
+                        onClick={() => acceptBid(booking, bid)}
+                      >
+                        {bid.status === 'accepted' ? 'Awarded' : `${bid.ownerName} - ${money(bid.amount)}`}
+                      </button>
+                    ))}
+                  </div>
+                </article>
+              ))
+            ) : (
+              <EmptyState title="No bid records" detail="Create a shipment request to receive carrier bids." />
+            )}
+          </div>
+        </Panel>
+      </div>
+      <aside className="side-stack">
+        <Panel title="Next Step" eyebrow="Shipping">
+          <button className="primary full icon-label" type="button" onClick={() => navigate('/app/book')}>
+            <Plus size={18} />
+            <span>Create Request</span>
+          </button>
+        </Panel>
+      </aside>
+    </section>
+  );
+}
+
+function DocumentsPage({ notify, user }) {
+  const role = roleForUser(user);
+  const [shipments, setShipments] = useState([]);
+  const [fleet, setFleet] = useState([]);
+  const [busy, setBusy] = useState('');
+  const pendingUploadRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    api
+      .listBookings()
+      .then((data) => Array.isArray(data.bookings) && setShipments(data.bookings.map(normalizeBookingShipment)))
+      .catch(() => setShipments(workspaceShipments));
+
+    if (role === 'owner') {
+      api
+        .fleetTrucks()
+        .then((data) => Array.isArray(data.trucks) && setFleet(data.trucks.map(normalizeTruck)))
+        .catch(() => setFleet(workspaceFleet.slice(0, 2)));
+    }
+  }, [role]);
+
+  async function downloadDoc(definition, shipment) {
+    if (!shipment?.bookingId) {
+      notify('Document needs a synced booking');
+      return;
+    }
+
+    setBusy(`${shipment.bookingId}-${definition.type}`);
+    try {
+      await api.downloadDocument(definition.type, shipment.bookingId);
+      notify(`${definition.label} downloaded`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  function openUpload(targetType, targetId, documentType) {
+    pendingUploadRef.current = { targetType, targetId, documentType };
+    fileInputRef.current?.click();
+  }
+
+  async function uploadDocument(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    const pending = pendingUploadRef.current;
+    if (!file || !pending) return;
+
+    setBusy(`${pending.targetId}-${pending.documentType}`);
+    try {
+      if (pending.targetType === 'truck') {
+        await api.uploadTruckDocument(pending.targetId, pending.documentType, file);
+      } else {
+        const data = await api.uploadCargo([file]);
+        saveLocal('shipment_documents', {
+          targetId: pending.targetId,
+          documentType: pending.documentType,
+          url: data.urls?.[0]
+        });
+      }
+      notify('Document sent to admin review');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  return (
+    <section className="workspace-layout">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,application/pdf"
+        onChange={uploadDocument}
+        style={{ display: 'none' }}
+      />
+      <div className="stack">
+        <Panel title={role === 'owner' ? 'Fleet Documents' : 'Shipment Documents'} eyebrow="Admin Ready">
+          <div className="cards-grid">
+            {role === 'owner'
+              ? fleet.map((truck) => (
+                  <article className="quote-card" key={truck.id}>
+                    <StatusBadge tone={truck.verified ? 'success' : 'warn'}>{truck.documentStatus}</StatusBadge>
+                    <h3>{truck.plate}</h3>
+                    <p>{truck.name}</p>
+                    <div className="doc-list compact">
+                      {['Insurance', 'Vehicle logbook', 'Road license'].map((item) => {
+                        const slug = slugDocumentType(item);
+                        return (
+                          <button
+                            type="button"
+                            key={item}
+                            disabled={busy === `${truck.id}-${slug}`}
+                            onClick={() => openUpload('truck', truck.id, slug)}
+                          >
+                            {busy === `${truck.id}-${slug}` ? 'Uploading...' : item}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </article>
+                ))
+              : shipments.map((shipment) => (
+                  <article className="quote-card" key={shipment.id}>
+                    <StatusBadge>{shipment.status}</StatusBadge>
+                    <h3>{shipment.id}</h3>
+                    <p>{shipment.route}</p>
+                    <div className="doc-list compact">
+                      {documentActions.map((definition) => (
+                        <button
+                          type="button"
+                          key={definition.label}
+                          disabled={busy === `${shipment.bookingId}-${definition.type}`}
+                          onClick={() =>
+                            definition.mode === 'upload'
+                              ? openUpload('shipment', shipment.id, definition.type)
+                              : downloadDoc(definition, shipment)
+                          }
+                        >
+                          {busy === `${shipment.bookingId}-${definition.type}` ? 'Working...' : definition.label}
+                        </button>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+            {role === 'owner' && !fleet.length ? (
+              <EmptyState title="No vehicles yet" detail="Add a vehicle from onboarding or the owner dashboard." />
+            ) : null}
+            {role !== 'owner' && !shipments.length ? (
+              <EmptyState title="No shipment documents" detail="Create a booking to generate documents." />
+            ) : null}
+          </div>
+        </Panel>
+      </div>
+      <aside className="side-stack">
+        <Panel title="Profile Documents" eyebrow="Account">
+          <button className="secondary full icon-label" type="button" onClick={() => navigate('/app/onboarding')}>
+            <ShieldCheck size={18} />
+            <span>Open Verification</span>
+          </button>
+        </Panel>
+      </aside>
+    </section>
+  );
+}
+
+function PaymentsPage({ notify, user }) {
+  const role = roleForUser(user);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [shipments, setShipments] = useState([]);
+  const [withdrawBusy, setWithdrawBusy] = useState(false);
+  const [withdrawDraft, setWithdrawDraft] = useState({
+    amount: 100,
+    method: 'mpesa',
+    destination: '+254700000000',
+    accountName: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'iTruck User'
+  });
+
+  useEffect(() => {
+    api
+      .wallet()
+      .then((data) => Number.isFinite(Number(data.balance)) && setWalletBalance(Number(data.balance)))
+      .catch(() => {});
+    api
+      .listBookings()
+      .then((data) => Array.isArray(data.bookings) && setShipments(data.bookings.map(normalizeBookingShipment)))
+      .catch(() => setShipments(workspaceShipments));
+  }, []);
+
+  function updateWithdraw(key, value) {
+    setWithdrawDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  async function requestWithdrawal(event) {
+    event.preventDefault();
+    setWithdrawBusy(true);
+    try {
+      await api.withdraw({ ...withdrawDraft, amount: Number(withdrawDraft.amount) });
+      setWalletBalance((current) => Math.max(0, current - Number(withdrawDraft.amount || 0)));
+      notify('Withdrawal queued');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setWithdrawBusy(false);
+    }
+  }
+
+  return (
+    <section className="workspace-layout">
+      <div className="stack">
+        <section className="metrics-grid">
+          <MetricCard icon={Wallet} label="Wallet" value={money(walletBalance)} detail="Live payment balance" />
+          <MetricCard icon={CreditCard} label="Role" value={roleName(role)} detail="Payment mode" />
+          <MetricCard icon={PackageCheck} label="Shipments" value={shipments.length} detail="Billing records" />
+          <MetricCard icon={FileText} label="Invoices" value={shipments.length} detail="Document service" />
+        </section>
+        <Panel title={role === 'owner' ? 'Withdraw Earnings' : 'Shipment Invoices'} eyebrow="Payments">
+          {role === 'owner' ? (
+            <form className="payout-form" onSubmit={requestWithdrawal}>
+              <Input
+                label="Amount USD"
+                type="number"
+                value={withdrawDraft.amount}
+                onChange={(value) => updateWithdraw('amount', Number(value))}
+              />
+              <Select
+                label="Method"
+                value={withdrawDraft.method}
+                onChange={(value) => updateWithdraw('method', value)}
+                options={['mpesa', 'mtn', 'bank', 'stripe']}
+              />
+              <Input
+                label="Phone or account"
+                value={withdrawDraft.destination}
+                onChange={(value) => updateWithdraw('destination', value)}
+              />
+              <button className="primary full" type="submit" disabled={withdrawBusy}>
+                {withdrawBusy ? 'Queuing...' : 'Withdraw'}
+              </button>
+            </form>
+          ) : (
+            <div className="doc-list">
+              {shipments.map((shipment) => (
+                <button
+                  type="button"
+                  key={shipment.id}
+                  onClick={() => {
+                    if (!shipment.bookingId) {
+                      notify('Invoice needs a synced booking');
+                      return;
+                    }
+                    api.downloadDocument('invoice', shipment.bookingId).catch((err) => notify(err.message));
+                  }}
+                >
+                  {shipment.id} invoice
+                </button>
+              ))}
+              {!shipments.length ? <span>No invoices yet</span> : null}
+            </div>
+          )}
+        </Panel>
+      </div>
+    </section>
+  );
+}
+
+function MessagesPage({ notify, user }) {
+  const [shipments, setShipments] = useState([]);
+  const [selected, setSelected] = useState(0);
+  const [messages, setMessages] = useState([]);
+  const [draft, setDraft] = useState('');
+
+  useEffect(() => {
+    api
+      .listBookings()
+      .then((data) => Array.isArray(data.bookings) && setShipments(data.bookings.map(normalizeBookingShipment)))
+      .catch(() => setShipments(workspaceShipments));
+  }, []);
+
+  const shipment = shipments[selected] || shipments[0];
+  const messageKey = shipment?.bookingId || shipment?.id || '';
+
+  useEffect(() => {
+    if (!shipment) return;
+    setMessages(readLocalChat(shipment));
+    api
+      .listMessages(messageKey)
+      .then((data) => {
+        const items = Array.isArray(data.items) ? data.items : [];
+        if (items.length) setMessages(items.map((item) => normalizeWorkflowMessage(item, user?._id)));
+      })
+      .catch(() => {});
+  }, [messageKey, shipment, user?._id]);
+
+  async function sendMessage(event) {
+    event.preventDefault();
+    if (!shipment || !draft.trim()) return;
+
+    const text = draft.trim();
+    setDraft('');
+    const next = [
+      ...messages,
+      { id: `message-${Date.now()}`, author: 'me', name: 'You', text, createdAt: new Date().toISOString() }
+    ];
+    setMessages(next);
+    persistLocalChat(shipment.id, next);
+
+    try {
+      await api.sendMessage({
+        booking: shipment.bookingId,
+        bookingId: shipment.bookingId,
+        shipmentId: shipment.id,
+        route: shipment.route,
+        text,
+        sender: 'me',
+        status: 'sent'
+      });
+    } catch (err) {
+      notify(err.message);
+    }
+  }
+
+  return (
+    <section className="tracking-layout">
+      <Panel title="Threads" eyebrow="Shipments">
+        <div className="tracking-list">
+          {shipments.map((item, index) => (
+            <button
+              className={index === selected ? 'active' : ''}
+              type="button"
+              key={item.id}
+              onClick={() => setSelected(index)}
+            >
+              <strong>{item.id}</strong>
+              <span>{item.route}</span>
+              <small>{item.status}</small>
+            </button>
+          ))}
+          {!shipments.length ? (
+            <EmptyState title="No messages" detail="Messages attach to synced shipment records." />
+          ) : null}
+        </div>
+      </Panel>
+      <Panel title={shipment?.route || 'Messages'} eyebrow="In-house Text">
+        <div className="chat-thread">
+          {messages.map((message) => (
+            <div className={`chat-message ${message.author === 'me' ? 'me' : 'them'}`} key={message.id}>
+              <p>{message.text}</p>
+              <small>
+                {message.name} - {formatMessageTime(message.createdAt)}
+              </small>
+            </div>
+          ))}
+        </div>
+        <form className="chat-compose" onSubmit={sendMessage}>
+          <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Type a message..." />
+          <button className="primary" type="submit" aria-label="Send message">
+            <Send size={18} />
+          </button>
+        </form>
+      </Panel>
+    </section>
   );
 }
 
@@ -2399,13 +3204,11 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
 
     setUploadingDocument(documentType);
     try {
-      const data = await api.uploadCargo([file]);
-      saveLocal('profile_documents', {
-        item: documentType,
-        user: user.email || email,
-        fileName: file.name,
-        url: data.urls?.[0]
-      });
+      const data = await api.uploadProfileDocument(slugDocumentType(documentType), file);
+      if (data.user) {
+        setSession({ user: data.user });
+        setUser(data.user);
+      }
       notify(`${documentType} uploaded for review`);
     } catch (err) {
       notify(err.message);

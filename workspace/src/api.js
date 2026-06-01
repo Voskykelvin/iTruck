@@ -109,6 +109,26 @@ function documentFilename(type, bookingId) {
   return `${bookingId}-${type}.pdf`;
 }
 
+function filesBody(field, files) {
+  const body = new FormData();
+  Array.from(files || []).forEach((file) => body.append(field, file));
+  return body;
+}
+
+async function uploadCargoFiles(files) {
+  return request('/upload/cargo', { method: 'POST', body: filesBody('files', files) });
+}
+
+async function uploadDocument(path, documentType, file) {
+  const data = await uploadCargoFiles([file]);
+  const url = data.urls?.[0];
+  if (!url) throw new Error('Document upload did not return a URL');
+  return request(path, {
+    method: 'PATCH',
+    body: JSON.stringify({ url, fileName: file.name, documentType })
+  });
+}
+
 export const api = {
   request,
   health: () => request('/health'),
@@ -157,16 +177,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload)
     }),
-  uploadCargo: (files) => {
-    const body = new FormData();
-    Array.from(files || []).forEach((file) => body.append('files', file));
-    return request('/upload/cargo', { method: 'POST', body });
-  },
+  uploadCargo: uploadCargoFiles,
   uploadAvatar: (file) => {
     const body = new FormData();
     body.append('file', file);
     return request('/upload/avatar', { method: 'POST', body });
   },
+  uploadProfileDocument: (documentType, file) =>
+    uploadDocument(`/users/documents/${encodeURIComponent(documentType)}`, documentType, file),
+  uploadTruckDocument: (truckId, documentType, file) =>
+    uploadDocument(
+      `/trucks/${encodeURIComponent(truckId)}/documents/${encodeURIComponent(documentType)}`,
+      documentType,
+      file
+    ),
   adminStats: () => request('/admin/stats'),
   adminListUsers: () => request('/admin/users'),
   adminListTrucks: () => request('/admin/trucks'),

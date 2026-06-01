@@ -245,6 +245,39 @@ test('password updates require both current and new passwords', async () => {
   );
 });
 
+test('users can submit verification documents for admin review', async () => {
+  const res = await request(app)
+    .patch('/api/users/documents/owner-kyc')
+    .set('Authorization', authHeader({ id: 'demo-owner-james', role: 'owner' }))
+    .send({ url: 'https://res.cloudinary.com/demo/raw/upload/owner-kyc.pdf', fileName: 'owner-kyc.pdf' });
+
+  expect(res.status).toBe(200);
+  expect(res.body.user.documents).toEqual(
+    expect.arrayContaining([expect.objectContaining({ type: 'owner-kyc', status: 'pending' })])
+  );
+});
+
+test('owners can attach truck documents for admin review', async () => {
+  const created = await request(app)
+    .post('/api/trucks')
+    .set('Authorization', authHeader({ id: 'demo-owner-docs', role: 'owner' }))
+    .send({
+      type: 'Lorry',
+      plateNumber: `DOC-${Date.now()}`,
+      capacityTonnes: 8
+    });
+
+  const res = await request(app)
+    .patch(`/api/trucks/${created.body.truck._id}/documents/insurance`)
+    .set('Authorization', authHeader({ id: 'demo-owner-docs', role: 'owner' }))
+    .send({ url: 'https://res.cloudinary.com/demo/raw/upload/insurance.pdf', fileName: 'insurance.pdf' });
+
+  expect(res.status).toBe(200);
+  expect(res.body.truck.documents).toEqual(
+    expect.arrayContaining([expect.objectContaining({ type: 'insurance', status: 'pending' })])
+  );
+});
+
 test('avatar uploads reject unsupported file types before storage', async () => {
   const res = await request(app)
     .post('/api/upload/avatar')

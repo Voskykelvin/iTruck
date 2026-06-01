@@ -10,6 +10,7 @@ const {
   createTruckSchema,
   listTrucksSchema,
   ratingSchema,
+  truckDocumentSchema,
   truckIdSchema
 } = require('../validators/trucks');
 const { demoTrucks } = require('../data/demo-users');
@@ -55,6 +56,22 @@ function filterTrucks(trucks, query) {
     if ((query.isAvailable === true || query.isAvailable === 'true') && !truck.isAvailable) return false;
     return true;
   });
+}
+
+function upsertDocument(documents = [], type, patch) {
+  const existing = documents.find((item) => item.type === type);
+  const update = {
+    type,
+    url: patch.url,
+    fileName: patch.fileName,
+    status: 'pending',
+    notes: patch.notes || '',
+    reviewedAt: undefined
+  };
+
+  if (existing) Object.assign(existing, update);
+  else documents.push(update);
+  return documents;
 }
 
 router.get('/', listTrucksSchema, validate, async (req, res, next) => {
@@ -172,6 +189,44 @@ router.delete('/:id', protect, archiveTruckSchema, validate, async (req, res, ne
     next(err);
   }
 });
+
+router.patch(
+  '/:id/documents/:documentType',
+  protect,
+  restrictTo('owner', 'admin'),
+  truckDocumentSchema,
+  validate,
+  async (req, res, next) => {
+    try {
+      if (requireDatabase(req, res)) return;
+
+      if (!mongoReady()) {
+        const truck = memoryTrucks.find(
+          (item) =>
+            !item.archivedAt && String(item._id || item.id || item.plateNumber || item.plate) === String(req.params.id)
+        );
+        if (!truck || (req.user.role !== 'admin' && String(truck.owner) !== String(req.user._id))) {
+          return res.status(404).json({ message: 'Truck not found' });
+        }
+
+        truck.documents = upsertDocument(truck.documents || [], req.params.documentType, req.body);
+        return res.json({ truck, mode: 'memory' });
+      }
+
+      const query = activeTruckFilter({ _id: req.params.id });
+      if (req.user.role !== 'admin') query.owner = req.user._id;
+
+      const truck = await Truck.findOne(query);
+      if (!truck) return res.status(404).json({ message: 'Truck not found' });
+
+      truck.documents = upsertDocument(truck.documents || [], req.params.documentType, req.body);
+      await truck.save();
+      res.json({ truck });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 router.post('/:id/ratings', protect, ratingSchema, validate, async (req, res, next) => {
   try {
