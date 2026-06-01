@@ -1,7 +1,6 @@
 const crypto = require('crypto');
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const { body } = require('express-validator');
 const User = require('../models/User');
 const RefreshToken = require('../models/RefreshToken');
 const { demoModeEnabled, isLiveMode, mongoReady, requireDatabase } = require('../config/runtime');
@@ -9,30 +8,15 @@ const asyncHandler = require('../config/asyncHandler');
 const logger = require('../config/logger');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
+const { loginSchema, registerSchema } = require('../validators/auth');
+const { mongoIdParam } = require('../validators/common');
+const AppError = require('../utils/AppError');
+const { parseDevice } = require('../utils/deviceParser');
 const { demoUsers, safeUser } = require('../data/demo-users');
 
 const router = express.Router();
 const memoryUsers = [...demoUsers];
 const REFRESH_COOKIE = process.env.REFRESH_COOKIE_NAME || 'itruck_refresh';
-
-const registerValidation = [
-  body('firstName').trim().isLength({ min: 1, max: 80 }).withMessage('First name is required'),
-  body('lastName').trim().isLength({ min: 1, max: 80 }).withMessage('Last name is required'),
-  body('email').isEmail().withMessage('Provide a valid email address').normalizeEmail(),
-  body('phone').trim().isLength({ min: 6, max: 32 }).withMessage('Phone is required'),
-  body('countryCode').optional({ checkFalsy: true }).trim().isLength({ min: 2, max: 8 }).withMessage('Country code is invalid'),
-  body('country').trim().isLength({ min: 2, max: 80 }).withMessage('Country is required'),
-  body('password').isLength({ min: 8, max: 128 }).withMessage('Password must be at least 8 characters'),
-  body('accountType').optional({ checkFalsy: true }).isIn(['personal', 'business', 'ngo']).withMessage('Account type is invalid'),
-  body('company').optional({ checkFalsy: true }).trim().isLength({ max: 120 }).withMessage('Company is too long'),
-  validate
-];
-
-const loginValidation = [
-  body('email').isEmail().withMessage('Provide a valid email address').normalizeEmail(),
-  body('password').isLength({ min: 8, max: 128 }).withMessage('Password must be at least 8 characters'),
-  validate
-];
 
 function parseDurationMs(value, fallbackMs) {
   const input = String(value || '').trim();
@@ -107,12 +91,37 @@ function getRefreshToken(req) {
   return req.cookies?.[REFRESH_COOKIE] || req.body?.refreshToken || null;
 }
 
-async function createRefreshSession(user, req) {
+function getDeviceId(req) {
+  return req.get('x-device-id') || req.body?.deviceId || null;
+}
+
+function requestIp(req) {
+  return req.headers['x-forwarded-for'] || req.ip || req.socket?.remoteAddress || null;
+}
+
+async function createRefreshSession(user, req, options = {}) {
+  const deviceId = options.deviceId || getDeviceId(req);
+  if (!deviceId) throw AppError.badRequest('deviceId is required');
+
   const expiresAt = new Date(Date.now() + parseDurationMs(refreshTokenExpiry(), 7 * 24 * 60 * 60 * 1000));
+  const parsedDevice = parseDevice(req.get('user-agent') || '', requestIp(req));
+
+  if (options.revokeExisting !== false) {
+    await RefreshToken.updateMany(
+      { user: user._id, deviceId, revokedAt: null },
+      { $set: { revokedAt: new Date() } }
+    );
+  }
+
   const session = await RefreshToken.create({
     user: user._id,
     tokenHash: crypto.randomBytes(32).toString('hex'),
     expiresAt,
+    deviceId,
+    deviceName: options.deviceName || parsedDevice.deviceName,
+    deviceType: parsedDevice.deviceType,
+    ipAddress: parsedDevice.ipAddress,
+    lastUsedAt: new Date(),
     userAgent: req.get('user-agent'),
     ip: req.ip
   });
@@ -159,10 +168,10 @@ async function register(role, req, res, next) {
   }
 }
 
-router.post('/register/owner', registerValidation, (req, res, next) => register('owner', req, res, next));
-router.post('/register/client', registerValidation, (req, res, next) => register('client', req, res, next));
+router.post('/register/owner', registerSchema, validate, (req, res, next) => register('owner', req, res, next));
+router.post('/register/client', registerSchema, validate, (req, res, next) => register('client', req, res, next));
 
-router.post('/login', loginValidation, asyncHandler(async (req, res) => {
+router.post('/login', loginSchema, validate, asyncHandler(async (req, res) => {
   if (requireDatabase(req, res)) return;
   if (!mongoReady()) {
     if (!demoModeEnabled()) return res.status(503).json({ message: 'Demo login disabled' });
@@ -176,7 +185,7 @@ router.post('/login', loginValidation, asyncHandler(async (req, res) => {
 
   const user = await User.findOne({ email: req.body.email }).select('+password');
   if (!user || !(await user.comparePassword(req.body.password))) {
-    return res.status(401).json({ message: 'Invalid email or password' });
+    throw AppError.unauthorized('Invalid email or password');
   }
 
   user.lastLogin = new Date();
@@ -186,38 +195,55 @@ router.post('/login', loginValidation, asyncHandler(async (req, res) => {
 
 router.post('/refresh', asyncHandler(async (req, res) => {
   if (requireDatabase(req, res)) return;
+  if (!mongoReady()) throw AppError.unauthorized('Refresh is unavailable until a database session exists');
 
   const refreshToken = getRefreshToken(req);
-  if (!refreshToken) return res.status(401).json({ message: 'Refresh token required' });
+  const deviceId = getDeviceId(req);
+  if (!refreshToken) throw AppError.unauthorized('Refresh token required');
+  if (!deviceId) throw AppError.unauthorized('Device id required');
 
   let decoded;
   try {
     decoded = jwt.verify(refreshToken, process.env.JWT_SECRET || 'dev-secret');
-  } catch (err) {
-    return res.status(401).json({ message: 'Invalid or expired refresh token' });
+  } catch (_err) {
+    throw AppError.unauthorized('Invalid or expired refresh token');
   }
 
   if (decoded.type !== 'refresh' || !decoded.sid) {
-    return res.status(401).json({ message: 'Invalid refresh token' });
+    throw AppError.unauthorized('Invalid refresh token');
   }
 
   const tokenHash = hashToken(refreshToken);
-  const session = await RefreshToken.findOne({
-    _id: decoded.sid,
-    user: decoded.id,
-    tokenHash,
-    revokedAt: null,
-    expiresAt: { $gt: new Date() }
-  });
+  const session = await RefreshToken.findActive(tokenHash);
 
-  if (!session) return res.status(401).json({ message: 'Refresh token revoked or expired' });
+  if (!session || String(session._id) !== String(decoded.sid) || String(session.user) !== String(decoded.id)) {
+    const compromised = await RefreshToken.findOne({ _id: decoded.sid, user: decoded.id, tokenHash });
+    if (compromised?.revokedAt || compromised?.replacedByTokenHash) {
+      await RefreshToken.revokeAll(compromised.user);
+      clearRefreshCookie(res);
+    }
+    throw AppError.unauthorized('Refresh token revoked or expired');
+  }
+
+  if (session.deviceId && session.deviceId !== deviceId) {
+    await session.revoke();
+    clearRefreshCookie(res);
+    throw AppError.unauthorized('Device mismatch. Please log in again.');
+  }
 
   const user = await User.findById(decoded.id);
   if (!user || user.isActive === false) {
-    return res.status(401).json({ message: 'User no longer exists' });
+    throw AppError.unauthorized('User no longer exists');
   }
 
-  const replacement = await createRefreshSession(user, req);
+  session.deviceId = session.deviceId || deviceId;
+  session.lastUsedAt = new Date();
+
+  const replacement = await createRefreshSession(user, req, {
+    deviceId,
+    deviceName: session.deviceName,
+    revokeExisting: false
+  });
   session.revokedAt = new Date();
   session.replacedByTokenHash = replacement.tokenHash;
   await session.save();
@@ -248,5 +274,58 @@ router.post('/logout', asyncHandler(async (req, res) => {
 }));
 
 router.get('/me', protect, (req, res) => res.json({ user: req.user }));
+
+router.get('/sessions', protect, asyncHandler(async (req, res) => {
+  if (requireDatabase(req, res)) return;
+  if (!mongoReady()) return res.json({ sessions: [], mode: 'memory' });
+
+  const sessions = await RefreshToken.activeSessions(req.user._id);
+  const refreshToken = getRefreshToken(req);
+  const current = refreshToken ? await RefreshToken.findActive(hashToken(refreshToken)) : null;
+  const currentDeviceId = current?.deviceId || getDeviceId(req);
+
+  res.json({
+    sessions: sessions.map(session => ({
+      id: session._id,
+      deviceId: session.deviceId,
+      deviceName: session.deviceName,
+      deviceType: session.deviceType,
+      ipAddress: session.ipAddress,
+      lastUsedAt: session.lastUsedAt,
+      createdAt: session.createdAt,
+      expiresAt: session.expiresAt,
+      isCurrent: Boolean(currentDeviceId && session.deviceId === currentDeviceId)
+    }))
+  });
+}));
+
+router.delete('/sessions', protect, asyncHandler(async (req, res) => {
+  if (requireDatabase(req, res)) return;
+  if (!mongoReady()) return res.json({ message: 'Sessions cleared', mode: 'memory' });
+
+  const everywhere = req.query.everywhere === 'true';
+  const refreshToken = getRefreshToken(req);
+  const current = refreshToken ? await RefreshToken.findActive(hashToken(refreshToken)) : null;
+  const keepDeviceId = everywhere ? null : current?.deviceId;
+
+  await RefreshToken.revokeAll(req.user._id, keepDeviceId);
+  if (everywhere) clearRefreshCookie(res);
+  res.json({ message: everywhere ? 'All sessions revoked' : 'All other sessions revoked' });
+}));
+
+router.delete('/sessions/:sessionId', protect, mongoIdParam('sessionId'), validate, asyncHandler(async (req, res) => {
+  if (requireDatabase(req, res)) return;
+  if (!mongoReady()) return res.json({ message: 'Session revoked', mode: 'memory' });
+
+  const session = await RefreshToken.findOne({
+    _id: req.params.sessionId,
+    user: req.user._id,
+    revokedAt: null
+  });
+
+  if (!session) throw AppError.notFound('Session not found');
+  await session.revoke();
+  res.json({ message: 'Session revoked' });
+}));
 
 module.exports = router;

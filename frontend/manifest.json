@@ -2,7 +2,7 @@
   "name": "iTruck Africa",
   "short_name": "iTruck",
   "description": "Book verified trucks, manage freight, and track shipments across African trade lanes.",
-  "start_url": "/index.html",
+  "start_url": "/app/shipper",
   "scope": "/",
   "display": "standalone",
   "background_color": "#F8FAFC",
@@ -25,13 +25,13 @@
     {
       "name": "Book Truck",
       "short_name": "Book",
-      "url": "/pages/book-truck.html",
+      "url": "/app/book",
       "icons": [{ "src": "/assets/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Track Shipment",
       "short_name": "Track",
-      "url": "/pages/tracking.html",
+      "url": "/app/tracking",
       "icons": [{ "src": "/assets/icon-192.png", "sizes": "192x192" }]
     }
   ]

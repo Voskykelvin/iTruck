@@ -12,10 +12,18 @@
     "seed": "npm --prefix backend run seed",
     "test": "npm --prefix backend test",
     "live:check": "npm --prefix backend run live:check",
-    "lint": "echo \"No lint config yet\"",
+    "lint": "eslint \"backend/**/*.js\" \"workspace/src/**/*.{js,jsx}\"",
+    "format:check": "prettier --check \"backend/**/*.js\" \"workspace/src/**/*.{js,jsx}\" \"frontend/js/**/*.js\"",
+    "format": "prettier --write \"backend/**/*.js\" \"workspace/src/**/*.{js,jsx}\" \"frontend/js/**/*.js\"",
+    "ci:check": "npm run lint && npm test && npm run app:build",
     "docker:build": "docker build -t itruck .",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f app"
+  },
+  "devDependencies": {
+    "eslint": "^10.4.1",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.3"
   }
 }

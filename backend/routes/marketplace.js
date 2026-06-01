@@ -1,5 +1,7 @@
 const express = require('express');
 const matching = require('../services/matching');
+const validate = require('../middleware/validate');
+const { estimateSchema } = require('../validators/marketplace');
 
 const router = express.Router();
 
@@ -30,7 +32,7 @@ router.get('/localization', (req, res) => {
   });
 });
 
-router.post('/estimate', (req, res) => {
+router.post('/estimate', estimateSchema, validate, (req, res) => {
   res.json(matching.buildEstimate(req.body));
 });
 

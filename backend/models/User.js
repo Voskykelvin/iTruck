@@ -18,7 +18,6 @@ const userSchema = new mongoose.Schema({
   avatar: String,
   rating: { type: Number, default: 0, min: 0, max: 5 },
   totalTrips: { type: Number, default: 0 },
-  walletBalance: { type: Number, default: 0 },
   documents: [{ type: String, url: String, status: { type: String, default: 'pending' } }],
   pushSubscription: Object,
   lastLogin: Date

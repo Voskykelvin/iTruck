@@ -1,31 +1,26 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const { body } = require('express-validator');
 const Truck = require('../models/Truck');
 const Booking = require('../models/Booking');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
+const { createTruckSchema, listTrucksSchema, ratingSchema, truckIdSchema } = require('../validators/trucks');
 const { demoTrucks } = require('../data/demo-users');
 
 const router = express.Router();
 const memoryTrucks = [...demoTrucks];
 
-const ratingValidation = [
-  body('score').isFloat({ min: 1, max: 5 }).withMessage('Rating score must be between 1 and 5'),
-  body('comment').optional().trim().isLength({ max: 1000 }).withMessage('Rating comment is too long'),
-  body('bookingId').optional().trim().isString()
-];
-
 function filterTrucks(trucks, query) {
   return trucks.filter(truck => {
     if (query.type && truck.type !== query.type) return false;
-    if (query.verified === 'true' && !truck.isVerified) return false;
+    if ((query.verified === true || query.verified === 'true') && !truck.isVerified) return false;
+    if ((query.isAvailable === true || query.isAvailable === 'true') && !truck.isAvailable) return false;
     return true;
   });
 }
 
-router.get('/', async (req, res, next) => {
+router.get('/', listTrucksSchema, validate, async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
@@ -34,14 +29,17 @@ router.get('/', async (req, res, next) => {
 
     const q = {};
     if (req.query.type) q.type = req.query.type;
-    if (req.query.verified === 'true') q.isVerified = true;
-    res.json({ trucks: await Truck.find(q).limit(50) });
+    if (req.query.verified === true || req.query.verified === 'true') q.isVerified = true;
+    if (req.query.isAvailable === true || req.query.isAvailable === 'true') q.isAvailable = true;
+    if (req.query.minCapacity !== undefined) q.capacityTonnes = { ...(q.capacityTonnes || {}), $gte: req.query.minCapacity };
+    if (req.query.maxPrice !== undefined) q.pricePerKm = { $lte: req.query.maxPrice };
+    res.json({ trucks: await Truck.find(q).limit(req.query.limit || 50) });
   } catch (err) {
     next(err);
   }
 });
 
-router.post('/', protect, restrictTo('owner', 'admin'), async (req, res, next) => {
+router.post('/', protect, restrictTo('owner', 'admin'), createTruckSchema, validate, async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
@@ -69,7 +67,24 @@ router.get('/fleet', protect, async (req, res, next) => {
   }
 });
 
-router.post('/:id/ratings', protect, ratingValidation, validate, async (req, res, next) => {
+router.get('/:id', truckIdSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) {
+      const truck = memoryTrucks.find(item => String(item._id || item.id || item.plateNumber || item.plate) === String(req.params.id));
+      if (!truck) return res.status(404).json({ message: 'Truck not found' });
+      return res.json({ truck, mode: 'memory' });
+    }
+
+    const truck = await Truck.findById(req.params.id);
+    if (!truck) return res.status(404).json({ message: 'Truck not found' });
+    res.json({ truck });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/ratings', protect, ratingSchema, validate, async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
 

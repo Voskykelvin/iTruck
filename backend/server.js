@@ -12,13 +12,37 @@ const pinoHttp = require('pino-http');
 const mongoSanitize = require('express-mongo-sanitize');
 const hpp = require('hpp');
 const logger = require('./config/logger');
-const { isLiveMode, requireLiveSecrets } = require('./config/runtime');
+const { assertRuntimeConfig, isLiveMode } = require('./config/runtime');
 const { apiLimiter, authLimiter, errorHandler } = require('./middleware/security');
 const { stripeRouter } = require('./routes/webhooks');
 
 const app = express();
 const server = http.createServer(app);
 const io = require('./socket')(server);
+const frontendDir = path.join(__dirname, '../frontend');
+const reactAppIndex = path.join(frontendDir, 'app/index.html');
+const legacyIndex = path.join(frontendDir, 'index.html');
+const legacyRouteMap = {
+  '/pages/dashboard-client.html': '/app/shipper',
+  '/pages/dashboard-owner.html': '/app/owner',
+  '/pages/book-truck.html': '/app/book',
+  '/pages/tracking.html': '/app/tracking',
+  '/pages/driver-contact.html': '/app/tracking',
+  '/pages/listings.html': '/app/marketplace',
+  '/pages/truck-profile.html': '/app/marketplace',
+  '/pages/profile.html': '/app/profile',
+  '/pages/admin/admin-dashboard.html': '/app/admin'
+};
+
+function sendReactApp(req, res, next) {
+  if (!fs.existsSync(reactAppIndex)) return next();
+  return res.sendFile(reactAppIndex);
+}
+
+function sendFrontendIndex(req, res) {
+  if (fs.existsSync(reactAppIndex)) return res.sendFile(reactAppIndex);
+  return res.sendFile(legacyIndex);
+}
 
 function corsOptions() {
   const rawOrigins = process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || '*';
@@ -53,7 +77,6 @@ app.use(cookieParser());
 app.use(mongoSanitize());
 app.use(hpp());
 app.use('/api', apiLimiter);
-app.use(express.static(path.join(__dirname, '../frontend')));
 
 app.use('/api/auth', authLimiter, require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
@@ -76,14 +99,15 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-app.get(['/app', '/app/*'], (req, res, next) => {
-  const workspaceIndex = path.join(__dirname, '../frontend/app/index.html');
-  if (!fs.existsSync(workspaceIndex)) return next();
-  res.sendFile(workspaceIndex);
+app.get(Object.keys(legacyRouteMap), (req, res) => {
+  res.redirect(308, legacyRouteMap[req.path]);
 });
 
+app.use(express.static(frontendDir, { index: false }));
+app.get('/', sendFrontendIndex);
+app.get(['/app', '/app/*'], sendReactApp);
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/index.html'));
+  sendFrontendIndex(req, res);
 });
 
 app.use(errorHandler);
@@ -103,16 +127,17 @@ mongoose.connection.on('disconnected', () => {
 });
 
 async function start() {
+  let mode = 'demo';
   try {
-    requireLiveSecrets();
+    mode = assertRuntimeConfig();
     if (process.env.MONGODB_URI) {
       await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 3500 });
       logger.info('MongoDB connected');
-    } else if (isLiveMode()) {
+    } else if (mode === 'live') {
       throw new Error('MONGODB_URI is required in live mode');
     }
   } catch (err) {
-    if (isLiveMode()) {
+    if (mode === 'live' || err.code === 'RUNTIME_CONFIG' || isLiveMode()) {
       logger.error({ err }, 'Live startup failed');
       process.exit(1);
     }

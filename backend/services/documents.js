@@ -29,6 +29,15 @@ function createDocument(title, booking = {}, sections = []) {
   return doc;
 }
 
+function toBuffer(doc) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    doc.on('data', chunk => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+  });
+}
+
 function createWaybill(booking) {
   return createDocument('Waybill', booking, [
     { heading: 'Transport Details', items: [['Pickup', booking.pickup || 'Nairobi'], ['Destination', booking.destination || 'Kampala'], ['Vehicle', booking.vehicle || 'Lorry'], ['Driver', booking.driver || 'James Mwangi']] },
@@ -57,4 +66,4 @@ function createCustoms(booking) {
   ]);
 }
 
-module.exports = { createWaybill, createPOD, createInvoice, createCustoms };
+module.exports = { createWaybill, createPOD, createInvoice, createCustoms, toBuffer };
