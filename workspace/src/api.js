@@ -1,6 +1,7 @@
 import { getDeviceId } from './utils/deviceId.js';
 
-const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+const configuredApiBase = import.meta.env.VITE_API_BASE || '';
+const API_BASE = configuredApiBase.includes('your-domain.example') ? '/api' : configuredApiBase || '/api';
 
 function token() {
   return localStorage.getItem('itruck_token') || '';
@@ -92,6 +93,32 @@ export const api = {
   listMessages: (bookingId) => request(`/workflow/messages?booking=${encodeURIComponent(bookingId)}`),
   sendMessage: (payload) => request('/workflow/messages', { method: 'POST', body: JSON.stringify(payload) }),
   adminStats: () => request('/admin/stats'),
+  adminListUsers: () => request('/admin/users'),
+  adminListTrucks: () => request('/admin/trucks'),
+  adminListBookings: () => request('/admin/bookings'),
+  adminListPayments: () => request('/admin/payments'),
+  adminAuditLogs: () => request('/admin/audit-logs'),
+  adminSetUserActive: (userId, isActive) =>
+    request(`/admin/users/${encodeURIComponent(userId)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isActive })
+    }),
+  adminVerifyTruck: (truckId, isVerified) =>
+    request(`/admin/trucks/${encodeURIComponent(truckId)}/verification`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isVerified })
+    }),
+  adminReviewUserDocument: (userId, documentType, payload) =>
+    request(`/admin/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(documentType)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
+  adminReviewTruckDocument: (truckId, documentType, payload) =>
+    request(`/admin/trucks/${encodeURIComponent(truckId)}/documents/${encodeURIComponent(documentType)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
+  adminNotify: (payload) => request('/admin/notify', { method: 'POST', body: JSON.stringify(payload) }),
   submitBid: (payload) => request('/workflow/bids', { method: 'POST', body: JSON.stringify(payload) }),
   reportIssue: (payload) => request('/workflow/reports', { method: 'POST', body: JSON.stringify(payload) }),
   login: (payload) =>

@@ -71,11 +71,11 @@ function dashboard() {
       </div>
     </section>
   `;
-  
+
   document
     .getElementById('runAudit')
     .addEventListener('click', () => toast('Audit queued: verification, documents, payments, and route exceptions'));
-  
+
   // Load real stats from backend
   API.adminStats()
     .then((stats) => {
@@ -120,7 +120,7 @@ document.addEventListener('click', async (event) => {
     const [section, rowIndex] = review.split(':');
     const item = rows[section]?.[rowIndex];
     if (!item) return toast('Item not found');
-    
+
     try {
       // For now, show toast with review action
       toast(`Review opened for ${section}: ${item[0]} - Ready for document verification`);
@@ -135,23 +135,34 @@ document.addEventListener('click', async (event) => {
       if (task === 'verification') {
         // Verify owners - fetch unverified users
         const result = await API.adminListUsers();
-        const unverified = result.users?.filter(u => !u.isVerified) || [];
+        const unverified = result.users?.filter((user) => user.role === 'owner' && !user.isVerified) || [];
         toast(`Found ${unverified.length} owners to verify. Processing...`);
-        
-        // Auto-verify first user as example
+
         if (unverified[0]?.id || unverified[0]?._id) {
-          await API.adminVerifyUser(unverified[0]._id || unverified[0].id, true);
-          toast(`✓ Verified ${unverified[0].firstName || unverified[0].name}`);
+          await API.adminReviewDocument(
+            unverified[0]._id || unverified[0].id,
+            'kyc',
+            'approved',
+            'Reviewed from admin dashboard'
+          );
+          toast(`KYC review recorded for ${unverified[0].firstName || unverified[0].name || 'owner'}`);
         }
       } else if (task === 'payments') {
-        // Release payments - fetch completed bookings
         const result = await API.adminListPayments();
-        const pending = result.transactions?.filter(t => t.status === 'pending release') || [];
-        toast(`Found ${pending.length} payments pending release. Processing...`);
-        
-        if (pending[0]?.bookingId) {
-          await API.releasePayment(pending[0].bookingId);
-          toast(`✓ Released payment for ${pending[0].bookingId}`);
+        const pending =
+          result.transactions?.filter(
+            (transaction) =>
+              transaction.bookingId ||
+              transaction.booking ||
+              transaction.status === 'pending release' ||
+              transaction.status === 'pending'
+          ) || [];
+        toast(`Found ${pending.length} payment records for release review.`);
+
+        const bookingId = pending[0]?.bookingId || pending[0]?.booking;
+        if (bookingId) {
+          await API.releasePayment(bookingId);
+          toast(`Payment release submitted for ${bookingId}`);
         }
       } else if (task === 'support') {
         toast('Route and document reports: 3 items awaiting operator reply');
