@@ -90,9 +90,9 @@ function bindCountryControls() {
 
 function redirectForRole(role) {
   if (location.protocol === 'file:') {
-    if (role === 'owner') return 'pages/dashboard-owner.html';
-    if (role === 'admin') return 'pages/admin/admin-dashboard.html';
-    return 'pages/dashboard-client.html';
+    if (role === 'owner') return '/app/owner';
+    if (role === 'admin') return '/app/admin';
+    return '/app/shipper';
   }
 
   if (role === 'owner') return '/app/owner';

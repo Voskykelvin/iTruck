@@ -1,0 +1,7 @@
+node_modules
+backend/node_modules
+workspace/node_modules
+frontend/app
+package-lock.json
+backend/package-lock.json
+workspace/package-lock.json

@@ -3,10 +3,10 @@ require('dotenv').config({ path: require('path').join(__dirname, '../../.env') }
 
 process.env.LIVE_MODE = 'true';
 
-const { requireLiveSecrets } = require('../config/runtime');
+const { assertRuntimeConfig } = require('../config/runtime');
 
 try {
-  requireLiveSecrets();
+  assertRuntimeConfig();
   console.log('Live environment check passed.');
 } catch (err) {
   console.error(err.message);

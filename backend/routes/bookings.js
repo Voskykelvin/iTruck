@@ -1,46 +1,19 @@
 const express = require('express');
-const { body, param } = require('express-validator');
 const Booking = require('../models/Booking');
 const matching = require('../services/matching');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
+const {
+  bookingIdSchema,
+  createBookingSchema,
+  listBookingsSchema,
+  submitBidSchema,
+  updateStatusSchema
+} = require('../validators/bookings');
 
 const router = express.Router();
 router.use(protect);
-
-const allowedStatuses = ['pending', 'bidding', 'confirmed', 'in_transit', 'delivered', 'cancelled', 'disputed'];
-
-const createBookingValidation = [
-  body('pickup').trim().isLength({ min: 2, max: 160 }).withMessage('Pickup is required'),
-  body('destination').trim().isLength({ min: 2, max: 160 }).withMessage('Destination is required'),
-  body('vehicleType').optional({ checkFalsy: true }).trim().isLength({ max: 80 }).withMessage('Vehicle type is too long'),
-  body('cargo').trim().isLength({ min: 2, max: 1000 }).withMessage('Cargo is required'),
-  body('distance').optional({ checkFalsy: true }).isFloat({ min: 0 }).withMessage('Distance must be a positive number').toFloat(),
-  body('cargoValue').optional({ checkFalsy: true }).isFloat({ min: 0 }).withMessage('Cargo value must be a positive number').toFloat(),
-  body('budget').optional({ checkFalsy: true }).isFloat({ min: 0 }).withMessage('Budget must be a positive number').toFloat(),
-  body('paymentMethod').optional({ checkFalsy: true }).trim().isLength({ max: 80 }).withMessage('Payment method is too long'),
-  body('receiverPhone').optional({ checkFalsy: true }).trim().isLength({ max: 32 }).withMessage('Receiver phone is too long'),
-  validate
-];
-
-const bidValidation = [
-  param('id').trim().notEmpty().withMessage('Booking id is required'),
-  body('amount').isFloat({ min: 1 }).withMessage('Bid amount must be greater than zero').toFloat(),
-  body('message').optional({ checkFalsy: true }).trim().isLength({ max: 1000 }).withMessage('Bid message is too long'),
-  body('truck').optional({ checkFalsy: true }).trim().isLength({ max: 120 }).withMessage('Truck reference is too long'),
-  validate
-];
-
-const statusValidation = [
-  param('id').trim().notEmpty().withMessage('Booking id is required'),
-  body('status').optional({ checkFalsy: true }).isIn(allowedStatuses).withMessage('Status is invalid'),
-  body('location.lat').optional({ checkFalsy: true }).isFloat({ min: -90, max: 90 }).withMessage('Latitude is invalid').toFloat(),
-  body('location.lng').optional({ checkFalsy: true }).isFloat({ min: -180, max: 180 }).withMessage('Longitude is invalid').toFloat(),
-  body('location.speed').optional({ checkFalsy: true }).isFloat({ min: 0, max: 180 }).withMessage('Speed is invalid').toFloat(),
-  body('location.heading').optional({ checkFalsy: true }).isFloat({ min: 0, max: 360 }).withMessage('Heading is invalid').toFloat(),
-  validate
-];
 
 const memoryBookings = [
   {
@@ -82,9 +55,9 @@ const memoryBookings = [
 
 function bookingVisibleTo(user, booking) {
   if (user.role === 'admin') return true;
-  if (user.role === 'client') return booking.client === user._id;
+  if (user.role === 'client') return String(booking.client) === String(user._id);
   if (user.role === 'owner') {
-    return booking.owner === user._id || (booking.bids || []).some(bid => bid.owner === user._id);
+    return String(booking.owner) === String(user._id) || (booking.bids || []).some(bid => String(bid.owner) === String(user._id));
   }
   return false;
 }
@@ -115,7 +88,7 @@ function emitBooking(req, bookingId, event, booking) {
   if (io?.emitToBooking) io.emitToBooking(bookingId, event, booking);
 }
 
-router.get('/', async (req, res, next) => {
+router.get('/', listBookingsSchema, validate, async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
@@ -131,7 +104,8 @@ router.get('/', async (req, res, next) => {
         ? { $or: [{ owner: req.user._id }, { 'bids.owner': req.user._id }] }
         : {};
 
-    res.json({ bookings: await Booking.find(q).sort('-createdAt').limit(50) });
+    if (req.query.status) q.status = req.query.status;
+    res.json({ bookings: await Booking.find(q).sort('-createdAt').limit(req.query.limit || 50) });
   } catch (err) {
     next(err);
   }
@@ -164,7 +138,26 @@ router.get('/open', async (req, res, next) => {
   }
 });
 
-router.post('/', createBookingValidation, async (req, res, next) => {
+router.get('/:id', bookingIdSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) {
+      const booking = memoryBookings.find(item => item._id === req.params.id || item.id === req.params.id);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (!bookingVisibleTo(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+      return res.json({ booking, mode: 'memory' });
+    }
+
+    const booking = await Booking.findById(req.params.id).populate('truck owner client');
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    if (!bookingVisibleTo(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+    res.json({ booking });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/', createBookingSchema, validate, async (req, res, next) => {
   try {
     const payload = cleanBookingPayload(req.body);
     if (requireDatabase(req, res)) return;
@@ -189,7 +182,7 @@ router.post('/', createBookingValidation, async (req, res, next) => {
   }
 });
 
-router.post('/:id/bids', bidValidation, async (req, res, next) => {
+router.post('/:id/bids', submitBidSchema, validate, async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
@@ -215,7 +208,7 @@ router.post('/:id/bids', bidValidation, async (req, res, next) => {
   }
 });
 
-router.patch('/:id/status', statusValidation, async (req, res, next) => {
+router.patch('/:id/status', updateStatusSchema, validate, async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
     if (!req.body.status && !req.body.location) {
@@ -225,8 +218,12 @@ router.patch('/:id/status', statusValidation, async (req, res, next) => {
     if (!mongoReady()) {
       const booking = memoryBookings.find(item => item._id === req.params.id);
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (!bookingVisibleTo(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
 
-      booking.status = req.body.status || booking.status;
+      if (req.body.status) {
+        Booking.assertStatusTransition(booking.status, req.body.status);
+        booking.status = req.body.status;
+      }
       if (req.body.location) {
         booking.tracking = booking.tracking || [];
         booking.tracking.push({ ...req.body.location, timestamp: new Date().toISOString() });
@@ -235,11 +232,13 @@ router.patch('/:id/status', statusValidation, async (req, res, next) => {
       return res.json({ booking, mode: 'memory' });
     }
 
-    const update = {};
-    if (req.body.status) update.status = req.body.status;
-    if (req.body.location) update.$push = { tracking: req.body.location };
-    const booking = await Booking.findByIdAndUpdate(req.params.id, update, { new: true });
+    const booking = await Booking.findById(req.params.id);
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    if (!bookingVisibleTo(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+
+    if (req.body.status) booking.transitionTo(req.body.status);
+    if (req.body.location) booking.tracking.push(req.body.location);
+    await booking.save();
 
     emitBooking(req, booking._id, 'status-update', booking);
     res.json({ booking });

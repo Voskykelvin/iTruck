@@ -1229,6 +1229,72 @@ input[type="radio"] {
   color: #d6e8d0;
 }
 
+.sessions-manager {
+  display: grid;
+  gap: 12px;
+}
+
+.sessions-manager > .text-button {
+  justify-self: end;
+}
+
+.text-button.danger {
+  color: #b91c1c;
+}
+
+.sessions-list {
+  display: grid;
+  gap: 10px;
+}
+
+.session-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.session-row.current {
+  border-color: var(--lime-border);
+  background: var(--surface-2);
+}
+
+.session-row > svg {
+  color: var(--orange-dark);
+}
+
+.session-row strong,
+.session-row span {
+  display: block;
+}
+
+.session-row strong {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+
+.session-row span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.session-row .badge {
+  margin-top: 0;
+}
+
+.session-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 54px;
+  color: var(--muted);
+}
+
 .empty-state {
   display: grid;
   min-height: 160px;

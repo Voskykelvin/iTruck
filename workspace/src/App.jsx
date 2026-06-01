@@ -22,9 +22,9 @@ import {
   Truck,
   UserRound,
   Wallet,
-  X
 } from 'lucide-react';
 import { api, clearSession, currentUser, setSession } from './api.js';
+import SessionsManager from './components/SessionsManager.jsx';
 import { demoDocuments, demoFleet, demoLoads, demoShipments } from './data.js';
 
 const navItems = [
@@ -278,8 +278,12 @@ function App() {
     notify.timer = window.setTimeout(() => setToast(''), 2800);
   }
 
-  function signOut() {
-    clearSession();
+  async function signOut() {
+    try {
+      await api.logout();
+    } catch (_err) {
+      clearSession();
+    }
     setUser({});
     notify('Signed out');
   }
@@ -399,7 +403,7 @@ function StatusBadge({ children, tone = 'default' }) {
   return <span className={`badge ${tone}`}>{children}</span>;
 }
 
-function ShipperPage() {
+function ShipperPage({ notify }) {
   const [shipments, setShipments] = useState(workspaceShipments);
 
   useEffect(() => {
@@ -599,7 +603,7 @@ function BookingPage({ notify }) {
       await api.createBooking(payload);
       notify('Booking request created');
       navigate('/app/shipper');
-    } catch (err) {
+    } catch (_err) {
       saveLocal('bookings', payload);
       notify('Booking saved locally until login/API sync is available');
     } finally {
@@ -733,7 +737,7 @@ function MarketplacePage({ notify }) {
       const updatedTruck = normalizeTruck(data.truck || { ...truck, ratingAverage: localRating, ratingCount: nextCount });
       setTrucks(current => current.map(item => (normalizeTruck(item).id === truck.id ? updatedTruck : item)));
       notify(`${truck.name} rating updated to ${updatedTruck.rating.toFixed(1)}`);
-    } catch (err) {
+    } catch (_err) {
       setTrucks(current => current.map(item => {
         const normalized = normalizeTruck(item);
         return normalized.id === truck.id
@@ -908,7 +912,7 @@ function TrackingPage({ notify, user }) {
         sender: 'me',
         status: 'sent'
       });
-    } catch (err) {
+    } catch (_err) {
       saveLocal('messages', { shipmentId: shipment.id, route: shipment.route, text, status: 'local' });
     }
   }
@@ -1047,7 +1051,7 @@ function OwnerPage({ notify }) {
       const data = await api.createTruck(payload);
       setFleet(current => [normalizeTruck(data.truck || payload), ...current]);
       notify('Vehicle saved to MongoDB');
-    } catch (err) {
+    } catch (_err) {
       const truck = normalizeTruck({ ...payload, id: draftPlate, plate: draftPlate });
       setFleet(current => [truck, ...current]);
       saveLocal('vehicles', truck);
@@ -1070,7 +1074,7 @@ function OwnerPage({ notify }) {
     try {
       await api.submitBid(payload);
       notify(`Bid saved for ${load.route}`);
-    } catch (err) {
+    } catch (_err) {
       saveLocal('bids', payload);
       notify('Bid saved locally until API sync is available');
     }
@@ -1122,7 +1126,7 @@ function OwnerPage({ notify }) {
       await api.withdraw(payload);
       setWalletBalance(current => Math.max(0, Number(current || 0) - amount));
       notify(`Withdrawal request queued to ${withdrawDraft.method.toUpperCase()}`);
-    } catch (err) {
+    } catch (_err) {
       saveLocal('withdrawals', { ...payload, status: 'local-pending' });
       setWalletBalance(current => Math.max(0, Number(current || 0) - amount));
       notify('Withdrawal saved locally until API sync is available');
@@ -1388,6 +1392,11 @@ function ProfilePage({ notify, user, setUser, signOut }) {
           ))}
         </div>
       </Panel>
+      {user.email ? (
+        <Panel title="Active Sessions" eyebrow="Security">
+          <SessionsManager notify={notify} />
+        </Panel>
+      ) : null}
     </section>
   );
 }

@@ -33,14 +33,18 @@ const authLimiter = rateLimit({
   store: redisStore('auth')
 });
 
-function errorHandler(err, req, res, next) {
+function errorHandler(err, req, res, _next) {
   const status = err.status || err.statusCode || 500;
   const fallback = 'An unexpected internal server error occurred.';
   const exposeMessage = process.env.NODE_ENV !== 'production' || status < 500;
   const message = exposeMessage ? (err.message || fallback) : fallback;
+  const payload = { message };
 
-  logger.error({ err, status, path: req.originalUrl }, 'Request failed');
-  res.status(status).json({ message });
+  if (err.details && exposeMessage) payload.details = err.details;
+
+  const log = status >= 500 ? logger.error.bind(logger) : logger.warn.bind(logger);
+  log({ err, status, path: req.originalUrl, operational: Boolean(err.isOperational) }, 'Request failed');
+  res.status(status).json(payload);
 }
 
 module.exports = { apiLimiter, authLimiter, errorHandler };

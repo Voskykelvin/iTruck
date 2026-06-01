@@ -47,4 +47,4 @@ function getThumbnail(publicId) {
   return cloudinary.url(publicId, { width: 360, height: 240, crop: 'fill', quality: 'auto', fetch_format: 'auto' });
 }
 
-module.exports = { uploadBuffer, deleteFile, getThumbnail };
+module.exports = { uploadBuffer, deleteFile, getThumbnail, isConfigured };

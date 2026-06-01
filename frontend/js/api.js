@@ -34,6 +34,12 @@ window.iTruckRoute = {
   }
 };
 
+function fallbackDeviceUuid() {
+  return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, value =>
+    (Number(value) ^ (Math.random() * 16 >> (Number(value) / 4))).toString(16)
+  );
+}
+
 function bindWorkspaceRoutes() {
   window.iTruckRoute.rewriteLinks();
 }
@@ -47,9 +53,19 @@ class ITruckAPI {
     this.token = localStorage.getItem('itruck_token') || '';
   }
 
+  deviceId() {
+    let id = localStorage.getItem('itruck_device_id');
+    if (!id) {
+      id = window.crypto?.randomUUID ? window.crypto.randomUUID() : fallbackDeviceUuid();
+      localStorage.setItem('itruck_device_id', id);
+    }
+    return id;
+  }
+
   headers(extra = {}) {
     return {
       'Content-Type': 'application/json',
+      'X-Device-Id': this.deviceId(),
       ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
       ...extra
     };
@@ -58,12 +74,12 @@ class ITruckAPI {
   async request(path, options = {}) {
     const isFormData = options.body instanceof FormData;
     const headers = isFormData
-      ? { ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}), ...(options.headers || {}) }
+      ? { 'X-Device-Id': this.deviceId(), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}), ...(options.headers || {}) }
       : this.headers(options.headers || {});
 
     let res;
     try {
-      res = await fetch(`${this.base}${path}`, { ...options, headers });
+      res = await fetch(`${this.base}${path}`, { ...options, headers, credentials: 'include' });
     } catch (err) {
       throw new Error('Unable to reach iTruck API. Check that the backend is running.');
     }
@@ -86,11 +102,11 @@ class ITruckAPI {
   }
 
   register(role, data) {
-    return this.request(`/auth/register/${role}`, { method: 'POST', body: JSON.stringify(data) });
+    return this.request(`/auth/register/${role}`, { method: 'POST', body: JSON.stringify({ ...data, deviceId: this.deviceId() }) });
   }
 
   login(data) {
-    return this.request('/auth/login', { method: 'POST', body: JSON.stringify(data) });
+    return this.request('/auth/login', { method: 'POST', body: JSON.stringify({ ...data, deviceId: this.deviceId() }) });
   }
 
   me() {
@@ -165,7 +181,8 @@ class ITruckAPI {
     let res;
     try {
       res = await fetch(`${this.base}/documents/${type}/${bookingId}`, {
-        headers: this.token ? { Authorization: `Bearer ${this.token}` } : {}
+        credentials: 'include',
+        headers: { 'X-Device-Id': this.deviceId(), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) }
       });
     } catch (err) {
       throw new Error('Document download failed');

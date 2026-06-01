@@ -26,9 +26,11 @@ const truckSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 truckSchema.index({ owner: 1, createdAt: -1 });
+truckSchema.index({ owner: 1, isAvailable: 1, createdAt: -1 });
 truckSchema.index({ type: 1, isVerified: 1, isAvailable: 1 });
 truckSchema.index({ country: 1, type: 1 });
 truckSchema.index({ routes: 1 });
+truckSchema.index({ isAvailable: 1, routes: 1 });
 truckSchema.index({ ratingAverage: -1, ratingCount: -1 });
 
 module.exports = mongoose.model('Truck', truckSchema);

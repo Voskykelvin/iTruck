@@ -1,11 +1,53 @@
 const mongoose = require('mongoose');
 
+const VALID_MODES = ['live', 'demo', 'offline'];
+const HOSTED_ENV_MARKERS = [
+  'RENDER',
+  'RAILWAY_ENVIRONMENT',
+  'FLY_APP_NAME',
+  'K_SERVICE',
+  'WEBSITE_SITE_NAME',
+  'HEROKU_APP_NAME'
+];
+
+function runtimeConfigError(message) {
+  const err = new Error(message);
+  err.code = 'RUNTIME_CONFIG';
+  return err;
+}
+
+function normalized(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function hostedRuntimeDetected() {
+  return HOSTED_ENV_MARKERS.some(key => {
+    const value = process.env[key];
+    return value && value !== 'false' && value !== '0';
+  });
+}
+
+function runtimeMode() {
+  const appMode = normalized(process.env.APP_MODE);
+  if (appMode) return appMode;
+  if (process.env.LIVE_MODE === 'true' || process.env.NODE_ENV === 'production') return 'live';
+  if (process.env.DEMO_MODE === 'false') return 'offline';
+  return 'demo';
+}
+
+function assertKnownMode(mode = runtimeMode()) {
+  if (!VALID_MODES.includes(mode)) {
+    throw runtimeConfigError(`APP_MODE must be one of ${VALID_MODES.join(', ')}.`);
+  }
+  return mode;
+}
+
 function isLiveMode() {
-  return process.env.LIVE_MODE === 'true' || process.env.NODE_ENV === 'production';
+  return assertKnownMode() === 'live';
 }
 
 function demoModeEnabled() {
-  return !isLiveMode() && process.env.DEMO_MODE !== 'false';
+  return assertKnownMode() === 'demo';
 }
 
 function mongoReady() {
@@ -49,10 +91,28 @@ function requireLiveSecrets() {
   }
 }
 
+function assertRuntimeConfig() {
+  const mode = assertKnownMode();
+
+  if (process.env.NODE_ENV === 'production' && mode !== 'live') {
+    throw runtimeConfigError('NODE_ENV=production requires APP_MODE=live or LIVE_MODE=true.');
+  }
+
+  if (hostedRuntimeDetected() && mode !== 'live' && process.env.ALLOW_HOSTED_DEMO !== 'true') {
+    throw runtimeConfigError('Hosted deployments must run in live mode. Set APP_MODE=live or LIVE_MODE=true.');
+  }
+
+  if (mode === 'live') requireLiveSecrets();
+  return mode;
+}
+
 module.exports = {
+  assertRuntimeConfig,
   demoModeEnabled,
+  hostedRuntimeDetected,
   isLiveMode,
   mongoReady,
   requireDatabase,
-  requireLiveSecrets
+  requireLiveSecrets,
+  runtimeMode
 };

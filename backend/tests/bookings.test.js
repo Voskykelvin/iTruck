@@ -1,4 +1,5 @@
 const { suggestPrice, buildEstimate, autoAssign } = require('../services/matching');
+const Booking = require('../models/Booking');
 
 test('suggestPrice uses vehicle-specific rates', () => {
   expect(suggestPrice(100, 'Pickup')).toBe(110);
@@ -25,4 +26,9 @@ test('buildEstimate exposes fees, documents, and risk for cross-border moves', (
 
 test('autoAssign returns a queued assignment record', async () => {
   await expect(autoAssign('ITK-2044')).resolves.toEqual({ bookingId: 'ITK-2044', status: 'queued' });
+});
+
+test('booking status machine rejects skipped transitions', () => {
+  expect(() => Booking.assertStatusTransition('pending', 'delivered')).toThrow('Invalid booking status transition');
+  expect(() => Booking.assertStatusTransition('bidding', 'confirmed')).not.toThrow();
 });

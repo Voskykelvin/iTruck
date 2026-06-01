@@ -3,6 +3,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '../../.env') }
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Truck = require('../models/Truck');
+const Wallet = require('../models/Wallet');
 
 const password = 'Demo2025!';
 
@@ -141,7 +142,13 @@ async function run() {
 
   const installed = [];
   for (const data of users) {
-    const result = await upsertUser(data);
+    const { walletBalance = 0, ...userData } = data;
+    const result = await upsertUser(userData);
+    await Wallet.findOneAndUpdate(
+      { user: result.user._id },
+      { user: result.user._id, balance: walletBalance, currency: 'USD' },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
     installed.push(`${result.action}: ${result.user.email} (${result.user.role})`);
   }
 

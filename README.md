@@ -25,8 +25,7 @@ This repository contains a functional MVP with both demo-friendly and live-mode 
 
 Implemented:
 
-- Public landing pages and static HTML dashboards.
-- React workspace served at `/app`.
+- Public landing page and React workspace served at `/app`.
 - Shipper dashboard, booking form, marketplace, tracking, owner workspace, admin workspace, and profile/verification views.
 - Express API for auth, users, trucks, bookings, payments, documents, notifications, uploads, admin metrics, marketplace helpers, workflow records, and Stripe webhooks.
 - MongoDB models with production indexes for core records.
@@ -56,7 +55,7 @@ Still in progress before full business launch:
 
 ### Frontend
 
-- Static HTML, CSS, and JavaScript in `frontend/`.
+- Static landing/PWA assets in `frontend/`.
 - React 18 workspace in `workspace/`.
 - Vite 5 for workspace development and builds.
 - Lucide React icons.
@@ -91,11 +90,10 @@ Still in progress before full business launch:
 .
 +-- backend/                 # Express API, models, routes, services, sockets, tests
 +-- docs/                    # Deployment and go-live notes
-+-- frontend/                # Static public site, static dashboards, PWA files, built React app
++-- frontend/                # Static public site, PWA files, built React app
 |   +-- app/                 # Production build output from workspace/
-|   +-- css/                 # Static page styles
-|   +-- js/                  # Static page scripts
-|   +-- pages/               # Static HTML dashboard pages
+|   +-- css/                 # Landing/offline styles
+|   +-- js/                  # Landing/PWA scripts
 +-- nginx/                   # Reverse proxy config
 +-- workspace/               # React/Vite source app
 +-- Dockerfile               # Production container
@@ -108,17 +106,7 @@ Still in progress before full business launch:
 
 ### Public Website
 
-The public website lives in `frontend/index.html` and related CSS/JS files. It introduces iTruck, routes users into the app, and supports direct static-file browsing for quick visual review.
-
-Static pages include:
-
-- `frontend/pages/book-truck.html`
-- `frontend/pages/dashboard-client.html`
-- `frontend/pages/dashboard-owner.html`
-- `frontend/pages/listings.html`
-- `frontend/pages/tracking.html`
-- `frontend/pages/profile.html`
-- `frontend/pages/admin/admin-dashboard.html`
+The public website lives in `frontend/index.html` and related CSS/JS files. It introduces iTruck and routes users into the React app.
 
 ### React Workspace
 

@@ -24,7 +24,7 @@ async function protect(req, res, next) {
     if (!req.user) return res.status(401).json({ message: 'User no longer exists' });
 
     next();
-  } catch (err) {
+  } catch (_err) {
     res.status(401).json({ message: 'Invalid or expired token' });
   }
 }
