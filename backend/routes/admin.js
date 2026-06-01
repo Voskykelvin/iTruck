@@ -19,9 +19,9 @@ const router = express.Router();
 router.use(protect, restrictTo('admin'));
 
 const demoBookings = [
-  ['ITK-2044', 'Nairobi to Kampala', 'In Transit', 'On schedule'],
-  ['ITK-2031', 'Mombasa to Dar es Salaam', 'Bidding', '3 offers'],
-  ['ITK-2028', 'Accra to Lagos', 'Delivered', 'POD ready']
+  ['ITK-1001', 'Pickup hub to delivery hub', 'In Transit', 'On schedule'],
+  ['ITK-1002', 'Port lane to regional warehouse', 'Bidding', 'Offers pending'],
+  ['ITK-1003', 'Distribution center to receiver', 'Delivered', 'POD ready']
 ];
 
 async function recordAudit(req, action, targetType, targetId, metadata = {}) {

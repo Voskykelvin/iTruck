@@ -110,21 +110,21 @@ const documentStages = {
   ]
 };
 const defaultBooking = {
-  pickup: 'Nairobi',
-  destination: 'Kampala',
-  distance: 640,
-  border: 'Cross-border',
-  pickupWindow: 'Morning pickup',
+  pickup: '',
+  destination: '',
+  distance: '',
+  border: 'Domestic',
+  pickupWindow: 'Flexible pickup window',
   vehicleType: 'Lorry',
-  cargo: 'Retail stock',
-  weight: '8 tonnes',
+  cargo: '',
+  weight: '',
   requirements: 'Standard',
-  cargoValue: 8200,
-  receiverName: 'Amina Warehouse',
-  receiverPhone: '+256700000000',
+  cargoValue: '',
+  receiverName: '',
+  receiverPhone: '',
   communicationPreference: 'WhatsApp + SMS updates',
-  paymentMethod: 'M-Pesa',
-  optionalServices: ['customsBroker']
+  paymentMethod: 'Wallet',
+  optionalServices: []
 };
 
 const documentActions = [
@@ -1924,7 +1924,7 @@ function OwnerPage({ notify }) {
     amount: 250,
     method: 'mpesa',
     destination: '+254700000000',
-    accountName: 'Fleet Owner'
+    accountName: ''
   });
 
   useEffect(() => {
@@ -3265,8 +3265,8 @@ function AdminPage({ notify }) {
 }
 
 function ProfilePage({ notify, route, user, setUser, signOut }) {
-  const [email, setEmail] = useState(user.email || (DEMO_MODE ? 'admin@itruck.africa' : ''));
-  const [password, setPassword] = useState(DEMO_MODE ? 'Admin2025!' : '');
+  const [email, setEmail] = useState(user.email || '');
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [uploadingDocument, setUploadingDocument] = useState('');
   const [pendingDocument, setPendingDocument] = useState('');

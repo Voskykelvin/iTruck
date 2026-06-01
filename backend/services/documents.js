@@ -55,7 +55,7 @@ function createWaybill(booking) {
         ['Pickup', booking.pickup || 'Nairobi'],
         ['Destination', booking.destination || 'Kampala'],
         ['Vehicle', booking.vehicle || 'Lorry'],
-        ['Driver', booking.driver || 'James Mwangi']
+        ['Driver', booking.driver || 'Assigned driver']
       ]
     },
     {
