@@ -19,10 +19,23 @@ jest.mock('../models/Booking', () => ({
   findByIdAndUpdate: jest.fn()
 }));
 
+jest.mock('../models/Idempotency', () => ({
+  create: jest.fn(),
+  findOne: jest.fn(),
+  findOneAndUpdate: jest.fn()
+}));
+
 const Wallet = require('../models/Wallet');
 const Transaction = require('../models/Transaction');
 const Booking = require('../models/Booking');
-const { PaymentReconciliationService, WalletService } = require('../services/payment');
+const Idempotency = require('../models/Idempotency');
+const {
+  checkIdempotency,
+  generateIdempotencyKey,
+  PaymentReconciliationService,
+  runWithIdempotency,
+  WalletService
+} = require('../services/payment');
 
 beforeEach(() => {
   Wallet.findOneAndUpdate.mockReset();
@@ -31,6 +44,9 @@ beforeEach(() => {
   Transaction.findOne.mockReset();
   Transaction.findOneAndUpdate.mockReset();
   Booking.findByIdAndUpdate.mockReset();
+  Idempotency.create.mockReset();
+  Idempotency.findOne.mockReset();
+  Idempotency.findOneAndUpdate.mockReset();
 });
 
 test('wallet credit increments wallet balance and creates a transaction', async () => {
@@ -107,6 +123,72 @@ test('wallet withdrawal atomically reserves funds and creates pending payout', a
       amount: 250,
       status: 'pending'
     })
+  );
+});
+
+test('idempotency keys are deterministic and do not depend on wall-clock time', () => {
+  const payload = { userId: 'user-1', bookingId: 'booking-1', amount: 1200, provider: 'mpesa' };
+
+  expect(generateIdempotencyKey(payload)).toBe(
+    generateIdempotencyKey({ provider: 'mpesa', amount: 1200, bookingId: 'booking-1', userId: 'user-1' })
+  );
+});
+
+test('completed idempotency records return the previous result', async () => {
+  Idempotency.create.mockRejectedValue({ code: 11000 });
+  Idempotency.findOne.mockResolvedValue({
+    key: 'pay-key-1',
+    status: 'completed',
+    result: { reference: 'tx-1' }
+  });
+
+  await expect(checkIdempotency('pay-key-1')).resolves.toEqual(
+    expect.objectContaining({ exists: true, result: { reference: 'tx-1' } })
+  );
+});
+
+test('processing idempotency records reject duplicate work', async () => {
+  Idempotency.create.mockRejectedValue({ code: 11000 });
+  Idempotency.findOne.mockResolvedValue({
+    key: 'pay-key-2',
+    status: 'processing'
+  });
+
+  await expect(checkIdempotency('pay-key-2')).rejects.toThrow('already being processed');
+});
+
+test('idempotency keys cannot be reused for a different request payload', async () => {
+  Idempotency.create.mockRejectedValue({ code: 11000 });
+  Idempotency.findOne.mockResolvedValue({
+    key: 'pay-key-3',
+    status: 'completed',
+    requestHash: 'different-request-hash',
+    result: { reference: 'tx-3' }
+  });
+
+  await expect(checkIdempotency('pay-key-3', { requestPayload: { amount: 200 } })).rejects.toThrow(
+    'different request payload'
+  );
+});
+
+test('runWithIdempotency marks successful operations complete', async () => {
+  Idempotency.create.mockResolvedValue({ key: 'pay-key-4', status: 'processing' });
+  Idempotency.findOneAndUpdate.mockResolvedValue({ key: 'pay-key-4', status: 'completed' });
+  const operation = jest.fn(async () => ({ reference: 'tx-4' }));
+
+  const result = await runWithIdempotency('pay-key-4', { amount: 400 }, operation);
+
+  expect(result).toEqual({ reference: 'tx-4' });
+  expect(operation).toHaveBeenCalledTimes(1);
+  expect(Idempotency.findOneAndUpdate).toHaveBeenCalledWith(
+    { key: 'pay-key-4' },
+    expect.objectContaining({
+      $set: expect.objectContaining({
+        status: 'completed',
+        result: { reference: 'tx-4' }
+      })
+    }),
+    { new: true }
   );
 });
 

@@ -1,15 +1,177 @@
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const Transaction = require('../models/Transaction');
 const Booking = require('../models/Booking');
+const Idempotency = require('../models/Idempotency');
+
+const IDEMPOTENCY_TTL_MINUTES = 60;
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_.:-]+$/;
+
+function appError(message, status = 400) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (!value || typeof value !== 'object') return value;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value.toString === 'function' && value._bsontype) return value.toString();
+  return Object.keys(value)
+    .sort()
+    .reduce((acc, key) => {
+      acc[key] = canonicalize(value[key]);
+      return acc;
+    }, {});
+}
+
+function hashPayload(value) {
+  return crypto
+    .createHash('sha256')
+    .update(JSON.stringify(canonicalize(value)))
+    .digest('hex');
+}
+
+function generateIdempotencyKey(parts) {
+  return hashPayload(parts).slice(0, 32);
+}
+
+function normalizeIdempotencyKey(key) {
+  const value = String(key || '').trim();
+  if (!value) return '';
+  if (value.length < 8 || value.length > 128 || !IDEMPOTENCY_KEY_PATTERN.test(value)) {
+    throw appError('Idempotency-Key must be 8-128 URL-safe characters', 400);
+  }
+  return value;
+}
+
+function idempotencyError(message, status = 409) {
+  const err = appError(message, status);
+  err.isOperational = true;
+  return err;
+}
+
+function serializeIdempotencyResult(value) {
+  if (!value) return value;
+  if (typeof value.toObject === 'function') {
+    return value.toObject({ depopulate: true, versionKey: false });
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (_err) {
+    return { message: 'Operation completed' };
+  }
+}
+
+async function checkIdempotency(key, options = {}) {
+  const cleanKey = normalizeIdempotencyKey(key);
+  if (!cleanKey) throw appError('Idempotency-Key is required', 400);
+  const ttlMinutes = Number(options.ttlMinutes || IDEMPOTENCY_TTL_MINUTES);
+  const requestHash = options.requestPayload ? hashPayload(options.requestPayload) : undefined;
+  const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
+
+  try {
+    const record = await Idempotency.create({
+      key: cleanKey,
+      scope: options.scope || 'payment',
+      requestHash,
+      status: 'processing',
+      expiresAt
+    });
+    return { exists: false, key: cleanKey, record };
+  } catch (err) {
+    if (err.code !== 11000) throw err;
+  }
+
+  const existing = await Idempotency.findOne({ key: cleanKey });
+  if (!existing) {
+    throw idempotencyError('Unable to reserve idempotency key');
+  }
+
+  if (requestHash && existing.requestHash && existing.requestHash !== requestHash) {
+    throw idempotencyError('Idempotency key was reused with a different request payload');
+  }
+
+  if (existing.status === 'completed') {
+    return { exists: true, key: cleanKey, result: existing.result, record: existing };
+  }
+
+  if (existing.status === 'failed') {
+    const err = idempotencyError(existing.error?.message || 'Previous request with this idempotency key failed');
+    err.previousResult = existing.result;
+    throw err;
+  }
+
+  throw idempotencyError('Request is already being processed');
+}
+
+async function markIdempotencyComplete(key, resultData = {}) {
+  const cleanKey = normalizeIdempotencyKey(key);
+  return Idempotency.findOneAndUpdate(
+    { key: cleanKey },
+    {
+      $set: {
+        status: 'completed',
+        result: serializeIdempotencyResult(resultData),
+        completedAt: new Date()
+      },
+      $unset: { error: 1, failedAt: 1 }
+    },
+    { new: true }
+  );
+}
+
+async function markIdempotencyFailed(key, error) {
+  const cleanKey = normalizeIdempotencyKey(key);
+  return Idempotency.findOneAndUpdate(
+    { key: cleanKey },
+    {
+      $set: {
+        status: 'failed',
+        result: { error: error.message },
+        error: {
+          message: error.message,
+          status: error.status || 500
+        },
+        failedAt: new Date()
+      }
+    },
+    { new: true }
+  );
+}
+
+async function runWithIdempotency(key, requestPayload, operation, options = {}) {
+  if (!key) return operation();
+
+  const state = await checkIdempotency(key, {
+    requestPayload,
+    scope: options.scope,
+    ttlMinutes: options.ttlMinutes
+  });
+  if (state.exists) return state.result;
+
+  try {
+    const result = await operation();
+    await markIdempotencyComplete(state.key, result);
+    return result;
+  } catch (err) {
+    try {
+      await markIdempotencyFailed(state.key, err);
+    } catch (_markErr) {
+      // Preserve the original payment error for the caller.
+    }
+    throw err;
+  }
+}
 
 function parsePositiveAmount(amount) {
   const value = Number(amount);
   if (!Number.isFinite(value) || value <= 0) {
-    const err = new Error('Amount must be greater than zero');
-    err.status = 400;
-    throw err;
+    throw appError('Amount must be greater than zero', 400);
   }
   return value;
 }
@@ -98,7 +260,16 @@ class WalletService {
     return wallet?.balance || 0;
   }
 
-  async credit(userId, amount, description = 'Wallet credit', reference = 'manual') {
+  async credit(userId, amount, description = 'Wallet credit', reference = 'manual', options = {}) {
+    return runWithIdempotency(
+      options.idempotencyKey,
+      { userId, amount, description, reference },
+      () => this.createCredit(userId, amount, description, reference),
+      { scope: 'wallet.credit' }
+    );
+  }
+
+  async createCredit(userId, amount, description = 'Wallet credit', reference = 'manual') {
     const amountNum = parsePositiveAmount(amount);
     const wallet = await Wallet.findOneAndUpdate(
       { user: userId },
@@ -123,7 +294,16 @@ class WalletService {
     return transaction;
   }
 
-  async debit(userId, amount, description = 'Wallet debit', reference = 'manual') {
+  async debit(userId, amount, description = 'Wallet debit', reference = 'manual', options = {}) {
+    return runWithIdempotency(
+      options.idempotencyKey,
+      { userId, amount, description, reference },
+      () => this.createDebit(userId, amount, description, reference),
+      { scope: 'wallet.debit' }
+    );
+  }
+
+  async createDebit(userId, amount, description = 'Wallet debit', reference = 'manual') {
     const amountNum = parsePositiveAmount(amount);
     await this.ensureWallet(userId);
 
@@ -134,9 +314,7 @@ class WalletService {
     );
 
     if (!wallet) {
-      const err = new Error('Insufficient wallet balance');
-      err.status = 400;
-      throw err;
+      throw appError('Insufficient wallet balance', 400);
     }
 
     const transaction = await Transaction.create({
@@ -153,7 +331,29 @@ class WalletService {
     return transaction;
   }
 
-  async withdraw(userId, amount, method = 'mpesa', payoutDetails = {}, description = 'Owner wallet withdrawal') {
+  async withdraw(
+    userId,
+    amount,
+    method = 'mpesa',
+    payoutDetails = {},
+    description = 'Owner wallet withdrawal',
+    options = {}
+  ) {
+    return runWithIdempotency(
+      options.idempotencyKey,
+      { userId, amount, method, payoutDetails, description },
+      () => this.createWithdrawal(userId, amount, method, payoutDetails, description),
+      { scope: 'wallet.withdraw' }
+    );
+  }
+
+  async createWithdrawal(
+    userId,
+    amount,
+    method = 'mpesa',
+    payoutDetails = {},
+    description = 'Owner wallet withdrawal'
+  ) {
     const amountNum = parsePositiveAmount(amount);
     await this.ensureWallet(userId);
 
@@ -164,9 +364,7 @@ class WalletService {
     );
 
     if (!wallet) {
-      const err = new Error('Insufficient wallet balance');
-      err.status = 400;
-      throw err;
+      throw appError('Insufficient wallet balance', 400);
     }
 
     const transaction = await Transaction.create({
@@ -188,18 +386,23 @@ class WalletService {
     return transaction;
   }
 
-  async releaseBookingPayment(bookingId, releasedBy) {
+  async releaseBookingPayment(bookingId, releasedBy, options = {}) {
+    return runWithIdempotency(
+      options.idempotencyKey,
+      { bookingId, releasedBy },
+      () => this.releaseReservedBookingPayment(bookingId, releasedBy),
+      { scope: 'booking.payment.release' }
+    );
+  }
+
+  async releaseReservedBookingPayment(bookingId, releasedBy) {
     const booking = await Booking.findById(bookingId);
     if (!booking) {
-      const err = new Error('Booking not found');
-      err.status = 404;
-      throw err;
+      throw appError('Booking not found', 404);
     }
 
     if (booking.status !== 'delivered') {
-      const err = new Error('Booking must be delivered before payment release');
-      err.status = 409;
-      throw err;
+      throw appError('Booking must be delivered before payment release', 409);
     }
 
     if (booking.paymentStatus === 'released') {
@@ -212,15 +415,11 @@ class WalletService {
     }
 
     if (booking.paymentStatus !== 'escrowed') {
-      const err = new Error('Booking payment is not held in escrow');
-      err.status = 409;
-      throw err;
+      throw appError('Booking payment is not held in escrow', 409);
     }
 
     if (!booking.owner) {
-      const err = new Error('Booking has no assigned owner');
-      err.status = 409;
-      throw err;
+      throw appError('Booking has no assigned owner', 409);
     }
 
     const payment = await Transaction.findOne({
@@ -230,9 +429,7 @@ class WalletService {
     }).sort('-createdAt');
     const amount = payment?.amount || booking.paymentAmount;
     if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
-      const err = new Error('No completed payment is available to release');
-      err.status = 409;
-      throw err;
+      throw appError('No completed payment is available to release', 409);
     }
 
     const reserved = await Booking.findOneAndUpdate(
@@ -241,9 +438,7 @@ class WalletService {
       { new: true }
     );
     if (!reserved) {
-      const err = new Error('Booking payment is already being released');
-      err.status = 409;
-      throw err;
+      throw appError('Booking payment is already being released', 409);
     }
 
     try {
@@ -334,6 +529,12 @@ class PaymentReconciliationService {
 module.exports = {
   payments: new PaymentReconciliationService(),
   wallet: new WalletService(),
+  checkIdempotency,
+  generateIdempotencyKey,
+  markIdempotencyComplete,
+  markIdempotencyFailed,
+  normalizeIdempotencyKey,
+  runWithIdempotency,
   StripeService: class {},
   MpesaService: class {},
   MTNMoMoService: class {},

@@ -6,6 +6,12 @@ function token() {
   return localStorage.getItem('itruck_token') || '';
 }
 
+function idempotencyKey(scope) {
+  const suffix =
+    globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  return `${scope}:${suffix}`;
+}
+
 async function tryRefresh() {
   try {
     const response = await fetch(`${API_BASE}/auth/refresh`, {
@@ -72,8 +78,16 @@ export const api = {
     request(`/trucks/${encodeURIComponent(id)}/ratings`, { method: 'POST', body: JSON.stringify(payload) }),
   wallet: () => request('/payments/wallet'),
   releasePayment: (bookingId) =>
-    request(`/payments/bookings/${encodeURIComponent(bookingId)}/release`, { method: 'POST' }),
-  withdraw: (payload) => request('/payments/withdraw', { method: 'POST', body: JSON.stringify(payload) }),
+    request(`/payments/bookings/${encodeURIComponent(bookingId)}/release`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('release') }
+    }),
+  withdraw: (payload) =>
+    request('/payments/withdraw', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('withdraw') },
+      body: JSON.stringify(payload)
+    }),
   workflow: (query) => request(`/workflow${query || ''}`),
   listMessages: (bookingId) => request(`/workflow/messages?booking=${encodeURIComponent(bookingId)}`),
   sendMessage: (payload) => request('/workflow/messages', { method: 'POST', body: JSON.stringify(payload) }),
