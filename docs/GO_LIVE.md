@@ -45,6 +45,7 @@
 - Point Stripe webhooks to `/api/webhooks/stripe` and configure `STRIPE_WEBHOOK_SECRET`.
 - Verify M-Pesa and MTN webhook signatures before enabling those providers.
 - Add transaction reconciliation before releasing owner payouts.
+- Send an `Idempotency-Key` header on payment, withdrawal, and release requests so client retries cannot duplicate charges or ledger entries.
 
 ## Launch Path
 

@@ -66,6 +66,7 @@ Then verify:
 - Shipper/admin can confirm delivery.
 - Stripe webhook signature verification succeeds and reconciles a test payment into a booking payment status.
 - Admin payment release credits the owner wallet once.
+- Repeating a payment, withdrawal, or release request with the same `Idempotency-Key` does not create duplicate ledger entries.
 - Documents generate only for users who can see the booking.
 - Notifications only mark current-user records as read.
 - Uploads reject unsupported file types and store allowed files.

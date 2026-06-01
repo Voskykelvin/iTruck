@@ -7,6 +7,7 @@ const IssueReport = require('../models/IssueReport');
 const Booking = require('../models/Booking');
 const RefreshToken = require('../models/RefreshToken');
 const Truck = require('../models/Truck');
+const Idempotency = require('../models/Idempotency');
 
 function hasIndex(Model, keys, options = {}) {
   return Model.schema
@@ -69,6 +70,14 @@ test('refresh token indexes and fields support device-scoped sessions', () => {
   expect(typeof RefreshToken.findActive).toBe('function');
   expect(typeof RefreshToken.activeSessions).toBe('function');
   expect(typeof RefreshToken.revokeAll).toBe('function');
+});
+
+test('idempotency records expire and enforce one key per payment attempt', () => {
+  expect(hasIndex(Idempotency, { key: 1 }, { unique: true })).toBe(true);
+  expect(Idempotency.schema.path('expiresAt').options.index).toEqual({ expires: 0 });
+  expect(Idempotency.schema.path('status').enumValues).toEqual(
+    expect.arrayContaining(['processing', 'completed', 'failed'])
+  );
 });
 
 test('new models enforce their required fields without a database connection', () => {

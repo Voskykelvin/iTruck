@@ -9,6 +9,10 @@ const router = express.Router();
 
 router.use(protect);
 
+function idempotencyKey(req) {
+  return req.get('Idempotency-Key') || req.body.idempotencyKey || '';
+}
+
 router.get(
   '/wallet',
   asyncHandler(async (req, res) => {
@@ -22,7 +26,11 @@ router.post(
   amountSchema,
   validate,
   asyncHandler(async (req, res) => {
-    res.json(await payment.wallet.debit(req.user._id, req.body.amount, req.body.description));
+    res.json(
+      await payment.wallet.debit(req.user._id, req.body.amount, req.body.description, 'manual', {
+        idempotencyKey: idempotencyKey(req)
+      })
+    );
   })
 );
 
@@ -32,7 +40,11 @@ router.post(
   amountSchema,
   validate,
   asyncHandler(async (req, res) => {
-    res.json(await payment.wallet.credit(req.user._id, req.body.amount, req.body.description));
+    res.json(
+      await payment.wallet.credit(req.user._id, req.body.amount, req.body.description, 'manual', {
+        idempotencyKey: idempotencyKey(req)
+      })
+    );
   })
 );
 
@@ -51,7 +63,8 @@ router.post(
         accountName: req.body.accountName || '',
         requestedByRole: req.user.role
       },
-      req.body.description || 'Owner wallet withdrawal'
+      req.body.description || 'Owner wallet withdrawal',
+      { idempotencyKey: idempotencyKey(req) }
     );
 
     res.status(201).json({ transaction });
@@ -64,7 +77,9 @@ router.post(
   releasePaymentSchema,
   validate,
   asyncHandler(async (req, res) => {
-    const result = await payment.wallet.releaseBookingPayment(req.params.bookingId, req.user._id);
+    const result = await payment.wallet.releaseBookingPayment(req.params.bookingId, req.user._id, {
+      idempotencyKey: idempotencyKey(req)
+    });
     res.status(result.alreadyReleased ? 200 : 201).json(result);
   })
 );
