@@ -15,7 +15,7 @@
     "lint": "eslint \"backend/**/*.js\" \"workspace/src/**/*.{js,jsx}\"",
     "format:check": "prettier --check \"backend/**/*.js\" \"workspace/src/**/*.{js,jsx}\" \"frontend/js/**/*.js\"",
     "format": "prettier --write \"backend/**/*.js\" \"workspace/src/**/*.{js,jsx}\" \"frontend/js/**/*.js\"",
-    "ci:check": "npm run lint && npm test && npm run app:build",
+    "ci:check": "npm run lint && npm run format:check && npm test && npm run app:build",
     "docker:build": "docker build -t itruck .",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",

@@ -1,10 +1,7 @@
 const { body } = require('express-validator');
 const { optionalString, positiveAmount } = require('./common');
 
-const amountSchema = [
-  positiveAmount('amount'),
-  optionalString('description', 240)
-];
+const amountSchema = [positiveAmount('amount'), optionalString('description', 240)];
 
 const withdrawalSchema = [
   positiveAmount('amount'),

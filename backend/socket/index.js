@@ -3,7 +3,10 @@ module.exports = function attachSocket(server) {
   const logger = require('../config/logger');
 
   const rawOrigins = process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || '*';
-  const origins = rawOrigins.split(',').map(origin => origin.trim()).filter(Boolean);
+  const origins = rawOrigins
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
   const corsOrigin = origins.includes('*') ? '*' : origins;
 
   const io = new Server(server, { cors: { origin: corsOrigin } });
@@ -19,16 +22,16 @@ module.exports = function attachSocket(server) {
         io.adapter(createAdapter(pubClient, subClient));
         logger.info('Socket.io Redis adapter connected');
       })
-      .catch(err => {
+      .catch((err) => {
         logger.error({ err }, 'Socket.io Redis adapter failed');
       });
   }
 
-  io.on('connection', socket => {
+  io.on('connection', (socket) => {
     socket.emit('connected', { id: socket.id });
-    socket.on('join-booking', id => socket.join('booking:' + id));
-    socket.on('update-location', data => io.to('booking:' + data.bookingId).emit('location-update', data));
-    socket.on('send-message', data => io.to('booking:' + data.bookingId).emit('new-message', data));
+    socket.on('join-booking', (id) => socket.join('booking:' + id));
+    socket.on('update-location', (data) => io.to('booking:' + data.bookingId).emit('location-update', data));
+    socket.on('send-message', (data) => io.to('booking:' + data.bookingId).emit('new-message', data));
   });
 
   io.emitToUser = (userId, event, data) => io.emit(event, { userId, ...data });

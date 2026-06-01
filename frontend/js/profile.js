@@ -45,12 +45,13 @@ function openModal(title, body) {
     shell = document.createElement('div');
     shell.id = 'profileModal';
     shell.className = 'workspace-modal';
-    shell.innerHTML = '<div class="workspace-dialog"><button class="modal-x" type="button" data-close-profile-modal>x</button><div id="profileModalContent"></div></div>';
+    shell.innerHTML =
+      '<div class="workspace-dialog"><button class="modal-x" type="button" data-close-profile-modal>x</button><div id="profileModalContent"></div></div>';
     document.body.appendChild(shell);
-    shell.addEventListener('click', event => {
+    shell.addEventListener('click', (event) => {
       if (event.target === shell || event.target.closest('[data-close-profile-modal]')) closeModal();
     });
-    document.addEventListener('keydown', event => {
+    document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') closeModal();
     });
   }
@@ -75,19 +76,22 @@ async function withButtonBusy(button, busyText, action) {
 }
 
 function documentStatus(type) {
-  return documents.find(doc => doc.type === type);
+  return documents.find((doc) => doc.type === type);
 }
 
 function calculateScore() {
-  const profileFields = ['firstName', 'lastName', 'email', 'phone', 'country', 'company'].filter(key => user[key]).length;
+  const profileFields = ['firstName', 'lastName', 'email', 'phone', 'country', 'company'].filter(
+    (key) => user[key]
+  ).length;
   const docCount = documents.length;
-  return Math.min(100, Math.round(((profileFields / 6) * 45) + ((docCount / requiredDocs.length) * 55)));
+  return Math.min(100, Math.round((profileFields / 6) * 45 + (docCount / requiredDocs.length) * 55));
 }
 
 function renderProfile() {
   document.getElementById('profileName').textContent = `${user.firstName} ${user.lastName}`;
   document.getElementById('profileEmail').textContent = user.email;
-  document.getElementById('profileRole').textContent = user.role === 'owner' ? 'Fleet Owner' : user.role === 'client' ? 'Client / Shipper' : 'Admin';
+  document.getElementById('profileRole').textContent =
+    user.role === 'owner' ? 'Fleet Owner' : user.role === 'client' ? 'Client / Shipper' : 'Admin';
   document.getElementById('profileCountry').textContent = user.country;
 
   const avatar = document.getElementById('avatarPreview');
@@ -109,9 +113,10 @@ function renderProfile() {
 }
 
 function renderDocuments() {
-  document.getElementById('documentGrid').innerHTML = requiredDocs.map(doc => {
-    const existing = documentStatus(doc.type);
-    return `<article class="document-card">
+  document.getElementById('documentGrid').innerHTML = requiredDocs
+    .map((doc) => {
+      const existing = documentStatus(doc.type);
+      return `<article class="document-card">
       <div>
         <span class="badge ${existing ? 'success' : 'warn'}">${existing ? 'Uploaded' : 'Needed'}</span>
         <h3>${doc.type}</h3>
@@ -123,36 +128,42 @@ function renderDocuments() {
         <input type="file" class="doc-input" data-doc-type="${doc.type}" accept=".pdf,image/*">
       </label>
     </article>`;
-  }).join('');
+    })
+    .join('');
 
-  document.getElementById('verificationChecklist').innerHTML = requiredDocs.map(doc => {
-    const existing = documentStatus(doc.type);
-    return `<div class="check-item ${existing ? 'done' : ''}">
+  document.getElementById('verificationChecklist').innerHTML = requiredDocs
+    .map((doc) => {
+      const existing = documentStatus(doc.type);
+      return `<div class="check-item ${existing ? 'done' : ''}">
       <span>${existing ? 'OK' : '-'}</span>
       <div><strong>${doc.type}</strong><small>${existing ? 'Received for review' : doc.requiredFor}</small></div>
     </div>`;
-  }).join('');
+    })
+    .join('');
 }
 
-document.getElementById('avatarInput').addEventListener('change', event => {
+document.getElementById('avatarInput').addEventListener('change', (event) => {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
     user.avatar = reader.result;
-    localStorage.setItem('itruck_profile', JSON.stringify({ ...storedProfile, avatar: user.avatar, currency: user.currency }));
+    localStorage.setItem(
+      'itruck_profile',
+      JSON.stringify({ ...storedProfile, avatar: user.avatar, currency: user.currency })
+    );
     renderProfile();
     toast('Profile photo updated');
   };
   reader.readAsDataURL(file);
 });
 
-document.getElementById('documentGrid').addEventListener('change', event => {
+document.getElementById('documentGrid').addEventListener('change', (event) => {
   if (!event.target.classList.contains('doc-input')) return;
   const file = event.target.files[0];
   if (!file) return;
   const type = event.target.dataset.docType;
-  const next = documents.filter(doc => doc.type !== type);
+  const next = documents.filter((doc) => doc.type !== type);
   next.push({ type, name: file.name, size: file.size, uploadedAt: new Date().toISOString(), status: 'review' });
   localStorage.setItem('itruck_profile_documents', JSON.stringify(next));
   documents.length = 0;
@@ -162,12 +173,15 @@ document.getElementById('documentGrid').addEventListener('change', event => {
   toast(`${type} uploaded for review`);
 });
 
-document.getElementById('saveProfile').addEventListener('click', event => {
+document.getElementById('saveProfile').addEventListener('click', (event) => {
   withButtonBusy(event.currentTarget, 'Saving...', async () => {
     const formData = Object.fromEntries(new FormData(document.getElementById('profileForm')).entries());
     Object.assign(user, formData);
     localStorage.setItem('itruck_user', JSON.stringify({ ...storedUser, ...formData }));
-    localStorage.setItem('itruck_profile', JSON.stringify({ ...storedProfile, avatar: user.avatar, currency: user.currency }));
+    localStorage.setItem(
+      'itruck_profile',
+      JSON.stringify({ ...storedProfile, avatar: user.avatar, currency: user.currency })
+    );
     renderProfile();
     toast('Profile saved');
   });
@@ -183,7 +197,7 @@ document.getElementById('changePassword').addEventListener('click', () => {
       <button class="primary-btn" type="submit">Update Password</button>
     </form>`
   );
-  document.getElementById('passwordForm').addEventListener('submit', event => {
+  document.getElementById('passwordForm').addEventListener('submit', (event) => {
     event.preventDefault();
     const button = event.target.querySelector('button[type="submit"]');
     withButtonBusy(button, 'Updating...', async () => {
@@ -199,8 +213,11 @@ document.getElementById('changePassword').addEventListener('click', () => {
   });
 });
 
-document.querySelectorAll('.settings-list input').forEach(input => {
-  const label = input.parentElement.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+document.querySelectorAll('.settings-list input').forEach((input) => {
+  const label = input.parentElement.textContent
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_');
   const key = `itruck_security_${label}`;
   const stored = localStorage.getItem(key);
   if (stored !== null) input.checked = stored === 'true';

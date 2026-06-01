@@ -874,6 +874,28 @@ input[type="radio"] {
   box-shadow: var(--shadow-sm);
 }
 
+.truck-profile-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.truck-profile-panel h2 {
+  margin: 8px 0 4px;
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.truck-profile-panel p {
+  margin: 0;
+  color: var(--text);
+}
+
 .truck-grid {
   grid-template-columns: 1fr;
 }

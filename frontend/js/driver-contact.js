@@ -1,5 +1,7 @@
 const params = new URLSearchParams(location.search);
-const shipment = (window.iTruckShipments || []).find(item => item.id === params.get('shipment')) || (window.iTruckShipments || [])[0];
+const shipment =
+  (window.iTruckShipments || []).find((item) => item.id === params.get('shipment')) ||
+  (window.iTruckShipments || [])[0];
 
 function toast(message) {
   let el = document.getElementById('workspaceToast');
@@ -22,7 +24,12 @@ function saveLocal(type, data) {
 }
 
 function initials(name) {
-  return name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase();
+  return name
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 function methodCard({ type, label, detail, href, enabled }) {
@@ -60,18 +67,23 @@ function renderChat() {
       <span>${shipment.driver}</span>
       <p>Current update: ${shipment.position}. ETA ${shipment.eta}. Preferred contact: ${shipment.contactPreference}.</p>
     </div>
-    ${history.map(item => `
+    ${history
+      .map(
+        (item) => `
       <div class="chat-message user">
         <span>You</span>
         <p>${item.message}</p>
       </div>
-    `).join('')}
+    `
+      )
+      .join('')}
   `;
 }
 
 function render() {
   if (!shipment) {
-    document.querySelector('.contact-workspace').innerHTML = '<section class="panel"><h1>Shipment not found</h1><a class="primary-btn" href="tracking.html">Return to tracking</a></section>';
+    document.querySelector('.contact-workspace').innerHTML =
+      '<section class="panel"><h1>Shipment not found</h1><a class="primary-btn" href="tracking.html">Return to tracking</a></section>';
     return;
   }
 
@@ -132,7 +144,7 @@ function render() {
   renderChat();
 }
 
-document.getElementById('driverChatForm').addEventListener('submit', event => {
+document.getElementById('driverChatForm').addEventListener('submit', (event) => {
   event.preventDefault();
   const data = Object.fromEntries(new FormData(event.target).entries());
   const payload = { shipmentId: shipment.id, driver: shipment.driver, message: data.message };

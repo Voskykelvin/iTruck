@@ -21,7 +21,9 @@ test('buildEstimate exposes fees, documents, and risk for cross-border moves', (
   expect(estimate.total).toBeGreaterThan(estimate.basePrice);
   expect(estimate.recommendedMode).toBe('open-bids');
   expect(estimate.requiredDocuments).toContain('Customs declaration');
-  expect(estimate.lineItems.map(item => item.key)).toEqual(expect.arrayContaining(['crossBorderFee', 'customsBroker']));
+  expect(estimate.lineItems.map((item) => item.key)).toEqual(
+    expect.arrayContaining(['crossBorderFee', 'customsBroker'])
+  );
 });
 
 test('autoAssign returns a queued assignment record', async () => {

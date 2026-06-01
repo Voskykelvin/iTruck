@@ -46,7 +46,10 @@ function sendFrontendIndex(req, res) {
 
 function corsOptions() {
   const rawOrigins = process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || '*';
-  const origins = rawOrigins.split(',').map(origin => origin.trim()).filter(Boolean);
+  const origins = rawOrigins
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
   if (origins.includes('*')) {
     return { origin: '*', credentials: false };
@@ -64,12 +67,17 @@ function corsOptions() {
 app.set('io', io);
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors(corsOptions()));
-app.use(pinoHttp({
-  logger,
-  autoLogging: process.env.NODE_ENV === 'test' ? false : {
-    ignore: req => req.url === '/api/health'
-  }
-}));
+app.use(
+  pinoHttp({
+    logger,
+    autoLogging:
+      process.env.NODE_ENV === 'test'
+        ? false
+        : {
+            ignore: (req) => req.url === '/api/health'
+          }
+  })
+);
 app.use('/api/webhooks/stripe', apiLimiter, express.raw({ type: 'application/json', limit: '2mb' }), stripeRouter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -118,7 +126,7 @@ mongoose.connection.on('connected', () => {
   logger.info('Mongoose default connection open.');
 });
 
-mongoose.connection.on('error', err => {
+mongoose.connection.on('error', (err) => {
   logger.error({ err }, 'Mongoose default connection error');
 });
 

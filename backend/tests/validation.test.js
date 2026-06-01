@@ -5,7 +5,7 @@ process.env.REDIS_URL = '';
 
 const { app, io, server } = require('../server');
 
-afterAll(done => {
+afterAll((done) => {
   if (io?.close) io.close();
   if (server?.listening) return server.close(done);
   return done();
@@ -17,52 +17,60 @@ function authHeader(user = { id: 'demo-client-amina', role: 'client' }) {
 }
 
 test('auth login returns structured validation errors', async () => {
-  const res = await request(app)
-    .post('/api/auth/login')
-    .send({});
+  const res = await request(app).post('/api/auth/login').send({});
 
   expect(res.status).toBe(422);
   expect(res.body.status).toBe('fail');
   expect(res.body.message).toBe('Validation failed');
-  expect(res.body.errors.map(error => error.field)).toEqual(expect.arrayContaining(['email', 'password']));
+  expect(res.body.errors.map((error) => error.field)).toEqual(expect.arrayContaining(['email', 'password']));
 });
 
 test('truck list rejects invalid query filters before querying data', async () => {
-  const res = await request(app)
-    .get('/api/trucks?verified=maybe');
+  const res = await request(app).get('/api/trucks?verified=maybe');
 
   expect(res.status).toBe(422);
-  expect(res.body.errors).toEqual(expect.arrayContaining([
-    expect.objectContaining({ field: 'verified' })
-  ]));
+  expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ field: 'verified' })]));
+});
+
+test('truck creation ignores owner-controlled privileged fields', async () => {
+  const res = await request(app)
+    .post('/api/trucks')
+    .set('Authorization', authHeader({ id: 'demo-owner-kelvin', role: 'owner' }))
+    .send({
+      type: 'Lorry',
+      plateNumber: `TEST-${Date.now()}`,
+      isVerified: true,
+      owner: 'someone-else',
+      ratingAverage: 5,
+      documents: [{ type: 'insurance', status: 'approved' }]
+    });
+
+  expect(res.status).toBe(201);
+  expect(res.body.truck.owner).toBe('demo-owner-kelvin');
+  expect(res.body.truck.isVerified).toBe(false);
+  expect(res.body.truck.ratingAverage).toBeUndefined();
+  expect(res.body.truck.documents).toBeUndefined();
 });
 
 test('booking creation validates required flat payload fields', async () => {
-  const res = await request(app)
-    .post('/api/bookings')
-    .set('Authorization', authHeader())
-    .send({});
+  const res = await request(app).post('/api/bookings').set('Authorization', authHeader()).send({});
 
   expect(res.status).toBe(422);
-  expect(res.body.errors.map(error => error.field)).toEqual(expect.arrayContaining(['pickup', 'destination', 'cargo']));
+  expect(res.body.errors.map((error) => error.field)).toEqual(
+    expect.arrayContaining(['pickup', 'destination', 'cargo'])
+  );
 });
 
 test('notification read route rejects invalid object ids', async () => {
-  const res = await request(app)
-    .patch('/api/notifications/not-an-id/read')
-    .set('Authorization', authHeader());
+  const res = await request(app).patch('/api/notifications/not-an-id/read').set('Authorization', authHeader());
 
   expect(res.status).toBe(422);
-  expect(res.body.errors).toEqual(expect.arrayContaining([
-    expect.objectContaining({ field: 'id' })
-  ]));
+  expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ field: 'id' })]));
 });
 
 test('marketplace estimate validates required route fields', async () => {
-  const res = await request(app)
-    .post('/api/marketplace/estimate')
-    .send({ vehicleType: 'Lorry' });
+  const res = await request(app).post('/api/marketplace/estimate').send({ vehicleType: 'Lorry' });
 
   expect(res.status).toBe(422);
-  expect(res.body.errors.map(error => error.field)).toEqual(expect.arrayContaining(['pickup', 'destination']));
+  expect(res.body.errors.map((error) => error.field)).toEqual(expect.arrayContaining(['pickup', 'destination']));
 });

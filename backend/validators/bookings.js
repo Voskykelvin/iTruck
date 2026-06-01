@@ -29,7 +29,7 @@ const createBookingSchema = [
   optionalString('quietHours', 120),
   body('optionalServices')
     .optional({ checkFalsy: true })
-    .custom(value => Array.isArray(value) || typeof value === 'string')
+    .custom((value) => Array.isArray(value) || typeof value === 'string')
     .withMessage('optionalServices must be a list or comma-separated string'),
   body('quoteAcknowledged')
     .optional({ checkFalsy: true })
@@ -47,26 +47,33 @@ const submitBidSchema = [
 
 const updateStatusSchema = [
   ...bookingIdSchema,
-  body('status')
+  body('status').optional({ checkFalsy: true }).isIn(Booking.STATUSES).withMessage('Status is invalid'),
+  body('location').optional({ checkFalsy: true }).isObject().withMessage('location must be an object'),
+  body('location.lat')
     .optional({ checkFalsy: true })
-    .isIn(Booking.STATUSES)
-    .withMessage('Status is invalid'),
-  body('location')
+    .isFloat({ min: -90, max: 90 })
+    .withMessage('Latitude is invalid')
+    .toFloat(),
+  body('location.lng')
     .optional({ checkFalsy: true })
-    .isObject()
-    .withMessage('location must be an object'),
-  body('location.lat').optional({ checkFalsy: true }).isFloat({ min: -90, max: 90 }).withMessage('Latitude is invalid').toFloat(),
-  body('location.lng').optional({ checkFalsy: true }).isFloat({ min: -180, max: 180 }).withMessage('Longitude is invalid').toFloat(),
-  body('location.speed').optional({ checkFalsy: true }).isFloat({ min: 0, max: 180 }).withMessage('Speed is invalid').toFloat(),
-  body('location.heading').optional({ checkFalsy: true }).isFloat({ min: 0, max: 360 }).withMessage('Heading is invalid').toFloat()
+    .isFloat({ min: -180, max: 180 })
+    .withMessage('Longitude is invalid')
+    .toFloat(),
+  body('location.speed')
+    .optional({ checkFalsy: true })
+    .isFloat({ min: 0, max: 180 })
+    .withMessage('Speed is invalid')
+    .toFloat(),
+  body('location.heading')
+    .optional({ checkFalsy: true })
+    .isFloat({ min: 0, max: 360 })
+    .withMessage('Heading is invalid')
+    .toFloat()
 ];
 
 const listBookingsSchema = [
   ...pagination,
-  query('status')
-    .optional({ checkFalsy: true })
-    .isIn(Booking.STATUSES)
-    .withMessage('Status is invalid')
+  query('status').optional({ checkFalsy: true }).isIn(Booking.STATUSES).withMessage('Status is invalid')
 ];
 
 module.exports = {

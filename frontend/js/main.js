@@ -16,13 +16,13 @@ function toast(message) {
 
 function openModal(type) {
   $('#modalOverlay')?.classList.add('active');
-  $$('.modal').forEach(modal => modal.classList.remove('active'));
+  $$('.modal').forEach((modal) => modal.classList.remove('active'));
   $(`#modal-${type}`)?.classList.add('active');
 }
 
 function closeModal() {
   $('#modalOverlay')?.classList.remove('active');
-  $$('.modal').forEach(modal => modal.classList.remove('active'));
+  $$('.modal').forEach((modal) => modal.classList.remove('active'));
 }
 
 function bindNavigation() {
@@ -33,7 +33,7 @@ function bindNavigation() {
     hamburger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
   });
 
-  $$('.nav-links a').forEach(link => {
+  $$('.nav-links a').forEach((link) => {
     link.addEventListener('click', () => {
       navbar?.classList.remove('open');
       hamburger?.setAttribute('aria-expanded', 'false');
@@ -42,14 +42,14 @@ function bindNavigation() {
 }
 
 function bindModals() {
-  $$('[data-open-modal]').forEach(button => {
+  $$('[data-open-modal]').forEach((button) => {
     button.addEventListener('click', () => openModal(button.dataset.openModal));
   });
-  $$('[data-close-modal]').forEach(button => button.addEventListener('click', closeModal));
-  $('#modalOverlay')?.addEventListener('click', event => {
+  $$('[data-close-modal]').forEach((button) => button.addEventListener('click', closeModal));
+  $('#modalOverlay')?.addEventListener('click', (event) => {
     if (event.target.id === 'modalOverlay') closeModal();
   });
-  document.addEventListener('keydown', event => {
+  document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') closeModal();
   });
 }
@@ -72,7 +72,7 @@ const dialCodes = {
 };
 
 function bindCountryControls() {
-  $$('[data-auth-form]').forEach(form => {
+  $$('[data-auth-form]').forEach((form) => {
     const country = $('[data-country-select]', form);
     const code = $('[data-country-code]', form);
     if (!country || !code) return;
@@ -101,8 +101,8 @@ function redirectForRole(role) {
 }
 
 function bindAuthForms() {
-  $$('[data-auth-form]').forEach(form => {
-    form.addEventListener('submit', async event => {
+  $$('[data-auth-form]').forEach((form) => {
+    form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const button = form.querySelector('button[type="submit"]');
       button.disabled = true;
@@ -125,7 +125,7 @@ function bindAuthForms() {
     });
   });
 
-  $('[data-login-form]')?.addEventListener('submit', async event => {
+  $('[data-login-form]')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const button = event.target.querySelector('button[type="submit"]');
     button.disabled = true;
@@ -155,7 +155,7 @@ function countStats() {
   function count() {
     if (done) return;
     done = true;
-    stats.forEach(el => {
+    stats.forEach((el) => {
       const target = Number(el.dataset.target || 0);
       let value = 0;
       const step = Math.max(1, Math.ceil(target / 70));
@@ -173,7 +173,9 @@ function countStats() {
   const target = $('.hero-stats');
   if (!target) return;
   if ('IntersectionObserver' in window) {
-    new IntersectionObserver(entries => entries.forEach(entry => entry.isIntersecting && count()), { threshold: 0.25 }).observe(target);
+    new IntersectionObserver((entries) => entries.forEach((entry) => entry.isIntersecting && count()), {
+      threshold: 0.25
+    }).observe(target);
   } else {
     count();
   }

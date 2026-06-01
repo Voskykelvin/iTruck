@@ -3,7 +3,9 @@ const cloudinary = require('cloudinary').v2;
 const { isLiveMode } = require('../config/runtime');
 
 function isConfigured() {
-  return Boolean(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+  return Boolean(
+    process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET
+  );
 }
 
 function configure() {

@@ -46,7 +46,13 @@ const memoryBookings = [
     paymentMethod: 'Card escrow',
     status: 'bidding',
     bids: [
-      { owner: 'demo-owner-grace', amount: 3040, message: 'Trailer available tomorrow morning.', status: 'pending', createdAt: new Date().toISOString() }
+      {
+        owner: 'demo-owner-grace',
+        amount: 3040,
+        message: 'Trailer available tomorrow morning.',
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      }
     ],
     tracking: [],
     createdAt: new Date().toISOString()
@@ -57,14 +63,21 @@ function bookingVisibleTo(user, booking) {
   if (user.role === 'admin') return true;
   if (user.role === 'client') return String(booking.client) === String(user._id);
   if (user.role === 'owner') {
-    return String(booking.owner) === String(user._id) || (booking.bids || []).some(bid => String(bid.owner) === String(user._id));
+    return (
+      String(booking.owner) === String(user._id) ||
+      (booking.bids || []).some((bid) => String(bid.owner) === String(user._id))
+    );
   }
   return false;
 }
 
 function normalizeOptionalServices(value) {
   if (Array.isArray(value)) return value;
-  if (typeof value === 'string' && value.trim()) return value.split(',').map(item => item.trim()).filter(Boolean);
+  if (typeof value === 'string' && value.trim())
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
   return [];
 }
 
@@ -72,7 +85,8 @@ function cleanBookingPayload(body) {
   const payload = {
     ...body,
     optionalServices: normalizeOptionalServices(body.optionalServices),
-    quoteAcknowledged: body.quoteAcknowledged === true || body.quoteAcknowledged === 'true' || body.quoteAcknowledged === 'on'
+    quoteAcknowledged:
+      body.quoteAcknowledged === true || body.quoteAcknowledged === 'true' || body.quoteAcknowledged === 'on'
   };
 
   if (payload.distance !== undefined && payload.distance !== '') payload.distance = Number(payload.distance);
@@ -93,19 +107,24 @@ router.get('/', listBookingsSchema, validate, async (req, res, next) => {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
       return res.json({
-        bookings: memoryBookings.filter(booking => bookingVisibleTo(req.user, booking)),
+        bookings: memoryBookings.filter((booking) => bookingVisibleTo(req.user, booking)),
         mode: 'memory'
       });
     }
 
-    const q = req.user.role === 'client'
-      ? { client: req.user._id }
-      : req.user.role === 'owner'
-        ? { $or: [{ owner: req.user._id }, { 'bids.owner': req.user._id }] }
-        : {};
+    const q =
+      req.user.role === 'client'
+        ? { client: req.user._id }
+        : req.user.role === 'owner'
+          ? { $or: [{ owner: req.user._id }, { 'bids.owner': req.user._id }] }
+          : {};
 
     if (req.query.status) q.status = req.query.status;
-    res.json({ bookings: await Booking.find(q).sort('-createdAt').limit(req.query.limit || 50) });
+    res.json({
+      bookings: await Booking.find(q)
+        .sort('-createdAt')
+        .limit(req.query.limit || 50)
+    });
   } catch (err) {
     next(err);
   }
@@ -117,7 +136,7 @@ router.get('/open', async (req, res, next) => {
 
     if (!mongoReady()) {
       return res.json({
-        bookings: memoryBookings.filter(booking => ['pending', 'bidding'].includes(booking.status)),
+        bookings: memoryBookings.filter((booking) => ['pending', 'bidding'].includes(booking.status)),
         mode: 'memory'
       });
     }
@@ -142,7 +161,7 @@ router.get('/:id', bookingIdSchema, validate, async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
-      const booking = memoryBookings.find(item => item._id === req.params.id || item.id === req.params.id);
+      const booking = memoryBookings.find((item) => item._id === req.params.id || item.id === req.params.id);
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
       if (!bookingVisibleTo(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
       return res.json({ booking, mode: 'memory' });
@@ -186,7 +205,7 @@ router.post('/:id/bids', submitBidSchema, validate, async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
-      const booking = memoryBookings.find(item => item._id === req.params.id);
+      const booking = memoryBookings.find((item) => item._id === req.params.id);
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
       booking.bids = booking.bids || [];
@@ -216,7 +235,7 @@ router.patch('/:id/status', updateStatusSchema, validate, async (req, res, next)
     }
 
     if (!mongoReady()) {
-      const booking = memoryBookings.find(item => item._id === req.params.id);
+      const booking = memoryBookings.find((item) => item._id === req.params.id);
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
       if (!bookingVisibleTo(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
 

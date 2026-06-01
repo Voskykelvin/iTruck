@@ -49,7 +49,10 @@ router.get('/stats', async (req, res, next) => {
       User.countDocuments(),
       Truck.countDocuments(),
       Booking.countDocuments(),
-      Transaction.aggregate([{ $match: { status: 'completed' } }, { $group: { _id: null, total: { $sum: '$amount' } } }])
+      Transaction.aggregate([
+        { $match: { status: 'completed' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ])
     ]);
     res.json({ totalUsers, totalTrucks, totalBookings, totalRevenue: totalRevenue[0]?.total || 0 });
   } catch (err) {
@@ -60,7 +63,8 @@ router.get('/stats', async (req, res, next) => {
 router.get('/users', async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
-    if (!mongoReady()) return res.json({ users: demoUsers.map(({ password: _password, ...user }) => user), mode: 'memory' });
+    if (!mongoReady())
+      return res.json({ users: demoUsers.map(({ password: _password, ...user }) => user), mode: 'memory' });
     res.json({ users: await User.find().limit(100) });
   } catch (err) {
     next(err);
@@ -111,10 +115,7 @@ router.get('/audit-logs', async (req, res, next) => {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) return res.json({ logs: [], mode: 'memory' });
 
-    const logs = await AuditLog.find()
-      .populate('admin', 'firstName lastName email role')
-      .sort('-createdAt')
-      .limit(100);
+    const logs = await AuditLog.find().populate('admin', 'firstName lastName email role').sort('-createdAt').limit(100);
 
     res.json({ logs });
   } catch (err) {
@@ -126,7 +127,7 @@ router.patch('/users/:id/status', userStatusSchema, validate, async (req, res, n
   try {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
-      const user = demoUsers.find(item => item._id === req.params.id);
+      const user = demoUsers.find((item) => item._id === req.params.id);
       if (!user) return res.status(404).json({ message: 'User not found' });
       user.isActive = req.body.isActive;
       return res.json({ user, mode: 'memory' });
@@ -146,7 +147,7 @@ router.patch('/trucks/:id/verification', truckVerificationSchema, validate, asyn
   try {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
-      const truck = demoTrucks.find(item => item._id === req.params.id);
+      const truck = demoTrucks.find((item) => item._id === req.params.id);
       if (!truck) return res.status(404).json({ message: 'Truck not found' });
       truck.isVerified = req.body.isVerified;
       return res.json({ truck, mode: 'memory' });

@@ -3,10 +3,7 @@ const { body, param, query } = require('express-validator');
 const { mongoReady } = require('../config/runtime');
 
 function requiredString(field, max = 500) {
-  return body(field)
-    .trim()
-    .isLength({ min: 1, max })
-    .withMessage(`${field} is required`);
+  return body(field).trim().isLength({ min: 1, max }).withMessage(`${field} is required`);
 }
 
 function optionalString(field, max = 500) {
@@ -26,17 +23,11 @@ function optionalPositiveNumber(field) {
 }
 
 function positiveAmount(field = 'amount') {
-  return body(field)
-    .isFloat({ min: 0.01 })
-    .withMessage(`${field} must be greater than zero`)
-    .toFloat();
+  return body(field).isFloat({ min: 0.01 }).withMessage(`${field} must be greater than zero`).toFloat();
 }
 
 function booleanBody(field) {
-  return body(field)
-    .isBoolean()
-    .withMessage(`${field} must be true or false`)
-    .toBoolean();
+  return body(field).isBoolean().withMessage(`${field} must be true or false`).toBoolean();
 }
 
 function optionalBooleanQuery(field) {
@@ -48,10 +39,7 @@ function optionalBooleanQuery(field) {
 }
 
 function mongoIdParam(field = 'id') {
-  return param(field)
-    .trim()
-    .isMongoId()
-    .withMessage(`${field} is invalid`);
+  return param(field).trim().isMongoId().withMessage(`${field} is invalid`);
 }
 
 function liveMongoIdParam(field = 'id') {
@@ -60,7 +48,7 @@ function liveMongoIdParam(field = 'id') {
     .notEmpty()
     .withMessage(`${field} is required`)
     .bail()
-    .custom(value => {
+    .custom((value) => {
       if (!mongoReady() || mongoose.Types.ObjectId.isValid(value)) return true;
       throw new Error(`${field} is invalid`);
     });
@@ -71,7 +59,7 @@ function liveMongoIdBody(fields, options = {}) {
   const required = options.required === true;
 
   return body().custom((_, { req }) => {
-    const value = candidates.map(field => req.body?.[field]).find(Boolean);
+    const value = candidates.map((field) => req.body?.[field]).find(Boolean);
     if (!value) {
       if (required) throw new Error(`${candidates[0]} is required`);
       return true;
@@ -82,11 +70,7 @@ function liveMongoIdBody(fields, options = {}) {
 }
 
 const pagination = [
-  query('page')
-    .optional({ checkFalsy: true })
-    .isInt({ min: 1 })
-    .withMessage('page must be a positive integer')
-    .toInt(),
+  query('page').optional({ checkFalsy: true }).isInt({ min: 1 }).withMessage('page must be a positive integer').toInt(),
   query('limit')
     .optional({ checkFalsy: true })
     .isInt({ min: 1, max: 100 })

@@ -1,7 +1,19 @@
 const { body, query } = require('express-validator');
 const { liveMongoIdBody, optionalString, optionalPositiveNumber, pagination } = require('./common');
 
-const workflowStatuses = ['submitted', 'open', 'matched', 'cancelled', 'pending', 'sent', 'read', 'failed', 'reviewing', 'resolved', 'dismissed'];
+const workflowStatuses = [
+  'submitted',
+  'open',
+  'matched',
+  'cancelled',
+  'pending',
+  'sent',
+  'read',
+  'failed',
+  'reviewing',
+  'resolved',
+  'dismissed'
+];
 
 const createLoadRequestSchema = [
   liveMongoIdBody(['booking', 'bookingId', 'shipmentId']),
@@ -40,7 +52,10 @@ const createReportSchema = [
     return true;
   }),
   body('severity').optional({ checkFalsy: true }).isIn(['low', 'normal', 'high']).withMessage('Severity is invalid'),
-  body('status').optional({ checkFalsy: true }).isIn(['submitted', 'reviewing', 'resolved', 'dismissed']).withMessage('Status is invalid')
+  body('status')
+    .optional({ checkFalsy: true })
+    .isIn(['submitted', 'reviewing', 'resolved', 'dismissed'])
+    .withMessage('Status is invalid')
 ];
 
 const listRecordsSchema = [
@@ -48,7 +63,10 @@ const listRecordsSchema = [
   query('booking').optional({ checkFalsy: true }).trim().isLength({ max: 80 }).withMessage('booking is invalid'),
   query('bookingId').optional({ checkFalsy: true }).trim().isLength({ max: 80 }).withMessage('bookingId is invalid'),
   query('shipmentId').optional({ checkFalsy: true }).trim().isLength({ max: 80 }).withMessage('shipmentId is invalid'),
-  query('type').optional({ checkFalsy: true }).isIn(['request', 'requests', 'message', 'messages', 'report', 'reports']).withMessage('type is invalid')
+  query('type')
+    .optional({ checkFalsy: true })
+    .isIn(['request', 'requests', 'message', 'messages', 'report', 'reports'])
+    .withMessage('type is invalid')
 ];
 
 module.exports = {

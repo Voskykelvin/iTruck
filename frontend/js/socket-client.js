@@ -7,7 +7,7 @@ class ITruckSocket {
   connect() {
     if (window.io && !this.socket) {
       this.socket = window.io();
-      this.socket.on('tracking:update', data => this.emit('tracking:update', data));
+      this.socket.on('tracking:update', (data) => this.emit('tracking:update', data));
     }
     return this;
   }
@@ -18,7 +18,7 @@ class ITruckSocket {
   }
 
   emit(event, data) {
-    (this.listeners.get(event) || []).forEach(handler => handler(data));
+    (this.listeners.get(event) || []).forEach((handler) => handler(data));
   }
 
   joinBooking(id) {

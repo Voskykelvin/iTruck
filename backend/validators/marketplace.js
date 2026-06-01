@@ -14,9 +14,13 @@ const estimateSchema = [
   optionalString('requirements', 120),
   body('optionalServices')
     .optional({ checkFalsy: true })
-    .custom(value => Array.isArray(value) || typeof value === 'string')
+    .custom((value) => Array.isArray(value) || typeof value === 'string')
     .withMessage('optionalServices must be a list or comma-separated string'),
-  body('crossBorder').optional({ checkFalsy: true }).isBoolean().withMessage('crossBorder must be true or false').toBoolean()
+  body('crossBorder')
+    .optional({ checkFalsy: true })
+    .isBoolean()
+    .withMessage('crossBorder must be true or false')
+    .toBoolean()
 ];
 
 module.exports = { estimateSchema };

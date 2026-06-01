@@ -7,13 +7,22 @@ const updateProfileSchema = [
   optionalString('phone', 32),
   optionalString('countryCode', 8),
   optionalString('country', 80),
-  body('accountType').optional({ checkFalsy: true }).isIn(['personal', 'business', 'ngo']).withMessage('accountType is invalid'),
+  body('accountType')
+    .optional({ checkFalsy: true })
+    .isIn(['personal', 'business', 'ngo'])
+    .withMessage('accountType is invalid'),
   optionalString('company', 120)
 ];
 
 const updatePasswordSchema = [
-  body('currentPassword').optional({ checkFalsy: true }).isLength({ min: 8, max: 128 }).withMessage('currentPassword is invalid'),
-  body('newPassword').optional({ checkFalsy: true }).isLength({ min: 8, max: 128 }).withMessage('newPassword is invalid')
+  body('currentPassword')
+    .optional({ checkFalsy: true })
+    .isLength({ min: 8, max: 128 })
+    .withMessage('currentPassword is invalid'),
+  body('newPassword')
+    .optional({ checkFalsy: true })
+    .isLength({ min: 8, max: 128 })
+    .withMessage('newPassword is invalid')
 ];
 
 module.exports = { updatePasswordSchema, updateProfileSchema };

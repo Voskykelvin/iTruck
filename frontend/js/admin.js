@@ -43,9 +43,13 @@ function table(name) {
         <div><p class="eyebrow">${name}</p><h2>${name[0].toUpperCase()}${name.slice(1)}</h2></div>
         <button class="secondary-btn" data-export="${name}">Export CSV</button>
       </div>
-      <table class="admin-table"><tbody>${rows[name].map((row, rowIndex) => `
-        <tr>${row.map(cell => `<td>${cell}</td>`).join('')}<td><button class="ghost-btn" data-review-row="${name}:${rowIndex}">Review</button></td></tr>
-      `).join('')}</tbody></table>
+      <table class="admin-table"><tbody>${rows[name]
+        .map(
+          (row, rowIndex) => `
+        <tr>${row.map((cell) => `<td>${cell}</td>`).join('')}<td><button class="ghost-btn" data-review-row="${name}:${rowIndex}">Review</button></td></tr>
+      `
+        )
+        .join('')}</tbody></table>
     </section>
   `;
 }
@@ -67,9 +71,11 @@ function dashboard() {
       </div>
     </section>
   `;
-  document.getElementById('runAudit').addEventListener('click', () => toast('Audit queued: verification, documents, payments, and route exceptions'));
+  document
+    .getElementById('runAudit')
+    .addEventListener('click', () => toast('Audit queued: verification, documents, payments, and route exceptions'));
   API.adminStats()
-    .then(stats => {
+    .then((stats) => {
       document.getElementById('adminUsers').textContent = Number(stats.totalUsers || 0).toLocaleString();
       document.getElementById('adminTrucks').textContent = Number(stats.totalTrucks || 0).toLocaleString();
       document.getElementById('adminBookings').textContent = Number(stats.totalBookings || 0).toLocaleString();
@@ -90,15 +96,17 @@ function settings() {
     </section>
   `;
   if (window.iTruckTheme) {
-    document.querySelectorAll('[data-theme-choice]').forEach(btn => {
+    document.querySelectorAll('[data-theme-choice]').forEach((btn) => {
       btn.addEventListener('click', () => window.iTruckTheme.apply(btn.dataset.themeChoice));
       btn.classList.toggle('active', btn.dataset.themeChoice === window.iTruckTheme.current());
     });
   }
-  document.querySelectorAll('.settings-toggle input').forEach(input => input.addEventListener('change', () => toast('Setting saved')));
+  document
+    .querySelectorAll('.settings-toggle input')
+    .forEach((input) => input.addEventListener('change', () => toast('Setting saved')));
 }
 
-document.addEventListener('click', event => {
+document.addEventListener('click', (event) => {
   const review = event.target.closest('[data-review-row]')?.dataset.reviewRow;
   const task = event.target.closest('[data-admin-task]')?.dataset.adminTask;
   const exportName = event.target.closest('[data-export]')?.dataset.export;
@@ -107,9 +115,9 @@ document.addEventListener('click', event => {
   if (exportName) toast(`${exportName} export prepared`);
 });
 
-document.querySelectorAll('[data-admin-section]').forEach(button => {
+document.querySelectorAll('[data-admin-section]').forEach((button) => {
   button.addEventListener('click', () => {
-    document.querySelectorAll('[data-admin-section]').forEach(item => item.classList.remove('active'));
+    document.querySelectorAll('[data-admin-section]').forEach((item) => item.classList.remove('active'));
     button.classList.add('active');
     const section = button.dataset.adminSection;
     if (section === 'dashboard') dashboard();

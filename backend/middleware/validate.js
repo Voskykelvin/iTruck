@@ -7,7 +7,7 @@ function validate(req, res, next) {
   res.status(422).json({
     status: 'fail',
     message: 'Validation failed',
-    errors: errors.array().map(error => ({
+    errors: errors.array().map((error) => ({
       field: error.path || error.param,
       message: error.msg
     }))

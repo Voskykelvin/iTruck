@@ -1,7 +1,10 @@
 const shipments = window.iTruckShipments || [];
 const query = new URLSearchParams(location.search);
 
-let selected = Math.max(0, shipments.findIndex(item => item.id === query.get('shipment')));
+let selected = Math.max(
+  0,
+  shipments.findIndex((item) => item.id === query.get('shipment'))
+);
 if (selected < 0) selected = 0;
 let mapMode = query.get('map') === 'satellite' ? 'satellite' : 'roadmap';
 
@@ -45,7 +48,8 @@ function openModal(title, body, size = '') {
     shell = document.createElement('div');
     shell.id = 'trackingModal';
     shell.className = 'workspace-modal';
-    shell.innerHTML = '<div class="workspace-dialog"><button class="modal-x" type="button" data-close-tracking-modal aria-label="Close">x</button><div id="trackingModalContent"></div></div>';
+    shell.innerHTML =
+      '<div class="workspace-dialog"><button class="modal-x" type="button" data-close-tracking-modal aria-label="Close">x</button><div id="trackingModalContent"></div></div>';
     document.body.appendChild(shell);
   }
 
@@ -69,13 +73,17 @@ function render() {
   const shipment = selectedShipment();
   if (!shipment) return;
 
-  document.getElementById('trackingList').innerHTML = shipments.map((item, index) => `
+  document.getElementById('trackingList').innerHTML = shipments
+    .map(
+      (item, index) => `
     <button class="tracking-item ${index === selected ? 'active' : ''}" data-select-shipment="${index}">
       <strong>${item.id}</strong>
       <span>${item.route}</span>
       <small>${item.progress}% | ${item.position}</small>
     </button>
-  `).join('');
+  `
+    )
+    .join('');
 
   document.getElementById('googleMap').src = googleRouteUrl(shipment);
   document.getElementById('mapRouteTitle').textContent = shipment.route;
@@ -173,7 +181,7 @@ async function copyToClipboard(value) {
 }
 
 function bindEvents() {
-  document.addEventListener('click', async event => {
+  document.addEventListener('click', async (event) => {
     const shipmentTarget = event.target.closest('[data-select-shipment]');
     const closeTarget = event.target.closest('[data-close-tracking-modal]');
     const copyTarget = event.target.closest('[data-copy-share]');
@@ -230,18 +238,24 @@ function bindEvents() {
     if (nativeShareTarget) {
       const url = nativeShareTarget.dataset.nativeShare;
       if (navigator.share) {
-        await navigator.share({ title: 'iTruck shipment tracking', text: `Track ${selectedShipment().id}`, url }).catch(() => {});
+        await navigator
+          .share({ title: 'iTruck shipment tracking', text: `Track ${selectedShipment().id}`, url })
+          .catch(() => {});
       } else {
         await copyToClipboard(url);
       }
     }
   });
 
-  document.addEventListener('submit', event => {
+  document.addEventListener('submit', (event) => {
     if (event.target.id === 'deliveryForm') {
       event.preventDefault();
       const shipment = selectedShipment();
-      const payload = { shipmentId: shipment.id, ...Object.fromEntries(new FormData(event.target).entries()), status: 'delivered' };
+      const payload = {
+        shipmentId: shipment.id,
+        ...Object.fromEntries(new FormData(event.target).entries()),
+        status: 'delivered'
+      };
       shipment.progress = 100;
       API.updateBookingStatus(shipment.id, payload)
         .catch(() => saveLocal('delivery_confirmations', payload))
@@ -265,7 +279,7 @@ function bindEvents() {
     }
   });
 
-  document.addEventListener('keydown', event => {
+  document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') closeModal();
   });
 }

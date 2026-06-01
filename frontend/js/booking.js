@@ -42,18 +42,24 @@ function saveLocal(type, data) {
 
 function serializeForm(form) {
   const data = Object.fromEntries(new FormData(form).entries());
-  data.optionalServices = [...form.querySelectorAll('input[name="optionalServices"]:checked')].map(input => input.value);
+  data.optionalServices = [...form.querySelectorAll('input[name="optionalServices"]:checked')].map(
+    (input) => input.value
+  );
   data.quoteAcknowledged = Boolean(form.querySelector('input[name="quoteAcknowledged"]')?.checked);
   return data;
 }
 
 function renderVehicleTypes() {
-  vehicleTypes.innerHTML = types.map(type => `
+  vehicleTypes.innerHTML = types
+    .map(
+      (type) => `
     <button type="button" class="vehicle-option ${type === vehicle ? 'active' : ''}" data-type="${type}">
       <h3>${type}</h3>
       <p class="muted">Verified supply, insured trips, and route tracking available</p>
     </button>
-  `).join('');
+  `
+    )
+    .join('');
 }
 
 function fallbackEstimate(data) {
@@ -78,9 +84,17 @@ function fallbackEstimate(data) {
     recommendedMode: distance > 900 || data.border === 'Cross-border' ? 'open-bids' : 'instant-match',
     confidence: 'medium',
     routeRisk: data.border === 'Cross-border' ? 'medium' : 'low',
-    requiredDocuments: data.border === 'Cross-border'
-      ? ['Waybill', 'Cargo photos', 'Receiver confirmation', 'Commercial invoice', 'Packing list', 'Customs declaration']
-      : ['Waybill', 'Cargo photos', 'Receiver confirmation'],
+    requiredDocuments:
+      data.border === 'Cross-border'
+        ? [
+            'Waybill',
+            'Cargo photos',
+            'Receiver confirmation',
+            'Commercial invoice',
+            'Packing list',
+            'Customs declaration'
+          ]
+        : ['Waybill', 'Cargo photos', 'Receiver confirmation'],
     warnings: [],
     quoteProtection: 'Estimate includes platform, insurance, escrow, and selected service fees before carrier bids.'
   };
@@ -135,30 +149,40 @@ function renderReview() {
           <strong>${estimate ? money(estimate.total, estimate.currency) : 'Calculating'}</strong>
         </div>
         <div class="line-items">
-          ${lineItems.map(item => `
+          ${lineItems
+            .map(
+              (item) => `
             <div>
               <span>${escapeHtml(item.label)}</span>
               <strong>${money(item.amount, estimate.currency)}</strong>
             </div>
-          `).join('')}
+          `
+            )
+            .join('')}
         </div>
       </section>
     </div>
     <div class="document-checklist">
       <h3>Required documents</h3>
-      <div>${documents.map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>
+      <div>${documents.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div>
     </div>
-    ${warnings.length ? `
+    ${
+      warnings.length
+        ? `
       <div class="quote-warning">
-        ${warnings.map(item => `<span>${escapeHtml(item)}</span>`).join('')}
+        ${warnings.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}
       </div>
-    ` : ''}
+    `
+        : ''
+    }
     <p class="quote-protection">${escapeHtml(estimate?.quoteProtection || 'Quote protection available after estimate is generated.')}</p>
   `;
 }
 
 function render() {
-  document.querySelectorAll('.booking-step').forEach(section => section.classList.toggle('active', Number(section.dataset.step) === step));
+  document
+    .querySelectorAll('.booking-step')
+    .forEach((section) => section.classList.toggle('active', Number(section.dataset.step) === step));
   document.getElementById('stepBadge').textContent = `Step ${step} of ${totalSteps}`;
   document.getElementById('prevStep').disabled = step === 1;
   document.getElementById('nextStep').classList.toggle('hidden', step === totalSteps);
@@ -170,10 +194,11 @@ function render() {
 renderVehicleTypes();
 
 if (params.get('truck')) {
-  document.getElementById('routeInsight').textContent = `Booking started from truck profile ${params.get('truck')}. Complete the route and cargo details to send the request.`;
+  document.getElementById('routeInsight').textContent =
+    `Booking started from truck profile ${params.get('truck')}. Complete the route and cargo details to send the request.`;
 }
 
-vehicleTypes.addEventListener('click', event => {
+vehicleTypes.addEventListener('click', (event) => {
   const option = event.target.closest('.vehicle-option');
   if (!option) return;
   vehicle = option.dataset.type;
@@ -183,7 +208,7 @@ vehicleTypes.addEventListener('click', event => {
 
 document.getElementById('nextStep').addEventListener('click', () => {
   const active = document.querySelector(`.booking-step[data-step="${step}"]`);
-  const invalid = [...active.querySelectorAll('input, select, textarea')].find(field => !field.reportValidity());
+  const invalid = [...active.querySelectorAll('input, select, textarea')].find((field) => !field.reportValidity());
   if (invalid) return;
   step = Math.min(totalSteps, step + 1);
   render();
@@ -197,7 +222,7 @@ document.getElementById('prevStep').addEventListener('click', () => {
 document.getElementById('bookingForm').addEventListener('input', updateEstimate);
 document.getElementById('bookingForm').addEventListener('change', updateEstimate);
 
-document.getElementById('bookingForm').addEventListener('submit', async event => {
+document.getElementById('bookingForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const submit = document.getElementById('submitBooking');
   submit.disabled = true;

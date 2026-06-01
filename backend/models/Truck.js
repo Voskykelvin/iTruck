@@ -1,29 +1,32 @@
 const mongoose = require('mongoose');
 
-const truckSchema = new mongoose.Schema({
-  owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  type: {
-    type: String,
-    enum: ['Matatu', 'Pickup', 'Lorry', 'Large Truck', 'Trailer', 'Bus', 'Specialised'],
-    required: true
+const truckSchema = new mongoose.Schema(
+  {
+    owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    type: {
+      type: String,
+      enum: ['Matatu', 'Pickup', 'Lorry', 'Large Truck', 'Trailer', 'Bus', 'Specialised'],
+      required: true
+    },
+    make: String,
+    model: String,
+    plateNumber: { type: String, required: true, unique: true },
+    capacityTonnes: Number,
+    photos: [String],
+    features: [String],
+    routes: [String],
+    country: String,
+    pricePerKm: { type: Number, default: 1.5 },
+    ratingAverage: { type: Number, default: 0, min: 0, max: 5 },
+    ratingCount: { type: Number, default: 0, min: 0 },
+    completedTrips: { type: Number, default: 0, min: 0 },
+    isVerified: { type: Boolean, default: false },
+    isAvailable: { type: Boolean, default: true },
+    location: { lat: Number, lng: Number, city: String },
+    documents: [{ type: String, url: String, status: String }]
   },
-  make: String,
-  model: String,
-  plateNumber: { type: String, required: true, unique: true },
-  capacityTonnes: Number,
-  photos: [String],
-  features: [String],
-  routes: [String],
-  country: String,
-  pricePerKm: { type: Number, default: 1.5 },
-  ratingAverage: { type: Number, default: 0, min: 0, max: 5 },
-  ratingCount: { type: Number, default: 0, min: 0 },
-  completedTrips: { type: Number, default: 0, min: 0 },
-  isVerified: { type: Boolean, default: false },
-  isAvailable: { type: Boolean, default: true },
-  location: { lat: Number, lng: Number, city: String },
-  documents: [{ type: String, url: String, status: String }]
-}, { timestamps: true });
+  { timestamps: true }
+);
 
 truckSchema.index({ owner: 1, createdAt: -1 });
 truckSchema.index({ owner: 1, isAvailable: 1, createdAt: -1 });

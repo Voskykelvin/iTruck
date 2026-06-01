@@ -60,11 +60,7 @@ async function bookingVisibleToUser(user, bookingId) {
   if (user.role === 'admin') return true;
   return Booking.exists({
     _id: bookingId,
-    $or: [
-      { client: user._id },
-      { owner: user._id },
-      { 'bids.owner': user._id }
-    ]
+    $or: [{ client: user._id }, { owner: user._id }, { 'bids.owner': user._id }]
   });
 }
 
@@ -202,7 +198,7 @@ async function queryItems(Model, type, filter) {
     .sort('-createdAt')
     .limit(100);
 
-  return items.map(item => serialize(type, item));
+  return items.map((item) => serialize(type, item));
 }
 
 async function listRecords(req, res, next) {
@@ -240,7 +236,7 @@ async function listMessages(req, res, next) {
     const bookingId = req.query.booking || req.query.bookingId || req.query.shipmentId;
 
     if (!mongoReady()) {
-      const items = memoryStore.messages.filter(item => {
+      const items = memoryStore.messages.filter((item) => {
         const payload = item.payload || {};
         if (!bookingId) return true;
         return [payload.booking, payload.bookingId, payload.shipmentId].map(String).includes(String(bookingId));
@@ -261,7 +257,7 @@ async function listMessages(req, res, next) {
       .sort('createdAt')
       .limit(100);
 
-    res.json({ items: items.map(item => serialize('message', item)) });
+    res.json({ items: items.map((item) => serialize('message', item)) });
   } catch (err) {
     next(err);
   }

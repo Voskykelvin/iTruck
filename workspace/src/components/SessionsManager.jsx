@@ -47,7 +47,7 @@ export default function SessionsManager({ notify }) {
     setBusy(id);
     try {
       await api.revokeSession(id);
-      setSessions(current => current.filter(session => session.id !== id));
+      setSessions((current) => current.filter((session) => session.id !== id));
       notify?.('Session signed out');
     } catch (err) {
       notify?.(err.message || 'Unable to revoke session');
@@ -60,7 +60,7 @@ export default function SessionsManager({ notify }) {
     setBusy('all');
     try {
       await api.revokeOtherSessions();
-      setSessions(current => current.filter(session => session.isCurrent));
+      setSessions((current) => current.filter((session) => session.isCurrent));
       notify?.('Other sessions signed out');
     } catch (err) {
       notify?.(err.message || 'Unable to revoke sessions');
@@ -78,7 +78,7 @@ export default function SessionsManager({ notify }) {
     );
   }
 
-  const hasOtherSessions = sessions.some(session => !session.isCurrent);
+  const hasOtherSessions = sessions.some((session) => !session.isCurrent);
 
   return (
     <div className="sessions-manager">
@@ -89,14 +89,16 @@ export default function SessionsManager({ notify }) {
       ) : null}
 
       <div className="sessions-list">
-        {sessions.length ? sessions.map(session => (
-          <SessionRow
-            key={session.id}
-            session={session}
-            busy={busy === session.id}
-            onRevoke={() => revokeSession(session.id)}
-          />
-        )) : (
+        {sessions.length ? (
+          sessions.map((session) => (
+            <SessionRow
+              key={session.id}
+              session={session}
+              busy={busy === session.id}
+              onRevoke={() => revokeSession(session.id)}
+            />
+          ))
+        ) : (
           <div className="session-empty">
             <MonitorSmartphone size={18} />
             <span>No active sessions found.</span>
@@ -120,8 +122,16 @@ function SessionRow({ session, busy, onRevoke }) {
           Active {relativeTime(session.lastUsedAt)}
         </span>
       </div>
-      {session.isCurrent ? <span className="badge success">This device</span> : (
-        <button className="ghost icon-button" type="button" disabled={busy} onClick={onRevoke} aria-label="Sign out session">
+      {session.isCurrent ? (
+        <span className="badge success">This device</span>
+      ) : (
+        <button
+          className="ghost icon-button"
+          type="button"
+          disabled={busy}
+          onClick={onRevoke}
+          aria-label="Sign out session"
+        >
           <X size={16} />
         </button>
       )}

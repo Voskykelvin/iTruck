@@ -1,7 +1,7 @@
 const params = new URLSearchParams(location.search);
 const plate = params.get('truck');
 const intent = params.get('intent') || 'view';
-const truck = (window.iTruckFleet || []).find(item => item.plate === plate) || (window.iTruckFleet || [])[0];
+const truck = (window.iTruckFleet || []).find((item) => item.plate === plate) || (window.iTruckFleet || [])[0];
 
 function toast(message) {
   let el = document.getElementById('workspaceToast');
@@ -24,12 +24,18 @@ function saveLocal(type, data) {
 }
 
 function initials(name) {
-  return name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase();
+  return name
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 function render() {
   if (!truck) {
-    document.getElementById('truckProfile').innerHTML = '<section class="panel"><h1>Truck not found</h1><a class="primary-btn" href="listings.html">Return to listings</a></section>';
+    document.getElementById('truckProfile').innerHTML =
+      '<section class="panel"><h1>Truck not found</h1><a class="primary-btn" href="listings.html">Return to listings</a></section>';
     return;
   }
 
@@ -71,11 +77,11 @@ function render() {
         </section>
         <section class="panel">
           <p class="eyebrow">Routes</p>
-          <div class="profile-routes">${truck.routes.map(route => `<span>${route}</span>`).join('')}</div>
+          <div class="profile-routes">${truck.routes.map((route) => `<span>${route}</span>`).join('')}</div>
         </section>
         <section class="panel">
           <p class="eyebrow">Features</p>
-          <div class="profile-tags">${truck.features.map(feature => `<span>${feature}</span>`).join('')}</div>
+          <div class="profile-tags">${truck.features.map((feature) => `<span>${feature}</span>`).join('')}</div>
         </section>
       </div>
       <aside class="profile-side">
@@ -119,7 +125,7 @@ function render() {
     </section>
   `;
 
-  document.getElementById('requestTruckForm').addEventListener('submit', event => {
+  document.getElementById('requestTruckForm').addEventListener('submit', (event) => {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(event.target).entries());
     const payload = { ...data, truck: truck.plate, vehicleType: truck.type, owner: truck.owner, rate: truck.price };
@@ -132,7 +138,10 @@ function render() {
   });
 
   if (intent === 'request') {
-    setTimeout(() => document.getElementById('requestPanel')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+    setTimeout(
+      () => document.getElementById('requestPanel')?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+      80
+    );
   }
 }
 

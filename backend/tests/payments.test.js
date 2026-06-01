@@ -10,7 +10,7 @@ jest.mock('../models/Wallet', () => ({
 }));
 
 jest.mock('../models/Transaction', () => ({
-  create: jest.fn(payload => Promise.resolve({ _id: 'tx-test', ...payload }))
+  create: jest.fn((payload) => Promise.resolve({ _id: 'tx-test', ...payload }))
 }));
 
 const Wallet = require('../models/Wallet');
@@ -37,14 +37,14 @@ test('wallet credit increments wallet balance and creates a transaction', async 
     },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
-  expect(Transaction.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'credit', amount: 120, status: 'completed' }));
+  expect(Transaction.create).toHaveBeenCalledWith(
+    expect.objectContaining({ type: 'credit', amount: 120, status: 'completed' })
+  );
   expect(Wallet.updateOne).toHaveBeenCalledWith({ _id: 'wallet-1' }, { lastTransaction: 'tx-test' });
 });
 
 test('wallet debit rejects insufficient balance', async () => {
-  Wallet.findOneAndUpdate
-    .mockResolvedValueOnce({ _id: 'wallet-1', balance: 0 })
-    .mockResolvedValueOnce(null);
+  Wallet.findOneAndUpdate.mockResolvedValueOnce({ _id: 'wallet-1', balance: 0 }).mockResolvedValueOnce(null);
 
   const wallet = new WalletService();
   await expect(wallet.debit('user-1', 80)).rejects.toThrow('Insufficient wallet balance');
@@ -64,13 +64,15 @@ test('wallet debit atomically checks balance and decrements', async () => {
     { $inc: { balance: -80, version: 1 } },
     { new: true }
   );
-  expect(Transaction.create).toHaveBeenCalledWith(expect.objectContaining({
-    user: 'user-1',
-    type: 'debit',
-    amount: 80,
-    status: 'completed',
-    metadata: { walletBalance: 20 }
-  }));
+  expect(Transaction.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      user: 'user-1',
+      type: 'debit',
+      amount: 80,
+      status: 'completed',
+      metadata: { walletBalance: 20 }
+    })
+  );
 });
 
 test('wallet withdrawal atomically reserves funds and creates pending payout', async () => {
@@ -87,11 +89,13 @@ test('wallet withdrawal atomically reserves funds and creates pending payout', a
     { $inc: { balance: -250, version: 1 } },
     { new: true }
   );
-  expect(Transaction.create).toHaveBeenCalledWith(expect.objectContaining({
-    user: 'owner-1',
-    type: 'withdrawal',
-    method: 'mpesa',
-    amount: 250,
-    status: 'pending'
-  }));
+  expect(Transaction.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      user: 'owner-1',
+      type: 'withdrawal',
+      method: 'mpesa',
+      amount: 250,
+      status: 'pending'
+    })
+  );
 });

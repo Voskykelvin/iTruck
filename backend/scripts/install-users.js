@@ -128,11 +128,11 @@ async function upsertTruck(data, owner) {
   const payload = { ...data, owner: owner._id };
   delete payload.ownerEmail;
 
-  const truck = await Truck.findOneAndUpdate(
-    { plateNumber: payload.plateNumber },
-    payload,
-    { new: true, upsert: true, setDefaultsOnInsert: true }
-  );
+  const truck = await Truck.findOneAndUpdate({ plateNumber: payload.plateNumber }, payload, {
+    new: true,
+    upsert: true,
+    setDefaultsOnInsert: true
+  });
 
   return truck;
 }
@@ -161,7 +161,7 @@ async function run() {
   }
 
   console.log('iTruck demo users installed');
-  installed.forEach(line => console.log(' - ' + line));
+  installed.forEach((line) => console.log(' - ' + line));
   console.log('');
   console.log('Admin login: admin@itruck.africa / Admin2025!');
   console.log('Demo password for clients and owners: Demo2025!');
@@ -169,7 +169,7 @@ async function run() {
   await mongoose.disconnect();
 }
 
-run().catch(err => {
+run().catch((err) => {
   console.error(err);
   process.exit(1);
 });
