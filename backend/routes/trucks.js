@@ -11,6 +11,7 @@ const {
   listTrucksSchema,
   ratingSchema,
   truckDocumentSchema,
+  truckPhotoSchema,
   truckIdSchema
 } = require('../validators/trucks');
 const { demoTrucks } = require('../data/demo-users');
@@ -30,12 +31,26 @@ function normalizePlate(value) {
   return typeof value === 'string' ? value.trim().toUpperCase() : value;
 }
 
+function normalizeList(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (typeof value === 'string' && value.trim()) {
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
 function createTruckPayload(body, user) {
   const payload = { ...body };
   restrictedCreateFields.forEach((field) => delete payload[field]);
   payload.plateNumber = normalizePlate(payload.plateNumber);
   payload.registrationNumber = normalizePlate(payload.registrationNumber || payload.plateNumber);
   payload.chassisNumber = normalizePlate(payload.chassisNumber);
+  payload.routes = normalizeList(payload.routes);
+  payload.features = normalizeList(payload.features);
+  payload.photos = normalizeList(payload.photos);
   return {
     ...payload,
     owner: user._id,
@@ -72,6 +87,22 @@ function upsertDocument(documents = [], type, patch) {
   if (existing) Object.assign(existing, update);
   else documents.push(update);
   return documents;
+}
+
+async function recomputeTruckRating(truckId) {
+  const ratedBookings = await Booking.find({
+    truck: truckId,
+    status: 'delivered',
+    'rating.clientToOwner.score': { $type: 'number' }
+  }).select('rating.clientToOwner.score');
+
+  const scores = ratedBookings.map((booking) => Number(booking.rating?.clientToOwner?.score)).filter(Number.isFinite);
+  const ratingCount = scores.length;
+  const ratingAverage = ratingCount
+    ? Number((scores.reduce((sum, score) => sum + score, 0) / ratingCount).toFixed(2))
+    : 0;
+
+  return Truck.findByIdAndUpdate(truckId, { ratingAverage, ratingCount }, { new: true });
 }
 
 router.get('/', listTrucksSchema, validate, async (req, res, next) => {
@@ -191,6 +222,46 @@ router.delete('/:id', protect, archiveTruckSchema, validate, async (req, res, ne
 });
 
 router.patch(
+  '/:id/photos',
+  protect,
+  restrictTo('owner', 'admin'),
+  truckPhotoSchema,
+  validate,
+  async (req, res, next) => {
+    try {
+      if (requireDatabase(req, res)) return;
+
+      if (!mongoReady()) {
+        const truck = memoryTrucks.find(
+          (item) =>
+            !item.archivedAt && String(item._id || item.id || item.plateNumber || item.plate) === String(req.params.id)
+        );
+        if (!truck || (req.user.role !== 'admin' && String(truck.owner) !== String(req.user._id))) {
+          return res.status(404).json({ message: 'Truck not found' });
+        }
+
+        truck.photos = [...new Set([...(truck.photos || []), req.body.url])];
+        return res.json({ truck, mode: 'memory' });
+      }
+
+      const query = activeTruckFilter({ _id: req.params.id });
+      if (req.user.role !== 'admin') query.owner = req.user._id;
+
+      const truck = await Truck.findOneAndUpdate(
+        query,
+        { $addToSet: { photos: req.body.url } },
+        { new: true, runValidators: true }
+      );
+      if (!truck) return res.status(404).json({ message: 'Truck not found' });
+
+      res.json({ truck });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.patch(
   '/:id/documents/:documentType',
   protect,
   restrictTo('owner', 'admin'),
@@ -236,19 +307,7 @@ router.post('/:id/ratings', protect, ratingSchema, validate, async (req, res, ne
     const comment = req.body.comment || '';
 
     if (!mongoReady()) {
-      const truck = memoryTrucks.find(
-        (item) =>
-          !item.archivedAt && String(item._id || item.id || item.plateNumber || item.plate) === String(req.params.id)
-      );
-      if (!truck) return res.status(404).json({ message: 'Truck not found' });
-
-      const ratingCount = Number(truck.ratingCount || 0);
-      const currentAverage = Number(truck.ratingAverage || truck.rating || 0);
-      const nextCount = ratingCount + 1;
-      truck.ratingAverage = Number(((currentAverage * ratingCount + score) / nextCount).toFixed(2));
-      truck.ratingCount = nextCount;
-      truck.rating = truck.ratingAverage;
-      return res.json({ truck, mode: 'memory' });
+      return res.status(409).json({ message: 'Ratings require a delivered synced booking' });
     }
 
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
@@ -258,22 +317,24 @@ router.post('/:id/ratings', protect, ratingSchema, validate, async (req, res, ne
     const truck = await Truck.findOne(activeTruckFilter({ _id: req.params.id }));
     if (!truck) return res.status(404).json({ message: 'Truck not found' });
 
-    const ratingCount = Number(truck.ratingCount || 0);
-    const currentAverage = Number(truck.ratingAverage || 0);
-    const nextCount = ratingCount + 1;
-    truck.ratingAverage = Number(((currentAverage * ratingCount + score) / nextCount).toFixed(2));
-    truck.ratingCount = nextCount;
-    await truck.save();
-
-    if (req.body.bookingId && mongoose.Types.ObjectId.isValid(req.body.bookingId)) {
-      const bookingFilter = { _id: req.body.bookingId, truck: truck._id };
-      if (req.user.role !== 'admin') {
-        bookingFilter.$or = [{ client: req.user._id }, { owner: req.user._id }, { 'bids.owner': req.user._id }];
-      }
-      await Booking.findOneAndUpdate(bookingFilter, { rating: { score, comment } });
+    const bookingFilter = {
+      _id: req.body.bookingId,
+      truck: truck._id,
+      status: 'delivered'
+    };
+    if (req.user.role !== 'admin') {
+      bookingFilter.client = req.user._id;
     }
+    const booking = await Booking.findOne(bookingFilter);
+    if (!booking) return res.status(403).json({ message: 'Rate this carrier after a delivered booking' });
 
-    res.json({ truck });
+    booking.rating = {
+      ...(booking.rating || {}),
+      clientToOwner: { score, comment, user: req.user._id, createdAt: new Date() }
+    };
+    await booking.save();
+
+    res.json({ truck: await recomputeTruckRating(truck._id), booking });
   } catch (err) {
     next(err);
   }

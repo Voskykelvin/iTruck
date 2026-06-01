@@ -1,11 +1,14 @@
 const express = require('express');
 const Booking = require('../models/Booking');
+const Truck = require('../models/Truck');
+const User = require('../models/User');
 const matching = require('../services/matching');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const {
   bookingIdSchema,
+  bookingRatingSchema,
   acceptBidSchema,
   createBookingSchema,
   listBookingsSchema,
@@ -156,6 +159,51 @@ function cleanBookingPayload(body) {
 function emitBooking(req, bookingId, event, booking) {
   const io = req.app.get('io');
   if (io?.emitToBooking) io.emitToBooking(bookingId, event, booking);
+}
+
+function averageScore(bookings, path) {
+  const scores = bookings
+    .map((booking) => path.split('.').reduce((value, key) => value?.[key], booking))
+    .map(Number)
+    .filter(Number.isFinite);
+
+  return {
+    count: scores.length,
+    average: scores.length ? Number((scores.reduce((sum, score) => sum + score, 0) / scores.length).toFixed(2)) : 0
+  };
+}
+
+async function recomputeTruckRating(truckId) {
+  if (!truckId) return null;
+  const bookings = await Booking.find({
+    truck: truckId,
+    status: 'delivered',
+    'rating.clientToOwner.score': { $type: 'number' }
+  }).select('rating.clientToOwner.score');
+  const rating = averageScore(bookings, 'rating.clientToOwner.score');
+  return Truck.findByIdAndUpdate(truckId, { ratingAverage: rating.average, ratingCount: rating.count }, { new: true });
+}
+
+async function recomputeUserRating(userId, direction) {
+  if (!userId) return null;
+  const field = direction === 'owner' ? 'rating.clientToOwner.score' : 'rating.ownerToClient.score';
+  const query =
+    direction === 'owner'
+      ? { owner: userId, status: 'delivered', [field]: { $type: 'number' } }
+      : { client: userId, status: 'delivered', [field]: { $type: 'number' } };
+
+  const bookings = await Booking.find(query).select(field);
+  const rating = averageScore(bookings, field);
+  return User.findByIdAndUpdate(userId, { rating: rating.average, ratingCount: rating.count }, { new: true }).select(
+    'firstName lastName company role rating ratingCount'
+  );
+}
+
+function ratingTargetFor(user, booking, requestedTarget) {
+  if (user.role === 'admin') return requestedTarget || 'owner';
+  if (user.role === 'client' && String(booking.client?._id || booking.client) === String(user._id)) return 'owner';
+  if (user.role === 'owner' && String(booking.owner?._id || booking.owner) === String(user._id)) return 'client';
+  return null;
 }
 
 router.get('/', listBookingsSchema, validate, async (req, res, next) => {
@@ -356,6 +404,60 @@ router.patch(
     }
   }
 );
+
+router.post('/:id/ratings', bookingRatingSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+
+    const score = Number(req.body.score);
+    const comment = req.body.comment || '';
+
+    if (!mongoReady()) {
+      const booking = memoryBookings.find((item) => item._id === req.params.id || item.id === req.params.id);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (booking.status !== 'delivered') return res.status(409).json({ message: 'Rate after delivery is confirmed' });
+
+      const target = ratingTargetFor(req.user, booking, req.body.target);
+      if (!target) return res.status(403).json({ message: 'Only booking parties can rate this shipment' });
+
+      booking.rating = booking.rating || {};
+      booking.rating[target === 'owner' ? 'clientToOwner' : 'ownerToClient'] = {
+        score,
+        comment,
+        user: req.user._id,
+        createdAt: new Date().toISOString()
+      };
+      return res.json({ booking, mode: 'memory' });
+    }
+
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    if (booking.status !== 'delivered') return res.status(409).json({ message: 'Rate after delivery is confirmed' });
+
+    const target = ratingTargetFor(req.user, booking, req.body.target);
+    if (!target) return res.status(403).json({ message: 'Only booking parties can rate this shipment' });
+
+    const detail = { score, comment, user: req.user._id, createdAt: new Date() };
+    if (target === 'owner') {
+      if (!booking.owner || !booking.truck) return res.status(409).json({ message: 'Carrier is not assigned' });
+      booking.rating = { ...(booking.rating || {}), clientToOwner: detail };
+    } else {
+      if (!booking.client) return res.status(409).json({ message: 'Shipper is not assigned' });
+      booking.rating = { ...(booking.rating || {}), ownerToClient: detail };
+    }
+
+    await booking.save();
+
+    const [truck, ratedUser] =
+      target === 'owner'
+        ? await Promise.all([recomputeTruckRating(booking.truck), recomputeUserRating(booking.owner, 'owner')])
+        : await Promise.all([Promise.resolve(null), recomputeUserRating(booking.client, 'client')]);
+
+    res.json({ booking, truck, user: ratedUser });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, validate, async (req, res, next) => {
   try {

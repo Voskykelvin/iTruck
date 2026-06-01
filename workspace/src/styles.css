@@ -300,6 +300,36 @@ textarea {
   font-size: 13px;
 }
 
+.process-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.process-list span {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.process-list strong {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--lime);
+  color: #ffffff;
+  font-size: 12px;
+}
+
 .button-row button {
   width: 100%;
 }
@@ -949,6 +979,37 @@ input[type='radio'] {
   object-position: center;
 }
 
+.vehicle-photo-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.vehicle-photo-strip img,
+.vehicle-photo-strip span {
+  width: 100%;
+  min-height: 96px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.vehicle-photo-strip img {
+  display: block;
+  height: 118px;
+  object-fit: cover;
+}
+
+.vehicle-photo-strip span {
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  color: var(--muted);
+  font-weight: 700;
+  text-align: center;
+}
+
 .truck-media-fallback {
   display: none;
   min-height: 164px;
@@ -1013,6 +1074,25 @@ input[type='radio'] {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
+}
+
+.rating-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.rating-panel > strong {
+  color: var(--ink);
+}
+
+.rating-panel > span {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .rating-strip button {

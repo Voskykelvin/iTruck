@@ -278,6 +278,73 @@ test('owners can attach truck documents for admin review', async () => {
   );
 });
 
+test('owners can attach vehicle photos to truck listings', async () => {
+  const created = await request(app)
+    .post('/api/trucks')
+    .set('Authorization', authHeader({ id: 'demo-owner-photos', role: 'owner' }))
+    .send({
+      type: 'Lorry',
+      plateNumber: `PIC-${Date.now()}`,
+      capacityTonnes: 8
+    });
+
+  const res = await request(app)
+    .patch(`/api/trucks/${created.body.truck._id}/photos`)
+    .set('Authorization', authHeader({ id: 'demo-owner-photos', role: 'owner' }))
+    .send({ url: 'https://res.cloudinary.com/demo/image/upload/truck-photo.webp', fileName: 'truck-photo.webp' });
+
+  expect(res.status).toBe(200);
+  expect(res.body.truck.photos).toEqual(
+    expect.arrayContaining(['https://res.cloudinary.com/demo/image/upload/truck-photo.webp'])
+  );
+});
+
+test('booking ratings are tied to delivered jobs for both parties', async () => {
+  const client = { id: 'demo-client-ratings', role: 'client' };
+  const owner = { id: 'demo-owner-ratings', role: 'owner' };
+
+  const created = await request(app).post('/api/bookings').set('Authorization', authHeader(client)).send({
+    pickup: 'Nairobi',
+    destination: 'Kisumu',
+    cargo: 'Produce',
+    vehicleType: 'Lorry',
+    paymentMethod: 'M-Pesa'
+  });
+
+  const bookingId = created.body.booking._id;
+  await request(app)
+    .post(`/api/bookings/${bookingId}/bids`)
+    .set('Authorization', authHeader(owner))
+    .send({ amount: 900, truck: 'demo-truck-isuzu' });
+
+  await request(app)
+    .patch(`/api/bookings/${bookingId}/bids/${owner.id}/accept`)
+    .set('Authorization', authHeader(client));
+
+  await request(app)
+    .patch(`/api/bookings/${bookingId}/status`)
+    .set('Authorization', authHeader(owner))
+    .send({ status: 'in_transit' });
+
+  await request(app).patch(`/api/bookings/${bookingId}/confirm-delivery`).set('Authorization', authHeader(client));
+
+  const clientRating = await request(app)
+    .post(`/api/bookings/${bookingId}/ratings`)
+    .set('Authorization', authHeader(client))
+    .send({ score: 5, target: 'owner', comment: 'Clean delivery' });
+
+  expect(clientRating.status).toBe(200);
+  expect(clientRating.body.booking.rating.clientToOwner.score).toBe(5);
+
+  const ownerRating = await request(app)
+    .post(`/api/bookings/${bookingId}/ratings`)
+    .set('Authorization', authHeader(owner))
+    .send({ score: 4, target: 'client', comment: 'Clear shipper details' });
+
+  expect(ownerRating.status).toBe(200);
+  expect(ownerRating.body.booking.rating.ownerToClient.score).toBe(4);
+});
+
 test('avatar uploads reject unsupported file types before storage', async () => {
   const res = await request(app)
     .post('/api/upload/avatar')

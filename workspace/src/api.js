@@ -147,6 +147,8 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   createTruck: (payload) => request('/trucks', { method: 'POST', body: JSON.stringify(payload) }),
+  rateBooking: (bookingId, payload) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/ratings`, { method: 'POST', body: JSON.stringify(payload) }),
   rateTruck: (id, payload) =>
     request(`/trucks/${encodeURIComponent(id)}/ratings`, { method: 'POST', body: JSON.stringify(payload) }),
   wallet: () => request('/payments/wallet'),
@@ -191,6 +193,15 @@ export const api = {
       documentType,
       file
     ),
+  uploadTruckPhoto: async (truckId, file) => {
+    const data = await uploadCargoFiles([file]);
+    const url = data.urls?.[0];
+    if (!url) throw new Error('Photo upload did not return a URL');
+    return request(`/trucks/${encodeURIComponent(truckId)}/photos`, {
+      method: 'PATCH',
+      body: JSON.stringify({ url, fileName: file.name })
+    });
+  },
   adminStats: () => request('/admin/stats'),
   adminListUsers: () => request('/admin/users'),
   adminListTrucks: () => request('/admin/trucks'),
