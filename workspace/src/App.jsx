@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   BarChart3,
@@ -274,13 +274,13 @@ function App() {
     return () => window.removeEventListener('popstate', syncRoute);
   }, []);
 
-  function notify(message) {
+  const notify = useCallback((message) => {
     setToast(message);
     window.clearTimeout(notify.timer);
     notify.timer = window.setTimeout(() => setToast(''), 2800);
-  }
+  }, []);
 
-  async function signOut() {
+  const signOut = useCallback(async () => {
     try {
       await api.logout();
     } catch (_err) {
@@ -288,7 +288,7 @@ function App() {
     }
     setUser({});
     notify('Signed out');
-  }
+  }, [notify]);
 
   const page = useMemo(() => {
     const props = { notify, route, user, setUser };
@@ -299,7 +299,7 @@ function App() {
     if (route.startsWith('/app/admin')) return <AdminPage {...props} />;
     if (route.startsWith('/app/profile')) return <ProfilePage {...props} signOut={signOut} />;
     return <ShipperPage {...props} />;
-  }, [route, user]);
+  }, [notify, route, signOut, user]);
 
   return (
     <div className="app-shell">

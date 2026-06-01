@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Monitor, MonitorSmartphone, RefreshCw, Smartphone, Tablet, X } from 'lucide-react';
 import { api } from '../api.js';
 
@@ -27,7 +27,7 @@ export default function SessionsManager({ notify }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
 
-  async function loadSessions() {
+  const loadSessions = useCallback(async () => {
     setLoading(true);
     try {
       const data = await api.listSessions();
@@ -37,11 +37,11 @@ export default function SessionsManager({ notify }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [notify]);
 
   useEffect(() => {
     loadSessions();
-  }, []);
+  }, [loadSessions]);
 
   async function revokeSession(id) {
     setBusy(id);
