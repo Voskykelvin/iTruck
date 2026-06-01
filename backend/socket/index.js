@@ -45,6 +45,7 @@ module.exports = function attachSocket(server) {
     const { createClient } = require('redis');
     const pubClient = createClient({ url: process.env.REDIS_URL });
     const subClient = pubClient.duplicate();
+    io.redisClients = [pubClient, subClient];
 
     Promise.all([pubClient.connect(), subClient.connect()])
       .then(() => {
@@ -76,6 +77,17 @@ module.exports = function attachSocket(server) {
 
   io.emitToUser = (userId, event, data) => io.to('user:' + userId).emit(event, data);
   io.emitToBooking = (bookingId, event, data) => io.to('booking:' + bookingId).emit(event, data);
+  io.closeRedis = async () => {
+    const clients = io.redisClients || [];
+    await Promise.all(
+      clients.map((client) => {
+        if (!client?.isOpen) return Promise.resolve();
+        return client.quit().catch((err) => {
+          logger.error({ err }, 'Socket.io Redis client shutdown failed');
+        });
+      })
+    );
+  };
 
   return io;
 };

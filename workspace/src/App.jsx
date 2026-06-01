@@ -24,6 +24,7 @@ import {
   Wallet
 } from 'lucide-react';
 import { api, clearSession, currentUser, setSession } from './api.js';
+import ServiceWorkerUpdateToast from './components/ServiceWorkerUpdateToast.jsx';
 import SessionsManager from './components/SessionsManager.jsx';
 import { demoDocuments, demoFleet, demoLoads, demoShipments } from './data.js';
 
@@ -381,6 +382,7 @@ function App() {
         onClick={() => setMenuOpen(false)}
       />
       {toast ? <div className="toast">{toast}</div> : null}
+      <ServiceWorkerUpdateToast />
     </div>
   );
 }

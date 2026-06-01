@@ -45,15 +45,45 @@ async function start() {
   server.listen(PORT, () => logger.info({ port: PORT }, 'iTruck API running'));
 }
 
-function shutdown() {
-  server.close(() => mongoose.disconnect().finally(() => process.exit(0)));
-  setTimeout(() => process.exit(1), 10000).unref();
+function closeHttpServer() {
+  return new Promise((resolve, reject) => {
+    if (!server.listening) return resolve();
+    return server.close((err) => (err ? reject(err) : resolve()));
+  });
+}
+
+let shuttingDown = false;
+
+async function shutdown(signal = 'manual') {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  const forceExit = setTimeout(() => {
+    logger.error({ signal }, 'Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+  forceExit.unref();
+
+  try {
+    logger.info({ signal }, 'Graceful shutdown started');
+    io.close();
+    await io.closeRedis?.();
+    await closeHttpServer();
+    await mongoose.disconnect();
+    logger.info({ signal }, 'Graceful shutdown complete');
+    clearTimeout(forceExit);
+    process.exit(0);
+  } catch (err) {
+    logger.error({ err, signal }, 'Graceful shutdown failed');
+    clearTimeout(forceExit);
+    process.exit(1);
+  }
 }
 
 if (require.main === module) {
   start();
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 module.exports = { app, io, server, shutdown, start };

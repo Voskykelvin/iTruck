@@ -55,6 +55,9 @@ Then verify:
 - `/api/health` returns `200`.
 - Unknown `/api/*` paths return JSON `404`.
 - `/app` loads the React workspace.
+- Nginx serves `/app` with SPA fallback, forwards `/api` and `/socket.io`, sends security headers, and does not cache `/sw.js`.
+- The container image runs the backend as the non-root `node` user.
+- A staged frontend deployment shows the update prompt when a new service worker is waiting.
 - Register, login, refresh, logout, and session revocation work with secure cookies.
 - Owner can create a truck but cannot self-verify it.
 - Owner can archive a truck and archived trucks no longer appear in public/fleet listings.
