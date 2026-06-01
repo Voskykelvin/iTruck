@@ -28,6 +28,16 @@ function assertStatusTransition(from, to) {
   }
 }
 
+const ratingDetailSchema = new mongoose.Schema(
+  {
+    score: { type: Number, min: 1, max: 5 },
+    comment: String,
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    createdAt: { type: Date, default: Date.now }
+  },
+  { _id: false }
+);
+
 const bookingSchema = new mongoose.Schema(
   {
     client: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -95,7 +105,10 @@ const bookingSchema = new mongoose.Schema(
         generatedAt: { type: Date, default: Date.now }
       }
     ],
-    rating: { score: Number, comment: String }
+    rating: {
+      clientToOwner: ratingDetailSchema,
+      ownerToClient: ratingDetailSchema
+    }
   },
   { timestamps: true }
 );

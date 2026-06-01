@@ -36,7 +36,11 @@ const createTruckSchema = [
   body('features')
     .optional({ checkFalsy: true })
     .custom((value) => Array.isArray(value) || typeof value === 'string')
-    .withMessage('features must be a list or comma-separated string')
+    .withMessage('features must be a list or comma-separated string'),
+  body('photos')
+    .optional({ checkFalsy: true })
+    .custom((value) => Array.isArray(value) || typeof value === 'string')
+    .withMessage('photos must be a list or comma-separated string')
 ];
 
 const listTrucksSchema = [
@@ -60,7 +64,7 @@ const ratingSchema = [
   ...truckIdSchema,
   body('score').isFloat({ min: 1, max: 5 }).withMessage('Rating score must be between 1 and 5').toFloat(),
   optionalString('comment', 1000),
-  liveMongoIdBody('bookingId')
+  liveMongoIdBody('bookingId', { required: true })
 ];
 
 const archiveTruckSchema = [...truckIdSchema, optionalString('reason', 240)];
@@ -70,6 +74,11 @@ const truckDocumentSchema = [
   body('url').trim().isURL({ require_protocol: true }).withMessage('url must be a valid document URL'),
   optionalString('fileName', 240)
 ];
+const truckPhotoSchema = [
+  ...truckIdSchema,
+  body('url').trim().isURL({ require_protocol: true }).withMessage('url must be a valid photo URL'),
+  optionalString('fileName', 240)
+];
 
 module.exports = {
   archiveTruckSchema,
@@ -77,5 +86,6 @@ module.exports = {
   listTrucksSchema,
   ratingSchema,
   truckDocumentSchema,
+  truckPhotoSchema,
   truckIdSchema
 };

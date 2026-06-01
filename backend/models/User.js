@@ -18,6 +18,7 @@ const userSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true },
     avatar: String,
     rating: { type: Number, default: 0, min: 0, max: 5 },
+    ratingCount: { type: Number, default: 0, min: 0 },
     totalTrips: { type: Number, default: 0 },
     documents: [
       {

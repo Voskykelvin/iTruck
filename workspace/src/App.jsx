@@ -92,6 +92,23 @@ const workspaceShipments = DEMO_MODE ? demoShipments : [];
 const workspaceLoads = DEMO_MODE ? demoLoads : [];
 
 const vehicleTypes = ['Matatu', 'Pickup', 'Lorry', 'Large Truck', 'Trailer', 'Bus', 'Specialised'];
+const ownerProfileDocuments = ['Owner KYC', 'Driver ID', 'Business registration', 'Insurance'];
+const shipperProfileDocuments = ['Shipper KYC', 'Business registration', 'Tax certificate'];
+const ownerVehicleDocuments = ['Vehicle photos', 'Insurance', 'Vehicle logbook', 'Road license', 'Inspection report'];
+const documentStages = {
+  owner: [
+    'Submit owner identity and business documents',
+    'Register each vehicle with plate, capacity, routes, and photos',
+    'Upload insurance, logbook, road license, and inspection proof',
+    'Admin approves the profile before bidding on work'
+  ],
+  client: [
+    'Submit shipper identity and business documents',
+    'Create shipment request and confirm required route documents',
+    'Upload cargo photos and receiver proof during the shipment',
+    'Admin keeps verification, disputes, and payment release auditable'
+  ]
+};
 const defaultBooking = {
   pickup: 'Nairobi',
   destination: 'Kampala',
@@ -270,20 +287,20 @@ function normalizeTruck(truck) {
   const routes = truck.routes || [];
   const photos = truck.photos || (truck.photo ? [truck.photo] : []);
   const verified = truck.verified ?? truck.isVerified ?? false;
-  const ratingCount = Number(truck.ratingCount || truck.completedTrips || truck.trips || 0);
+  const ratingCount = Number(truck.ratingCount || 0);
   return {
     id: truck._id || truck.id || truck.plate || truck.plateNumber,
     type: truck.type || 'Lorry',
     name: truck.name || [truck.make, truck.model].filter(Boolean).join(' ') || 'Listed truck',
-    plate: truck.plate || truck.plateNumber || 'ITK-DEMO',
+    plate: truck.plate || truck.plateNumber || 'Plate pending',
     owner: truck.ownerName || truck.owner || 'Verified carrier',
     company: truck.company || 'Carrier partner',
     price,
     pricePerKm: Number(truck.pricePerKm || String(price).replace(/[^0-9.]/g, '')) || 0,
     capacity: truck.capacity || (truck.capacityTonnes ? `${truck.capacityTonnes} tonnes` : 'Capacity on request'),
-    rating: Number(truck.ratingAverage || truck.rating || 4.5),
+    rating: Number(truck.ratingAverage || truck.rating || 0),
     ratingCount,
-    trips: Number(truck.completedTrips || truck.trips || truck.totalTrips || ratingCount || 40),
+    trips: Number(truck.completedTrips || truck.trips || truck.totalTrips || 0),
     photos,
     photo: photos[0] || '',
     routeFit: Number(truck.routeFit || Math.min(98, 64 + (verified ? 16 : 0) + Math.min(12, routes.length * 4))),
@@ -294,6 +311,14 @@ function normalizeTruck(truck) {
     features: truck.features || [],
     verified
   };
+}
+
+function ratingSummary(entity) {
+  const count = Number(entity?.ratingCount || 0);
+  const rating = Number(entity?.rating || entity?.ratingAverage || 0);
+  return count
+    ? `${rating.toFixed(1)} from ${count} completed job${count === 1 ? '' : 's'}`
+    : 'New after first delivery';
 }
 
 function normalizeBid(bid = {}) {
@@ -599,6 +624,7 @@ function StatusBadge({ children, tone = 'default' }) {
 
 function ShipperPage({ notify, user }) {
   const [shipments, setShipments] = useState(workspaceShipments);
+  const [walletBalance, setWalletBalance] = useState(0);
   const [bidReview, setBidReview] = useState(null);
   const [documentReview, setDocumentReview] = useState(null);
   const [busyAction, setBusyAction] = useState('');
@@ -612,6 +638,11 @@ function ShipperPage({ notify, user }) {
         if (Array.isArray(data.bookings)) setShipments(data.bookings.map(normalizeBookingShipment));
       })
       .catch(() => setShipments(workspaceShipments));
+
+    api
+      .wallet()
+      .then((data) => Number.isFinite(Number(data.balance)) && setWalletBalance(Number(data.balance)))
+      .catch(() => {});
   }, []);
 
   const activeCount = shipments.filter((item) => !['delivered', 'cancelled'].includes(item.rawStatus)).length;
@@ -812,7 +843,7 @@ function ShipperPage({ notify, user }) {
           <h2>Shipments that need your attention.</h2>
           <p>
             Compare bids, review documents, release payments, and keep active routes visible without jumping across
-            separate static pages.
+            separate tools.
           </p>
           <div className="button-row">
             <button className="primary icon-label" type="button" onClick={() => navigate('/app/book')}>
@@ -835,12 +866,7 @@ function ShipperPage({ notify, user }) {
       </section>
 
       <section className="metrics-grid">
-        <MetricCard
-          icon={PackageCheck}
-          label="Total Shipments"
-          value={shipments.length}
-          detail="MongoDB booking records"
-        />
+        <MetricCard icon={PackageCheck} label="Total Shipments" value={shipments.length} detail="Booking records" />
         <MetricCard icon={Truck} label="In Transit" value={inTransitCount} detail="Live shipment status" />
         <MetricCard
           icon={AlertTriangle}
@@ -848,7 +874,7 @@ function ShipperPage({ notify, user }) {
           value={openRequests.length}
           detail="Bids, docs, payment"
         />
-        <MetricCard icon={Wallet} label="Wallet" value="$4.2k" detail="Escrow held: $1,260" />
+        <MetricCard icon={Wallet} label="Wallet" value={money(walletBalance)} detail="Escrow and payment balance" />
       </section>
 
       <section className="workspace-layout">
@@ -903,10 +929,7 @@ function ShipperPage({ notify, user }) {
                   </article>
                 ))
               ) : (
-                <EmptyState
-                  title="No live shipments yet"
-                  detail="Create a booking or connect MongoDB data to populate this dashboard."
-                />
+                <EmptyState title="No live shipments yet" detail="Create a booking to populate this dashboard." />
               )}
             </div>
           </Panel>
@@ -928,7 +951,7 @@ function ShipperPage({ notify, user }) {
               ) : (
                 <EmptyState
                   title="No open quote requests"
-                  detail="New booking requests will appear here from MongoDB."
+                  detail="New booking requests will appear here after shippers create them."
                 />
               )}
             </div>
@@ -1167,7 +1190,7 @@ function BookingPage({ notify }) {
       navigate('/app/shipper');
     } catch (_err) {
       saveLocal('bookings', payload);
-      notify('Booking saved locally until login/API sync is available');
+      notify('Sign in to save this booking to your account');
     } finally {
       setSaving(false);
     }
@@ -1345,7 +1368,7 @@ function BookingPage({ notify }) {
   );
 }
 
-function MarketplacePage({ notify, route }) {
+function MarketplacePage({ route }) {
   const [trucks, setTrucks] = useState(workspaceFleet);
   const [search, setSearch] = useState('');
   const [type, setType] = useState('');
@@ -1381,7 +1404,7 @@ function MarketplacePage({ notify, route }) {
       })
       .sort((a, b) => {
         if (sort === 'price') return (a.pricePerKm || 999) - (b.pricePerKm || 999);
-        if (sort === 'rating') return b.rating - a.rating;
+        if (sort === 'rating') return b.ratingCount - a.ratingCount || b.rating - a.rating;
         if (sort === 'trips') return b.trips - a.trips;
         return b.routeFit - a.routeFit;
       });
@@ -1395,31 +1418,6 @@ function MarketplacePage({ notify, route }) {
       .map(normalizeTruck)
       .find((truck) => [truck.id, truck.plate].some((value) => String(value) === selectedTruckKey));
   }, [selectedTruckKey, trucks]);
-
-  async function submitRating(truck, score) {
-    const currentCount = Number(truck.ratingCount || 0);
-    const currentAverage = Number(truck.rating || 0);
-    const nextCount = currentCount + 1;
-    const localRating = Number(((currentAverage * currentCount + score) / nextCount).toFixed(2));
-
-    try {
-      const data = await api.rateTruck(truck.id, { score, comment: 'Rated from iTruck workspace' });
-      const updatedTruck = normalizeTruck(
-        data.truck || { ...truck, ratingAverage: localRating, ratingCount: nextCount }
-      );
-      setTrucks((current) => current.map((item) => (normalizeTruck(item).id === truck.id ? updatedTruck : item)));
-      notify(`${truck.name} rating updated to ${updatedTruck.rating.toFixed(1)}`);
-    } catch (_err) {
-      setTrucks((current) =>
-        current.map((item) => {
-          const normalized = normalizeTruck(item);
-          return normalized.id === truck.id ? { ...normalized, rating: localRating, ratingCount: nextCount } : item;
-        })
-      );
-      saveLocal('ratings', { truckId: truck.id, score, comment: 'Rated from iTruck workspace' });
-      notify('Rating saved locally until API sync is available');
-    }
-  }
 
   return (
     <section className="market-layout">
@@ -1488,9 +1486,16 @@ function MarketplacePage({ notify, route }) {
               <span>Rate</span>
               <strong>{selectedTruck.price}</strong>
               <span>Rating</span>
-              <strong>
-                {selectedTruck.rating.toFixed(1)} / {selectedTruck.ratingCount || selectedTruck.trips}
-              </strong>
+              <strong>{ratingSummary(selectedTruck)}</strong>
+            </div>
+            <div className="vehicle-photo-strip">
+              {selectedTruck.photos.length ? (
+                selectedTruck.photos
+                  .slice(0, 3)
+                  .map((photo) => <img src={photo} alt={`${selectedTruck.name} vehicle`} key={photo} loading="lazy" />)
+              ) : (
+                <span>Vehicle photos will appear after the owner uploads them.</span>
+              )}
             </div>
             <div className="button-row">
               <button
@@ -1552,26 +1557,11 @@ function MarketplacePage({ notify, route }) {
                 </span>
                 <span>
                   Rating
-                  <strong>
-                    {truck.rating.toFixed(1)} / {truck.ratingCount || truck.trips}
-                  </strong>
+                  <strong>{ratingSummary(truck)}</strong>
                 </span>
                 <span>
                   Status<strong>{truck.availability}</strong>
                 </span>
-              </div>
-              <div className="rating-strip" aria-label={`Rate ${truck.name}`}>
-                {[1, 2, 3, 4, 5].map((score) => (
-                  <button
-                    type="button"
-                    key={score}
-                    className={score <= Math.round(truck.rating) ? 'active' : ''}
-                    onClick={() => submitRating(truck, score)}
-                    aria-label={`Rate ${truck.name} ${score} out of 5`}
-                  >
-                    {score}
-                  </button>
-                ))}
               </div>
               <div className="chips">
                 {truck.routes.slice(0, 2).map((route) => (
@@ -1609,10 +1599,12 @@ function MarketplacePage({ notify, route }) {
 }
 
 function TrackingPage({ notify, route, user }) {
+  const activeRole = roleForUser(user);
   const [selected, setSelected] = useState(0);
   const [shipments, setShipments] = useState(workspaceShipments);
   const [messages, setMessages] = useState([]);
   const [draftMessage, setDraftMessage] = useState('');
+  const [ratingBusy, setRatingBusy] = useState(false);
   const chatInputRef = useRef(null);
 
   const trackingParams = useMemo(() => new URLSearchParams(route.split('?')[1] || ''), [route]);
@@ -1736,7 +1728,34 @@ function TrackingPage({ notify, route, user }) {
         route: shipment.route,
         status: 'local'
       });
-      notify(err.message || 'Issue report saved locally');
+      notify(err.message || 'Issue report queued for operations');
+    }
+  }
+
+  async function submitShipmentRating(score) {
+    if (!shipment?.bookingId) {
+      notify('Ratings require a synced booking');
+      return;
+    }
+
+    if (shipment.rawStatus !== 'delivered') {
+      notify('Ratings open after delivery is confirmed');
+      return;
+    }
+
+    const target = activeRole === 'owner' ? 'client' : 'owner';
+    setRatingBusy(true);
+    try {
+      await api.rateBooking(shipment.bookingId, {
+        score,
+        target,
+        comment: target === 'client' ? 'Rated shipper after delivery' : 'Rated carrier after delivery'
+      });
+      notify(target === 'client' ? 'Shipper rating recorded' : 'Carrier rating recorded');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setRatingBusy(false);
     }
   }
 
@@ -1762,6 +1781,7 @@ function TrackingPage({ notify, route, user }) {
   }
 
   const mapUrl = `https://www.google.com/maps?output=embed&saddr=${encodeURIComponent(shipment.origin)}&daddr=${encodeURIComponent(shipment.destination)}&dirflg=d`;
+  const ratingTitle = activeRole === 'owner' ? 'Rate Shipper' : 'Rate Carrier';
 
   return (
     <section className="tracking-layout">
@@ -1841,6 +1861,27 @@ function TrackingPage({ notify, route, user }) {
             <button className="ghost" type="button" onClick={reportIssue}>
               Report Issue
             </button>
+          </div>
+          <div className="rating-panel">
+            <strong>{ratingTitle}</strong>
+            <span>
+              {shipment.rawStatus === 'delivered'
+                ? 'Ratings are recorded against this completed booking.'
+                : 'Ratings unlock after delivery is confirmed.'}
+            </span>
+            <div className="rating-strip" aria-label={ratingTitle}>
+              {[1, 2, 3, 4, 5].map((score) => (
+                <button
+                  type="button"
+                  key={score}
+                  disabled={ratingBusy || shipment.rawStatus !== 'delivered'}
+                  onClick={() => submitShipmentRating(score)}
+                  aria-label={`${ratingTitle} ${score} out of 5`}
+                >
+                  {score}
+                </button>
+              ))}
+            </div>
           </div>
         </Panel>
 
@@ -1933,12 +1974,12 @@ function OwnerPage({ notify }) {
     try {
       const data = await api.createTruck(payload);
       setFleet((current) => [normalizeTruck(data.truck || payload), ...current]);
-      notify('Vehicle saved to MongoDB');
+      notify('Vehicle sent to admin review');
     } catch (_err) {
       const truck = normalizeTruck({ ...payload, id: draftPlate, plate: draftPlate });
       setFleet((current) => [truck, ...current]);
       saveLocal('vehicles', truck);
-      notify('Vehicle saved locally until API sync is available');
+      notify('Sign in to save this vehicle to your fleet');
     } finally {
       setDraftPlate('');
     }
@@ -1964,7 +2005,7 @@ function OwnerPage({ notify }) {
       notify(`Bid saved for ${load.route}`);
     } catch (_err) {
       saveLocal('bids', payload);
-      notify('Bid saved locally until API sync is available');
+      notify('Sign in to keep this bid in your account');
     }
   }
 
@@ -2052,19 +2093,36 @@ function OwnerPage({ notify }) {
     } catch (_err) {
       saveLocal('withdrawals', { ...payload, status: 'local-pending' });
       setWalletBalance((current) => Math.max(0, Number(current || 0) - amount));
-      notify('Withdrawal saved locally until API sync is available');
+      notify('Withdrawal request held until account sync completes');
     } finally {
       setWithdrawBusy(false);
     }
   }
 
+  const activeJobs = ownerBookings.filter((booking) => ['confirmed', 'in_transit'].includes(booking.rawStatus)).length;
+  const ratedFleet = fleet.filter((truck) => Number(truck.ratingCount || 0) > 0);
+  const fleetRatingCount = ratedFleet.reduce((sum, truck) => sum + Number(truck.ratingCount || 0), 0);
+  const fleetRatingAverage = fleetRatingCount
+    ? ratedFleet.reduce((sum, truck) => sum + Number(truck.rating || 0) * Number(truck.ratingCount || 0), 0) /
+      fleetRatingCount
+    : 0;
+
   return (
     <div className="page-grid">
       <section className="metrics-grid">
-        <MetricCard icon={Wallet} label="Monthly Earnings" value="$8.9k" detail="+18% vs last month" />
-        <MetricCard icon={Truck} label="Active Jobs" value="7" detail="3 in transit" />
-        <MetricCard icon={Gauge} label="Bid Win Rate" value="42%" detail="12 bids submitted" />
-        <MetricCard icon={ShieldCheck} label="Rating" value="4.8" detail="146 completed trips" />
+        <MetricCard icon={Wallet} label="Wallet Balance" value={money(walletBalance)} detail="Available for payout" />
+        <MetricCard icon={Truck} label="Active Jobs" value={activeJobs} detail="Confirmed or in transit" />
+        <MetricCard icon={Gauge} label="Open Loads" value={loads.length} detail="Ready for owner bids" />
+        <MetricCard
+          icon={ShieldCheck}
+          label="Rating"
+          value={fleetRatingCount ? fleetRatingAverage.toFixed(1) : 'New'}
+          detail={
+            fleetRatingCount
+              ? `${fleetRatingCount} delivered rating${fleetRatingCount === 1 ? '' : 's'}`
+              : 'After completed jobs'
+          }
+        />
       </section>
 
       <section className="workspace-layout">
@@ -2228,10 +2286,13 @@ function OnboardingPage({ notify, user, setUser }) {
     plateNumber: '',
     type: 'Lorry',
     capacityTonnes: 8,
-    routes: 'Nairobi-Kampala'
+    routes: 'Nairobi-Kampala',
+    photos: []
   });
+  const [vehiclePhotoName, setVehiclePhotoName] = useState('');
   const pendingDocRef = useRef('');
   const profileDocInputRef = useRef(null);
+  const vehiclePhotoInputRef = useRef(null);
 
   useEffect(() => {
     if (role !== 'owner') return;
@@ -2241,10 +2302,7 @@ function OnboardingPage({ notify, user, setUser }) {
       .catch(() => setFleet(workspaceFleet.slice(0, 2)));
   }, [role]);
 
-  const profileDocs =
-    role === 'owner'
-      ? ['Owner KYC', 'Driver ID', 'Business registration', 'Insurance']
-      : ['Shipper KYC', 'Business registration', 'Tax certificate'];
+  const profileDocs = role === 'owner' ? ownerProfileDocuments : shipperProfileDocuments;
 
   function openProfileDoc(documentType) {
     pendingDocRef.current = slugDocumentType(documentType);
@@ -2264,6 +2322,26 @@ function OnboardingPage({ notify, user, setUser }) {
         setUser(data.user);
       }
       notify('Document sent to admin review');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setUploading('');
+    }
+  }
+
+  async function uploadVehiclePhoto(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setUploading('vehicle-photo');
+    try {
+      const data = await api.uploadCargo([file]);
+      const url = data.urls?.[0];
+      if (!url) throw new Error('Photo upload did not return a URL');
+      setTruckDraft((current) => ({ ...current, photos: [...(current.photos || []), url] }));
+      setVehiclePhotoName(file.name);
+      notify('Vehicle photo attached to this enrollment');
     } catch (err) {
       notify(err.message);
     } finally {
@@ -2292,7 +2370,8 @@ function OnboardingPage({ notify, user, setUser }) {
       const data = await api.createTruck(payload);
       setFleet((current) => [normalizeTruck(data.truck || payload), ...current]);
       notify('Vehicle sent to admin review');
-      setTruckDraft((current) => ({ ...current, plateNumber: '' }));
+      setTruckDraft((current) => ({ ...current, plateNumber: '', photos: [] }));
+      setVehiclePhotoName('');
     } catch (err) {
       notify(err.message);
     }
@@ -2305,6 +2384,13 @@ function OnboardingPage({ notify, user, setUser }) {
         type="file"
         accept="image/jpeg,image/png,image/webp,application/pdf"
         onChange={uploadProfileDoc}
+        style={{ display: 'none' }}
+      />
+      <input
+        ref={vehiclePhotoInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        onChange={uploadVehiclePhoto}
         style={{ display: 'none' }}
       />
       <div className="stack">
@@ -2328,6 +2414,14 @@ function OnboardingPage({ notify, user, setUser }) {
         </section>
 
         <Panel title="Documents for Admin Review" eyebrow="Verification">
+          <div className="process-list">
+            {(documentStages[role] || documentStages.client).map((item, index) => (
+              <span key={item}>
+                <strong>{index + 1}</strong>
+                {item}
+              </span>
+            ))}
+          </div>
           <div className="doc-list">
             {profileDocs.map((item) => {
               const slug = slugDocumentType(item);
@@ -2367,6 +2461,21 @@ function OnboardingPage({ notify, user, setUser }) {
                   value={truckDraft.routes}
                   onChange={(value) => updateTruckDraft('routes', value)}
                 />
+              </div>
+              <div className="button-row">
+                <button
+                  className="secondary icon-label"
+                  type="button"
+                  disabled={uploading === 'vehicle-photo'}
+                  onClick={() => vehiclePhotoInputRef.current?.click()}
+                >
+                  <FileText size={18} />
+                  <span>{uploading === 'vehicle-photo' ? 'Uploading photo...' : 'Upload Vehicle Photo'}</span>
+                </button>
+                <span className="muted-note">
+                  {vehiclePhotoName ||
+                    `${truckDraft.photos.length} vehicle photo${truckDraft.photos.length === 1 ? '' : 's'} attached`}
+                </span>
               </div>
               <button className="primary icon-label" type="submit">
                 <Truck size={18} />
@@ -2611,7 +2720,15 @@ function DocumentsPage({ notify, user }) {
     setBusy(`${pending.targetId}-${pending.documentType}`);
     try {
       if (pending.targetType === 'truck') {
-        await api.uploadTruckDocument(pending.targetId, pending.documentType, file);
+        if (pending.documentType === 'vehicle-photos') {
+          const data = await api.uploadTruckPhoto(pending.targetId, file);
+          if (data.truck) {
+            const updated = normalizeTruck(data.truck);
+            setFleet((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+          }
+        } else {
+          await api.uploadTruckDocument(pending.targetId, pending.documentType, file);
+        }
       } else {
         const data = await api.uploadCargo([file]);
         saveLocal('shipment_documents', {
@@ -2647,7 +2764,7 @@ function DocumentsPage({ notify, user }) {
                     <h3>{truck.plate}</h3>
                     <p>{truck.name}</p>
                     <div className="doc-list compact">
-                      {['Insurance', 'Vehicle logbook', 'Road license'].map((item) => {
+                      {ownerVehicleDocuments.map((item) => {
                         const slug = slugDocumentType(item);
                         return (
                           <button
@@ -3084,7 +3201,7 @@ function AdminPage({ notify }) {
   return (
     <div className="page-grid">
       <section className="metrics-grid">
-        <MetricCard icon={ShieldCheck} label="Users" value={stats?.totalUsers ?? 0} detail="MongoDB accounts" />
+        <MetricCard icon={ShieldCheck} label="Users" value={stats?.totalUsers ?? 0} detail="Registered accounts" />
         <MetricCard icon={Truck} label="Trucks" value={stats?.totalTrucks ?? 0} detail="Registered vehicles" />
         <MetricCard
           icon={CreditCard}
@@ -3249,7 +3366,7 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
         />
         <div className="verification-card">
           <CheckCircle2 size={28} />
-          <strong>{user.email ? `${user.firstName || 'User'} ${user.lastName || ''}` : 'Demo mode'}</strong>
+          <strong>{user.email ? `${user.firstName || 'User'} ${user.lastName || ''}` : 'Sign in required'}</strong>
           <span>
             {user.role || 'No live session'} - {user.country || 'Local workspace'}
           </span>
