@@ -85,7 +85,11 @@ const bookingSchema = new mongoose.Schema(
     ],
     documents: [
       {
-        type: { type: String, enum: ['waybill', 'pod', 'invoice', 'customs'], required: true },
+        type: {
+          type: String,
+          enum: ['waybill', 'pod', 'invoice', 'customs', 'receiver-confirmation', 'packing-list'],
+          required: true
+        },
         url: { type: String, required: true },
         publicId: String,
         generatedAt: { type: Date, default: Date.now }

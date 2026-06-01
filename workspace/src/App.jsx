@@ -62,6 +62,26 @@ const defaultBooking = {
   optionalServices: ['customsBroker']
 };
 
+const documentActions = [
+  { label: 'Waybill', type: 'waybill', mode: 'download' },
+  { label: 'Cargo photos', type: 'cargo-photos', mode: 'upload' },
+  { label: 'Receiver confirmation', type: 'receiver-confirmation', mode: 'download' },
+  { label: 'Commercial invoice', type: 'invoice', mode: 'download' },
+  { label: 'Packing list', type: 'packing-list', mode: 'download' },
+  { label: 'Customs declaration', type: 'customs', mode: 'download' }
+];
+
+function documentActionFor(label) {
+  const normalized = String(label || '').toLowerCase();
+  return (
+    documentActions.find((item) => item.label.toLowerCase() === normalized) || {
+      label,
+      type: normalized.replaceAll(' ', '-'),
+      mode: 'download'
+    }
+  );
+}
+
 function routeFromLocation() {
   const path = window.location.pathname;
   if (path === '/app' || path === '/app/') return '/app/shipper';
@@ -189,6 +209,28 @@ function normalizeTruck(truck) {
   };
 }
 
+function normalizeBid(bid = {}) {
+  const owner = bid.owner && typeof bid.owner === 'object' ? bid.owner : {};
+  const truck = bid.truck && typeof bid.truck === 'object' ? bid.truck : {};
+  const ownerName =
+    [owner.firstName, owner.lastName].filter(Boolean).join(' ') ||
+    owner.company ||
+    bid.ownerName ||
+    bid.carrier ||
+    'Carrier';
+  const id = bid._id || bid.id || bid.bidId || owner._id || bid.owner || truck._id || bid.truck;
+
+  return {
+    id: id || `${bid.amount || 'bid'}-${bid.createdAt || Date.now()}`,
+    ownerName,
+    truckName: truck.name || [truck.make, truck.model].filter(Boolean).join(' ') || bid.truckName || 'Truck pending',
+    amount: Number(bid.amount || bid.price || 0),
+    message: bid.message || 'Carrier has not added a note yet.',
+    status: bid.status || 'pending',
+    createdAt: bid.createdAt
+  };
+}
+
 function bookingRef(booking) {
   return booking._id || booking.id || booking.bookingId || 'ITK-PENDING';
 }
@@ -235,7 +277,8 @@ function normalizeBookingShipment(booking) {
     speed: latest.speed ? `${latest.speed} km/h` : 'Speed pending',
     payment: booking.paymentMethod || 'Payment pending',
     paymentStatus: booking.paymentStatus || 'unpaid',
-    documents: booking.estimate?.requiredDocuments || demoDocuments.slice(0, 3)
+    documents: booking.estimate?.requiredDocuments || demoDocuments.slice(0, 3),
+    bids: Array.isArray(booking.bids) ? booking.bids.map(normalizeBid) : []
   };
 }
 
@@ -441,6 +484,11 @@ function StatusBadge({ children, tone = 'default' }) {
 
 function ShipperPage({ notify, user }) {
   const [shipments, setShipments] = useState(workspaceShipments);
+  const [bidReview, setBidReview] = useState(null);
+  const [documentReview, setDocumentReview] = useState(null);
+  const [busyAction, setBusyAction] = useState('');
+  const cargoInputRef = useRef(null);
+  const cargoUploadRef = useRef(null);
 
   useEffect(() => {
     api
@@ -459,19 +507,65 @@ function ShipperPage({ notify, user }) {
     return preferred?.bookingId ? preferred : shipments.find((item) => item.bookingId) || null;
   }
 
-  function openBidReview(item) {
+  async function openBidReview(item) {
     const target = item || openRequests[0] || shipments.find((shipment) => shipment.rawStatus === 'bidding');
-    if (target?.bookingId) {
-      navigate(`/app/marketplace?booking=${encodeURIComponent(target.bookingId)}`);
-      notify(`Carrier options opened for ${target.route}`);
+
+    if (!target?.bookingId) {
+      setBidReview({
+        id: 'No synced request',
+        route: 'Create or sync a booking before comparing carrier bids.',
+        bids: []
+      });
+      notify('No synced booking is ready for bid review');
       return;
     }
 
-    navigate('/app/marketplace');
-    notify('Marketplace opened for bid comparison');
+    setBusyAction('bid-review');
+    try {
+      const data = await api.getBooking(target.bookingId);
+      const review = normalizeBookingShipment(data.booking || target);
+      setBidReview(review);
+      notify(`Loaded ${review.bids.length} carrier bid${review.bids.length === 1 ? '' : 's'}`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusyAction('');
+    }
   }
 
-  async function downloadShipmentDocument(type, preferred) {
+  async function awardBid(bid) {
+    if (!bidReview?.bookingId || !bid?.id) return;
+
+    setBusyAction(`award-${bid.id}`);
+    try {
+      const data = await api.acceptBookingBid(bidReview.bookingId, bid.id);
+      const updated = normalizeBookingShipment(data.booking || {});
+      setBidReview(updated);
+      setShipments((current) => current.map((item) => (item.bookingId === updated.bookingId ? updated : item)));
+      notify(`Awarded ${bid.ownerName}`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusyAction('');
+    }
+  }
+
+  function openDocumentWorkbench(focusLabel = 'Waybill', preferred) {
+    const target = shipmentWithBooking(preferred);
+    if (!target) {
+      navigate('/app/tracking');
+      notify('Open a synced booking before managing documents');
+      return;
+    }
+
+    setDocumentReview({
+      target,
+      focusLabel,
+      status: `${focusLabel} controls are ready for ${target.id}`
+    });
+  }
+
+  async function downloadShipmentDocument(definition, preferred, nextFocus = definition.label) {
     const target = shipmentWithBooking(preferred);
     if (!target) {
       navigate('/app/tracking');
@@ -479,11 +573,19 @@ function ShipperPage({ notify, user }) {
       return;
     }
 
+    setBusyAction(`document-${definition.type}`);
     try {
-      await api.downloadDocument(type, target.bookingId);
-      notify(`${statusLabel(type)} downloaded for ${target.id}`);
+      await api.downloadDocument(definition.type, target.bookingId);
+      setDocumentReview({
+        target,
+        focusLabel: nextFocus,
+        status: `${definition.label} downloaded for ${target.id}`
+      });
+      notify(`${definition.label} downloaded for ${target.id}`);
     } catch (err) {
       notify(err.message);
+    } finally {
+      setBusyAction('');
     }
   }
 
@@ -495,14 +597,67 @@ function ShipperPage({ notify, user }) {
       return;
     }
 
-    await downloadShipmentDocument('waybill', target);
-    navigate(`/app/tracking?shipment=${encodeURIComponent(target.id)}`);
+    openDocumentWorkbench('Cargo photos', target);
+    await downloadShipmentDocument(documentActions[0], target, 'Cargo photos');
   }
 
+  function handleShipmentDocument(definition, preferred) {
+    const target = shipmentWithBooking(preferred || documentReview?.target);
+    if (!target) {
+      navigate('/app/tracking');
+      notify('Open a synced booking before managing documents');
+      return;
+    }
+
+    if (definition.mode === 'upload') {
+      cargoUploadRef.current = { target, definition };
+      setDocumentReview({
+        target,
+        focusLabel: definition.label,
+        status: `Choose cargo photos to upload for ${target.id}`
+      });
+      cargoInputRef.current?.click();
+      return;
+    }
+
+    downloadShipmentDocument(definition, target);
+  }
+
+  async function uploadShipmentCargoPhotos(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+
+    const target = cargoUploadRef.current?.target || shipmentWithBooking(documentReview?.target);
+    if (!target) return;
+
+    setBusyAction('document-cargo-photos');
+    try {
+      const data = await api.uploadCargo(files);
+      saveLocal('cargo_uploads', {
+        bookingId: target.bookingId,
+        shipmentId: target.id,
+        files: files.map((file) => file.name),
+        urls: data.urls || []
+      });
+      setDocumentReview({
+        target,
+        focusLabel: 'Cargo photos',
+        status: `${files.length} cargo photo${files.length === 1 ? '' : 's'} uploaded for ${target.id}`
+      });
+      notify('Cargo photos uploaded');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusyAction('');
+    }
+  }
+
+  const bidQueueTarget = openRequests[0] || shipments.find((shipment) => shipment.rawStatus === 'bidding');
   const actionQueue = [
     {
-      label: 'Compare bids - Mombasa to Dar es Salaam',
-      run: () => openBidReview()
+      label: bidQueueTarget ? `Compare bids - ${bidQueueTarget.route}` : 'Compare carrier bids',
+      run: () => openBidReview(bidQueueTarget)
     },
     {
       label: 'Confirm waybill and cargo photos',
@@ -524,20 +679,18 @@ function ShipperPage({ notify, user }) {
       }
     }
   ];
-  const readinessDocs = [
-    ['Waybill ready', () => downloadShipmentDocument('waybill')],
-    [
-      'Insurance note shared',
-      () => {
-        navigate('/app/profile?document=Insurance');
-        notify('Insurance verification opened');
-      }
-    ],
-    ['Delivery proof pending', () => downloadShipmentDocument('pod')]
-  ];
+  const readinessDocs = documentActions;
 
   return (
     <div className="page-grid">
+      <input
+        ref={cargoInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,application/pdf"
+        multiple
+        onChange={uploadShipmentCargoPhotos}
+        style={{ display: 'none' }}
+      />
       <section className="intro-band">
         <div>
           <p className="eyebrow">Client Workspace</p>
@@ -665,13 +818,70 @@ function ShipperPage({ notify, user }) {
               )}
             </div>
           </Panel>
+
+          {bidReview ? (
+            <Panel title="Bid Review" eyebrow="Carrier Awards" action="Close" onAction={() => setBidReview(null)}>
+              <div className="facts-grid">
+                <span>Request</span>
+                <strong>{bidReview.id}</strong>
+                <span>Route</span>
+                <strong>{bidReview.route}</strong>
+                <span>Status</span>
+                <strong>{bidReview.status || 'Reviewing'}</strong>
+              </div>
+              <div className="cards-grid">
+                {busyAction === 'bid-review' ? (
+                  <EmptyState title="Loading carrier bids" detail="Reading the live booking record from the API." />
+                ) : bidReview.bids?.length ? (
+                  bidReview.bids.map((bid) => (
+                    <article className="quote-card" key={bid.id}>
+                      <StatusBadge tone={bid.status === 'accepted' ? 'success' : 'default'}>
+                        {statusLabel(bid.status)}
+                      </StatusBadge>
+                      <h3>{bid.ownerName}</h3>
+                      <p>{bid.truckName}</p>
+                      <strong>{money(bid.amount)}</strong>
+                      <small>{bid.message}</small>
+                      <button
+                        className="primary"
+                        type="button"
+                        disabled={busyAction === `award-${bid.id}` || bid.status === 'accepted'}
+                        onClick={() => awardBid(bid)}
+                      >
+                        {bid.status === 'accepted' ? 'Awarded' : 'Award Bid'}
+                      </button>
+                    </article>
+                  ))
+                ) : (
+                  <EmptyState
+                    title="No carrier bids yet"
+                    detail="Submitted owner bids will appear here with award controls."
+                  />
+                )}
+              </div>
+              <div className="button-row">
+                <button className="secondary" type="button" onClick={() => navigate('/app/marketplace')}>
+                  Open Marketplace
+                </button>
+                <button className="ghost" type="button" onClick={() => openBidReview(bidReview)}>
+                  Refresh Bids
+                </button>
+              </div>
+            </Panel>
+          ) : null}
         </div>
 
         <aside className="side-stack">
           <Panel title="Action Queue" eyebrow="Today">
             <div className="action-list">
               {actionQueue.map((item) => (
-                <button className="action-item" type="button" key={item.label} onClick={item.run}>
+                <button
+                  className="action-item"
+                  type="button"
+                  key={item.label}
+                  disabled={Boolean(busyAction)}
+                  onClick={item.run}
+                >
                   {item.label}
                 </button>
               ))}
@@ -679,13 +889,44 @@ function ShipperPage({ notify, user }) {
           </Panel>
           <Panel title="Documents" eyebrow="Readiness">
             <div className="doc-list">
-              {readinessDocs.map(([label, run]) => (
-                <button type="button" key={label} onClick={run}>
-                  {label}
+              {readinessDocs.map((definition) => (
+                <button
+                  type="button"
+                  key={definition.label}
+                  disabled={busyAction === `document-${definition.type}`}
+                  onClick={() => handleShipmentDocument(definition)}
+                >
+                  {busyAction === `document-${definition.type}` ? 'Working...' : definition.label}
                 </button>
               ))}
             </div>
           </Panel>
+          {documentReview ? (
+            <Panel
+              title="Document Workbench"
+              eyebrow={documentReview.target?.id || 'Shipment Docs'}
+              action="Close"
+              onAction={() => setDocumentReview(null)}
+            >
+              <div className="verification-card">
+                <FileText size={28} />
+                <strong>{documentReview.focusLabel}</strong>
+                <span>{documentReview.status}</span>
+              </div>
+              <div className="doc-list compact">
+                {documentActions.map((definition) => (
+                  <button
+                    type="button"
+                    key={definition.label}
+                    disabled={Boolean(busyAction)}
+                    onClick={() => handleShipmentDocument(definition, documentReview.target)}
+                  >
+                    {definition.label}
+                  </button>
+                ))}
+              </div>
+            </Panel>
+          ) : null}
         </aside>
       </section>
     </div>
@@ -697,6 +938,14 @@ function BookingPage({ notify }) {
   const [estimate, setEstimate] = useState(null);
   const [saving, setSaving] = useState(false);
   const [ack, setAck] = useState(false);
+  const [quoteDocument, setQuoteDocument] = useState(null);
+  const [quoteDocBusy, setQuoteDocBusy] = useState('');
+  const quoteUploadInputRef = useRef(null);
+  const pendingQuoteUploadRef = useRef(null);
+  const quoteDocuments = useMemo(
+    () => [...new Set([...(estimate?.requiredDocuments || []), ...demoDocuments])],
+    [estimate]
+  );
 
   useEffect(() => {
     let active = true;
@@ -722,6 +971,72 @@ function BookingPage({ notify }) {
     });
   }
 
+  function bookingDraftPayload() {
+    return {
+      ...form,
+      estimate,
+      route: [form.pickup, form.destination].filter(Boolean).join(' to ')
+    };
+  }
+
+  async function openQuoteDocument(label) {
+    const definition = documentActionFor(label);
+    setQuoteDocument({
+      label: definition.label,
+      status:
+        definition.mode === 'upload'
+          ? 'Choose files to attach to this booking draft.'
+          : 'Generating a booking draft document.'
+    });
+
+    if (definition.mode === 'upload') {
+      pendingQuoteUploadRef.current = definition;
+      quoteUploadInputRef.current?.click();
+      return;
+    }
+
+    setQuoteDocBusy(definition.type);
+    try {
+      await api.downloadDraftDocument(definition.type, bookingDraftPayload());
+      setQuoteDocument({
+        label: definition.label,
+        status: `${definition.label} draft downloaded from the live document service.`
+      });
+      notify(`${definition.label} draft downloaded`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setQuoteDocBusy('');
+    }
+  }
+
+  async function uploadQuoteDocumentFiles(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+
+    const definition = pendingQuoteUploadRef.current || documentActions[1];
+    setQuoteDocBusy(definition.type);
+    try {
+      const data = await api.uploadCargo(files);
+      saveLocal('quote_documents', {
+        document: definition.label,
+        files: files.map((file) => file.name),
+        urls: data.urls || [],
+        route: [form.pickup, form.destination].filter(Boolean).join(' to ')
+      });
+      setQuoteDocument({
+        label: definition.label,
+        status: `${files.length} file${files.length === 1 ? '' : 's'} uploaded and attached to this booking draft.`
+      });
+      notify(`${definition.label} uploaded`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setQuoteDocBusy('');
+    }
+  }
+
   async function submit(event) {
     event.preventDefault();
     if (!ack) {
@@ -745,6 +1060,14 @@ function BookingPage({ notify }) {
 
   return (
     <form className="booking-grid" onSubmit={submit}>
+      <input
+        ref={quoteUploadInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,application/pdf"
+        multiple
+        onChange={uploadQuoteDocumentFiles}
+        style={{ display: 'none' }}
+      />
       <section className="form-sections">
         <Panel title="Route" eyebrow="Step 1">
           <div className="form-grid">
@@ -872,10 +1195,27 @@ function BookingPage({ notify }) {
             ))}
           </div>
           <div className="doc-list compact">
-            {(estimate?.requiredDocuments || demoDocuments.slice(0, 3)).map((item) => (
-              <span key={item}>{item}</span>
-            ))}
+            {quoteDocuments.map((item) => {
+              const definition = documentActionFor(item);
+              return (
+                <button
+                  type="button"
+                  key={item}
+                  disabled={quoteDocBusy === definition.type}
+                  onClick={() => openQuoteDocument(item)}
+                >
+                  {quoteDocBusy === definition.type ? 'Working...' : item}
+                </button>
+              );
+            })}
           </div>
+          {quoteDocument ? (
+            <div className="verification-card">
+              <FileText size={28} />
+              <strong>{quoteDocument.label}</strong>
+              <span>{quoteDocument.status}</span>
+            </div>
+          ) : null}
           <label className="ack-row">
             <input type="checkbox" checked={ack} onChange={(event) => setAck(event.target.checked)} />
             <span>I reviewed fees, optional services, and required documents.</span>
