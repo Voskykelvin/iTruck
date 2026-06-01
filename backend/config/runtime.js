@@ -17,11 +17,13 @@ function runtimeConfigError(message) {
 }
 
 function normalized(value) {
-  return String(value || '').trim().toLowerCase();
+  return String(value || '')
+    .trim()
+    .toLowerCase();
 }
 
 function hostedRuntimeDetected() {
-  return HOSTED_ENV_MARKERS.some(key => {
+  return HOSTED_ENV_MARKERS.some((key) => {
     const value = process.env[key];
     return value && value !== 'false' && value !== '0';
   });
@@ -81,7 +83,7 @@ function requireLiveSecrets() {
     'CLOUDINARY_CLOUD_NAME',
     'CLOUDINARY_API_KEY',
     'CLOUDINARY_API_SECRET'
-  ].filter(key => !process.env[key]);
+  ].filter((key) => !process.env[key]);
 
   if (missing.length) {
     throw new Error(`Missing live environment variables: ${missing.join(', ')}`);

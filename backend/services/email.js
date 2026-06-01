@@ -42,6 +42,6 @@ module.exports = {
   setEmailProvider,
   sendMail,
   templates: {
-    welcome: user => 'Welcome ' + user.firstName
+    welcome: (user) => 'Welcome ' + user.firstName
   }
 };

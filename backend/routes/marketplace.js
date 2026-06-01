@@ -9,7 +9,12 @@ const paymentMethods = [
   { id: 'wallet', label: 'iTruck Wallet', countries: ['all'], settlement: 'instant' },
   { id: 'mpesa', label: 'M-Pesa', countries: ['Kenya', 'Tanzania'], settlement: 'instant' },
   { id: 'mtn-momo', label: 'MTN MoMo', countries: ['Ghana', 'Uganda', 'Rwanda', 'Cameroon'], settlement: 'instant' },
-  { id: 'airtel-money', label: 'Airtel Money', countries: ['Kenya', 'Uganda', 'Tanzania', 'Zambia'], settlement: 'instant' },
+  {
+    id: 'airtel-money',
+    label: 'Airtel Money',
+    countries: ['Kenya', 'Uganda', 'Tanzania', 'Zambia'],
+    settlement: 'instant'
+  },
   { id: 'card', label: 'Card', countries: ['all'], settlement: 'escrow' },
   { id: 'cash', label: 'Cash on delivery', countries: ['all'], settlement: 'manual verification' }
 ];

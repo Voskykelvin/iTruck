@@ -144,9 +144,40 @@ export const demoShipments = [
 ];
 
 export const demoLoads = [
-  { cargo: 'Maize bags', route: 'Kampala to Mombasa', price: 1850, distance: '1,140 km', window: 'Pickup tomorrow', fit: '92% fit', risk: 'Medium' },
-  { cargo: 'Construction steel', route: 'Nairobi to Kigali', price: 2400, distance: '1,170 km', window: 'Bids close in 2h', fit: '88% fit', risk: 'Medium' },
-  { cargo: 'Cold chain produce', route: 'Arusha to Dar es Salaam', price: 980, distance: '630 km', window: 'Needs refrigerated truck', fit: '76% fit', risk: 'High' }
+  {
+    cargo: 'Maize bags',
+    route: 'Kampala to Mombasa',
+    price: 1850,
+    distance: '1,140 km',
+    window: 'Pickup tomorrow',
+    fit: '92% fit',
+    risk: 'Medium'
+  },
+  {
+    cargo: 'Construction steel',
+    route: 'Nairobi to Kigali',
+    price: 2400,
+    distance: '1,170 km',
+    window: 'Bids close in 2h',
+    fit: '88% fit',
+    risk: 'Medium'
+  },
+  {
+    cargo: 'Cold chain produce',
+    route: 'Arusha to Dar es Salaam',
+    price: 980,
+    distance: '630 km',
+    window: 'Needs refrigerated truck',
+    fit: '76% fit',
+    risk: 'High'
+  }
 ];
 
-export const demoDocuments = ['Waybill', 'Cargo photos', 'Receiver confirmation', 'Commercial invoice', 'Packing list', 'Customs declaration'];
+export const demoDocuments = [
+  'Waybill',
+  'Cargo photos',
+  'Receiver confirmation',
+  'Commercial invoice',
+  'Packing list',
+  'Customs declaration'
+];

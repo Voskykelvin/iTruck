@@ -1,1 +1,11 @@
-if(location.protocol!=='file:'&&'serviceWorker'in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').then(reg=>{if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.update().catch(()=>{})}).catch(()=>{}))}
+if (location.protocol !== 'file:' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () =>
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((reg) => {
+        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        reg.update().catch(() => {});
+      })
+      .catch(() => {})
+  );
+}

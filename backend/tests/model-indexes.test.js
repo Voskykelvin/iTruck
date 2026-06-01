@@ -8,10 +8,13 @@ const Booking = require('../models/Booking');
 const RefreshToken = require('../models/RefreshToken');
 
 function hasIndex(Model, keys, options = {}) {
-  return Model.schema.indexes().some(([indexKeys, indexOptions]) => (
-    JSON.stringify(indexKeys) === JSON.stringify(keys)
-    && Object.entries(options).every(([key, value]) => indexOptions[key] === value)
-  ));
+  return Model.schema
+    .indexes()
+    .some(
+      ([indexKeys, indexOptions]) =>
+        JSON.stringify(indexKeys) === JSON.stringify(keys) &&
+        Object.entries(options).every(([key, value]) => indexOptions[key] === value)
+    );
 }
 
 function oid() {
@@ -55,15 +58,23 @@ test('refresh token indexes and fields support device-scoped sessions', () => {
 
 test('new models enforce their required fields without a database connection', () => {
   expect(new Wallet({ balance: 10 }).validateSync().errors.user).toBeDefined();
-  expect(new AuditLog({ admin: oid(), action: 'x', targetType: 'user', targetId: String(oid()) }).validateSync()).toBeUndefined();
+  expect(
+    new AuditLog({ admin: oid(), action: 'x', targetType: 'user', targetId: String(oid()) }).validateSync()
+  ).toBeUndefined();
   expect(new LoadRequest({ user: oid(), status: 'open' }).validateSync()).toBeUndefined();
   expect(new BookingMessage({ user: oid(), text: 'Driver is at pickup' }).validateSync()).toBeUndefined();
-  expect(new IssueReport({ user: oid(), severity: 'high', message: 'Delayed at border' }).validateSync()).toBeUndefined();
+  expect(
+    new IssueReport({ user: oid(), severity: 'high', message: 'Delayed at border' }).validateSync()
+  ).toBeUndefined();
 });
 
 test('new models reject invalid enum values', () => {
-  expect(new AuditLog({ admin: oid(), action: 'x', targetType: 'carrier', targetId: '1' }).validateSync().errors.targetType).toBeDefined();
+  expect(
+    new AuditLog({ admin: oid(), action: 'x', targetType: 'carrier', targetId: '1' }).validateSync().errors.targetType
+  ).toBeDefined();
   expect(new LoadRequest({ user: oid(), status: 'lost' }).validateSync().errors.status).toBeDefined();
-  expect(new BookingMessage({ user: oid(), text: 'Hello', status: 'archived' }).validateSync().errors.status).toBeDefined();
+  expect(
+    new BookingMessage({ user: oid(), text: 'Hello', status: 'archived' }).validateSync().errors.status
+  ).toBeDefined();
   expect(new IssueReport({ user: oid(), severity: 'critical' }).validateSync().errors.severity).toBeDefined();
 });

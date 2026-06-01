@@ -1,6 +1,13 @@
 window.iTruckRoute = {
   staticToApp(href = '') {
-    if (location.protocol === 'file:' || !href || href.startsWith('#') || href.startsWith('http') || href.startsWith('mailto:') || href.startsWith('tel:')) {
+    if (
+      location.protocol === 'file:' ||
+      !href ||
+      href.startsWith('#') ||
+      href.startsWith('http') ||
+      href.startsWith('mailto:') ||
+      href.startsWith('tel:')
+    ) {
       return href;
     }
 
@@ -27,7 +34,7 @@ window.iTruckRoute = {
 
   rewriteLinks(root = document) {
     if (location.protocol === 'file:') return;
-    root.querySelectorAll('a[href]').forEach(link => {
+    root.querySelectorAll('a[href]').forEach((link) => {
       const next = this.staticToApp(link.getAttribute('href'));
       if (next !== link.getAttribute('href')) link.setAttribute('href', next);
     });
@@ -35,8 +42,8 @@ window.iTruckRoute = {
 };
 
 function fallbackDeviceUuid() {
-  return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, value =>
-    (Number(value) ^ (Math.random() * 16 >> (Number(value) / 4))).toString(16)
+  return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, (value) =>
+    (Number(value) ^ ((Math.random() * 16) >> (Number(value) / 4))).toString(16)
   );
 }
 
@@ -49,7 +56,8 @@ else bindWorkspaceRoutes();
 
 class ITruckAPI {
   constructor() {
-    this.base = localStorage.getItem('itruck_api_base') || (location.protocol === 'file:' ? 'http://localhost:5000/api' : '/api');
+    this.base =
+      localStorage.getItem('itruck_api_base') || (location.protocol === 'file:' ? 'http://localhost:5000/api' : '/api');
     this.token = localStorage.getItem('itruck_token') || '';
   }
 
@@ -74,7 +82,11 @@ class ITruckAPI {
   async request(path, options = {}) {
     const isFormData = options.body instanceof FormData;
     const headers = isFormData
-      ? { 'X-Device-Id': this.deviceId(), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}), ...(options.headers || {}) }
+      ? {
+          'X-Device-Id': this.deviceId(),
+          ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+          ...(options.headers || {})
+        }
       : this.headers(options.headers || {});
 
     let res;
@@ -102,11 +114,17 @@ class ITruckAPI {
   }
 
   register(role, data) {
-    return this.request(`/auth/register/${role}`, { method: 'POST', body: JSON.stringify({ ...data, deviceId: this.deviceId() }) });
+    return this.request(`/auth/register/${role}`, {
+      method: 'POST',
+      body: JSON.stringify({ ...data, deviceId: this.deviceId() })
+    });
   }
 
   login(data) {
-    return this.request('/auth/login', { method: 'POST', body: JSON.stringify({ ...data, deviceId: this.deviceId() }) });
+    return this.request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ ...data, deviceId: this.deviceId() })
+    });
   }
 
   me() {
@@ -209,7 +227,7 @@ window.API = new ITruckAPI();
     localStorage.setItem('itruck_theme', theme);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', theme === 'light' ? '#F8FAFC' : '#0A0F1E');
-    document.querySelectorAll('[data-theme-choice]').forEach(btn => {
+    document.querySelectorAll('[data-theme-choice]').forEach((btn) => {
       const active = btn.dataset.themeChoice === theme;
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-pressed', active ? 'true' : 'false');
@@ -217,7 +235,7 @@ window.API = new ITruckAPI();
   }
 
   function bindControls() {
-    document.querySelectorAll('[data-theme-choice]').forEach(btn => {
+    document.querySelectorAll('[data-theme-choice]').forEach((btn) => {
       btn.addEventListener('click', () => apply(btn.dataset.themeChoice));
     });
     apply(root.dataset.theme || initial);

@@ -1,13 +1,55 @@
 const jobs = [
-  { cargo: 'Maize bags', route: 'Kampala to Mombasa', price: 1850, distance: '1,140 km', window: 'Pickup tomorrow', fit: '92% fit' },
-  { cargo: 'Construction steel', route: 'Nairobi to Kigali', price: 2400, distance: '1,170 km', window: 'Bids close in 2h', fit: '88% fit' },
-  { cargo: 'Cold chain produce', route: 'Arusha to Dar es Salaam', price: 980, distance: '630 km', window: 'Needs refrigerated truck', fit: '76% fit' }
+  {
+    cargo: 'Maize bags',
+    route: 'Kampala to Mombasa',
+    price: 1850,
+    distance: '1,140 km',
+    window: 'Pickup tomorrow',
+    fit: '92% fit'
+  },
+  {
+    cargo: 'Construction steel',
+    route: 'Nairobi to Kigali',
+    price: 2400,
+    distance: '1,170 km',
+    window: 'Bids close in 2h',
+    fit: '88% fit'
+  },
+  {
+    cargo: 'Cold chain produce',
+    route: 'Arusha to Dar es Salaam',
+    price: 980,
+    distance: '630 km',
+    window: 'Needs refrigerated truck',
+    fit: '76% fit'
+  }
 ];
 
 const fleet = [
-  { plate: 'KDA 442Q', name: 'Isuzu FVZ 34', status: 'Available', docs: 'Verified', lane: 'Nairobi-Kampala', readiness: 96 },
-  { plate: 'KCB 991T', name: 'Scania R450', status: 'In transit', docs: 'Verified', lane: 'Mombasa-Kigali', readiness: 84 },
-  { plate: 'KDG 128P', name: 'Toyota Hilux', status: 'Maintenance due', docs: 'Insurance review', lane: 'Nairobi-Nakuru', readiness: 68 }
+  {
+    plate: 'KDA 442Q',
+    name: 'Isuzu FVZ 34',
+    status: 'Available',
+    docs: 'Verified',
+    lane: 'Nairobi-Kampala',
+    readiness: 96
+  },
+  {
+    plate: 'KCB 991T',
+    name: 'Scania R450',
+    status: 'In transit',
+    docs: 'Verified',
+    lane: 'Mombasa-Kigali',
+    readiness: 84
+  },
+  {
+    plate: 'KDG 128P',
+    name: 'Toyota Hilux',
+    status: 'Maintenance due',
+    docs: 'Insurance review',
+    lane: 'Nairobi-Nakuru',
+    readiness: 68
+  }
 ];
 
 const queue = [
@@ -42,12 +84,13 @@ function openModal(title, body, footer = '') {
     shell = document.createElement('div');
     shell.id = 'workspaceModal';
     shell.className = 'workspace-modal';
-    shell.innerHTML = '<div class="workspace-dialog"><button class="modal-x" type="button" data-close-workspace-modal>x</button><div id="workspaceModalContent"></div></div>';
+    shell.innerHTML =
+      '<div class="workspace-dialog"><button class="modal-x" type="button" data-close-workspace-modal>x</button><div id="workspaceModalContent"></div></div>';
     document.body.appendChild(shell);
-    shell.addEventListener('click', event => {
+    shell.addEventListener('click', (event) => {
       if (event.target === shell || event.target.closest('[data-close-workspace-modal]')) closeModal();
     });
-    document.addEventListener('keydown', event => {
+    document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') closeModal();
     });
   }
@@ -59,7 +102,9 @@ function closeModal() {
   document.getElementById('workspaceModal')?.classList.remove('open');
 }
 
-document.getElementById('jobBoard').innerHTML = jobs.map((job, index) => `
+document.getElementById('jobBoard').innerHTML = jobs
+  .map(
+    (job, index) => `
   <article class="load-card interactive-row" data-load-card="${index}" tabindex="0" role="button" aria-label="Place bid for ${job.cargo}">
     <div>
       <span class="badge success">${job.fit}</span>
@@ -72,7 +117,9 @@ document.getElementById('jobBoard').innerHTML = jobs.map((job, index) => `
       <button class="primary-btn" data-place-bid="${index}">Place Bid</button>
     </div>
   </article>
-`).join('');
+`
+  )
+  .join('');
 
 function badgeClass(status) {
   if (status === 'Available') return 'success';
@@ -81,7 +128,9 @@ function badgeClass(status) {
 }
 
 function renderFleet() {
-  document.getElementById('fleetGrid').innerHTML = fleet.map((truck, index) => `
+  document.getElementById('fleetGrid').innerHTML = fleet
+    .map(
+      (truck, index) => `
     <article class="fleet-row interactive-row" data-fleet-card="${index}" tabindex="0" role="button" aria-label="Manage ${truck.plate}">
       <div>
         <span class="badge ${badgeClass(truck.status)}">${truck.status}</span>
@@ -95,24 +144,32 @@ function renderFleet() {
         <button class="ghost-btn" data-manage-truck="${index}">Manage</button>
       </div>
     </article>
-  `).join('');
+  `
+    )
+    .join('');
 }
 
 renderFleet();
 
-document.getElementById('ownerQueue').innerHTML = queue.map((item, index) => `
+document.getElementById('ownerQueue').innerHTML = queue
+  .map(
+    (item, index) => `
   <button class="action-item" data-owner-task="${index}">
     <strong>${item.title}</strong>
     <span>${item.detail}</span>
   </button>
-`).join('');
+`
+  )
+  .join('');
 
-document.addEventListener('click', event => {
+document.addEventListener('click', (event) => {
   const directControl = event.target.closest('button,a,input,select,textarea,label');
-  const bidIndex = event.target.dataset.placeBid
-    ?? (!directControl ? event.target.closest('[data-load-card]')?.dataset.loadCard : undefined);
-  const truckIndex = event.target.dataset.manageTruck
-    ?? (!directControl ? event.target.closest('[data-fleet-card]')?.dataset.fleetCard : undefined);
+  const bidIndex =
+    event.target.dataset.placeBid ??
+    (!directControl ? event.target.closest('[data-load-card]')?.dataset.loadCard : undefined);
+  const truckIndex =
+    event.target.dataset.manageTruck ??
+    (!directControl ? event.target.closest('[data-fleet-card]')?.dataset.fleetCard : undefined);
   const taskIndex = event.target.closest('[data-owner-task]')?.dataset.ownerTask;
 
   if (event.target.closest('[data-close-workspace-modal]')) {
@@ -127,15 +184,21 @@ document.addEventListener('click', event => {
       `<form id="bidForm" class="modal-form">
         <label>Route<input value="${job.route}" readonly></label>
         <label>Your price<input name="amount" type="number" value="${job.price}"></label>
-        <label>Truck<select name="truck">${fleet.map(truck => `<option>${truck.plate} - ${truck.name}</option>`).join('')}</select></label>
+        <label>Truck<select name="truck">${fleet.map((truck) => `<option>${truck.plate} - ${truck.name}</option>`).join('')}</select></label>
         <label>Message<textarea name="message">Available for pickup. Documents ready.</textarea></label>
         <button class="primary-btn" type="submit">Submit Bid</button>
       </form>`
     );
-    document.getElementById('bidForm').addEventListener('submit', e => {
+    document.getElementById('bidForm').addEventListener('submit', (e) => {
       e.preventDefault();
       const formData = Object.fromEntries(new FormData(e.target).entries());
-      const payload = { ...formData, route: job.route, cargo: job.cargo, suggestedPrice: job.price, status: 'submitted' };
+      const payload = {
+        ...formData,
+        route: job.route,
+        cargo: job.cargo,
+        suggestedPrice: job.price,
+        status: 'submitted'
+      };
       API.submitBid(payload)
         .catch(() => saveLocal('bids', payload))
         .finally(() => {
@@ -183,7 +246,7 @@ document.addEventListener('click', event => {
         <button class="ghost-btn" type="button" data-close-workspace-modal>Cancel</button>
       </form>`
     );
-    document.getElementById('vehicleStatusForm').addEventListener('submit', event => {
+    document.getElementById('vehicleStatusForm').addEventListener('submit', (event) => {
       event.preventDefault();
       const data = Object.fromEntries(new FormData(event.target).entries());
       Object.assign(truck, { ...data, readiness: Number(data.readiness) });
@@ -205,14 +268,14 @@ document.addEventListener('click', event => {
       openModal(
         'Upload Insurance',
         `<form id="insuranceForm" class="modal-form">
-          <label>Vehicle<select name="truck">${fleet.map(truck => `<option>${truck.plate} - ${truck.name}</option>`).join('')}</select></label>
+          <label>Vehicle<select name="truck">${fleet.map((truck) => `<option>${truck.plate} - ${truck.name}</option>`).join('')}</select></label>
           <label>Policy number<input name="policy" placeholder="Policy number" required></label>
           <label>Expiry date<input name="expiry" type="date" required></label>
           <label>Document<input name="file" type="file" accept=".pdf,image/*"></label>
           <button class="primary-btn" type="submit">Save Insurance</button>
         </form>`
       );
-      document.getElementById('insuranceForm').addEventListener('submit', event => {
+      document.getElementById('insuranceForm').addEventListener('submit', (event) => {
         event.preventDefault();
         closeModal();
         toast('Insurance document saved for review');
@@ -228,7 +291,7 @@ document.addEventListener('click', event => {
         <button class="primary-btn" type="submit">Mark Pickup Started</button>
       </form>`
     );
-    document.getElementById('pickupForm').addEventListener('submit', event => {
+    document.getElementById('pickupForm').addEventListener('submit', (event) => {
       event.preventDefault();
       closeModal();
       toast('Pickup status updated');
@@ -236,7 +299,7 @@ document.addEventListener('click', event => {
   }
 });
 
-document.addEventListener('keydown', event => {
+document.addEventListener('keydown', (event) => {
   if (!['Enter', ' '].includes(event.key)) return;
   const card = event.target.closest('[data-load-card],[data-fleet-card]');
   if (!card) return;
@@ -255,7 +318,7 @@ document.getElementById('addTruck')?.addEventListener('click', () => {
       <button class="primary-btn" type="submit">Save Vehicle</button>
     </form>`
   );
-  document.getElementById('vehicleForm').addEventListener('submit', e => {
+  document.getElementById('vehicleForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const values = Object.fromEntries(new FormData(e.target).entries());
     const payload = {
@@ -269,7 +332,7 @@ document.getElementById('addTruck')?.addEventListener('click', () => {
     };
 
     API.createTruck(payload)
-      .then(response => {
+      .then((response) => {
         const truck = response.truck || payload;
         fleet.unshift({
           plate: truck.plateNumber || values.plate,
@@ -300,7 +363,7 @@ document.getElementById('setRoutes')?.addEventListener('click', () => {
       <button class="primary-btn" type="submit">Update Routes</button>
     </form>`
   );
-  document.getElementById('routesForm').addEventListener('submit', e => {
+  document.getElementById('routesForm').addEventListener('submit', (e) => {
     e.preventDefault();
     saveLocal('preferred_routes', Object.fromEntries(new FormData(e.target).entries()));
     closeModal();

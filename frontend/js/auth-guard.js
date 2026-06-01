@@ -1,1 +1,1 @@
-window.currentUser=JSON.parse(localStorage.getItem('itruck_user')||'{}');
+window.currentUser = JSON.parse(localStorage.getItem('itruck_user') || '{}');

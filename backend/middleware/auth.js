@@ -13,9 +13,11 @@ async function protect(req, res, next) {
 
     if (!mongoReady()) {
       if (!demoModeEnabled()) {
-        return res.status(503).json({ message: 'Database unavailable. Live mode authentication is disabled until MongoDB is connected.' });
+        return res
+          .status(503)
+          .json({ message: 'Database unavailable. Live mode authentication is disabled until MongoDB is connected.' });
       }
-      const demoUser = demoUsers.find(user => user._id === decoded.id);
+      const demoUser = demoUsers.find((user) => user._id === decoded.id);
       req.user = demoUser ? safeUser(demoUser) : { _id: decoded.id, role: decoded.role || 'client' };
       return next();
     }
@@ -29,9 +31,11 @@ async function protect(req, res, next) {
   }
 }
 
-const restrictTo = (...roles) => (req, res, next) => {
-  if (roles.includes(req.user?.role)) return next();
-  res.status(403).json({ message: 'Forbidden' });
-};
+const restrictTo =
+  (...roles) =>
+  (req, res, next) => {
+    if (roles.includes(req.user?.role)) return next();
+    res.status(403).json({ message: 'Forbidden' });
+  };
 
 module.exports = { protect, restrictTo };

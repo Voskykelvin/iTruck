@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   BarChart3,
@@ -21,7 +21,7 @@ import {
   ShieldCheck,
   Truck,
   UserRound,
-  Wallet,
+  Wallet
 } from 'lucide-react';
 import { api, clearSession, currentUser, setSession } from './api.js';
 import SessionsManager from './components/SessionsManager.jsx';
@@ -64,7 +64,7 @@ const defaultBooking = {
 function routeFromLocation() {
   const path = window.location.pathname;
   if (path === '/app' || path === '/app/') return '/app/shipper';
-  return path;
+  return `${path}${window.location.search}`;
 }
 
 function navigate(path) {
@@ -180,9 +180,7 @@ function bookingRoute(booking) {
 }
 
 function statusLabel(status = 'pending') {
-  return status
-    .replaceAll('_', ' ')
-    .replace(/\b\w/g, letter => letter.toUpperCase());
+  return status.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function progressForStatus(status = 'pending') {
@@ -208,7 +206,9 @@ function normalizeBookingShipment(booking) {
     cargo: booking.cargo || 'Cargo pending',
     vehicle: booking.vehicleType || booking.truck?.type || 'Vehicle pending',
     plate: booking.truck?.plateNumber || booking.plate || 'Unassigned',
-    driver: booking.owner ? `${booking.owner.firstName || ''} ${booking.owner.lastName || ''}`.trim() : 'Carrier pending',
+    driver: booking.owner
+      ? `${booking.owner.firstName || ''} ${booking.owner.lastName || ''}`.trim()
+      : 'Carrier pending',
     status: statusLabel(booking.status),
     rawStatus: booking.status || 'pending',
     progress,
@@ -256,7 +256,8 @@ function fallbackEstimate(payload) {
     recommendedMode: distance > 900 || payload.border === 'Cross-border' ? 'open-bids' : 'instant-match',
     confidence: 'medium',
     requiredDocuments: payload.border === 'Cross-border' ? demoDocuments : demoDocuments.slice(0, 3),
-    quoteProtection: 'Estimate includes visible platform, insurance, escrow, and selected service fees before carrier bids.'
+    quoteProtection:
+      'Estimate includes visible platform, insurance, escrow, and selected service fees before carrier bids.'
   };
 }
 
@@ -289,7 +290,7 @@ function App() {
   }
 
   const page = useMemo(() => {
-    const props = { notify, user, setUser };
+    const props = { notify, route, user, setUser };
     if (route.startsWith('/app/book')) return <BookingPage {...props} />;
     if (route.startsWith('/app/marketplace')) return <MarketplacePage {...props} />;
     if (route.startsWith('/app/tracking')) return <TrackingPage {...props} />;
@@ -306,7 +307,7 @@ function App() {
           <span>iT</span> iTruck
         </a>
         <nav>
-          {navItems.map(item => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const active = route.startsWith(item.path);
             return (
@@ -352,7 +353,7 @@ function App() {
       </main>
 
       <nav className="mobile-bottom-nav" aria-label="Primary mobile navigation">
-        {navItems.map(item => {
+        {navItems.map((item) => {
           const Icon = item.icon;
           const active = route.startsWith(item.path);
           return (
@@ -372,7 +373,12 @@ function App() {
         })}
       </nav>
 
-      <button className={`menu-scrim ${menuOpen ? 'show' : ''}`} type="button" aria-label="Close menu" onClick={() => setMenuOpen(false)} />
+      <button
+        className={`menu-scrim ${menuOpen ? 'show' : ''}`}
+        type="button"
+        aria-label="Close menu"
+        onClick={() => setMenuOpen(false)}
+      />
       {toast ? <div className="toast">{toast}</div> : null}
     </div>
   );
@@ -407,16 +413,17 @@ function ShipperPage({ notify }) {
   const [shipments, setShipments] = useState(workspaceShipments);
 
   useEffect(() => {
-    api.listBookings()
-      .then(data => {
+    api
+      .listBookings()
+      .then((data) => {
         if (Array.isArray(data.bookings)) setShipments(data.bookings.map(normalizeBookingShipment));
       })
       .catch(() => setShipments(workspaceShipments));
   }, []);
 
-  const activeCount = shipments.filter(item => !['delivered', 'cancelled'].includes(item.rawStatus)).length;
-  const inTransitCount = shipments.filter(item => item.rawStatus === 'in_transit').length;
-  const openRequests = shipments.filter(item => ['pending', 'bidding'].includes(item.rawStatus));
+  const activeCount = shipments.filter((item) => !['delivered', 'cancelled'].includes(item.rawStatus)).length;
+  const inTransitCount = shipments.filter((item) => item.rawStatus === 'in_transit').length;
+  const openRequests = shipments.filter((item) => ['pending', 'bidding'].includes(item.rawStatus));
   const actionQueue = [
     {
       label: 'Compare bids - Mombasa to Dar es Salaam',
@@ -452,7 +459,10 @@ function ShipperPage({ notify }) {
         <div>
           <p className="eyebrow">Client Workspace</p>
           <h2>Shipments that need your attention.</h2>
-          <p>Compare bids, review documents, release payments, and keep active routes visible without jumping across separate static pages.</p>
+          <p>
+            Compare bids, review documents, release payments, and keep active routes visible without jumping across
+            separate static pages.
+          </p>
           <div className="button-row">
             <button className="primary icon-label" type="button" onClick={() => navigate('/app/book')}>
               <Plus size={18} />
@@ -467,75 +477,120 @@ function ShipperPage({ notify }) {
         <div className="command-summary">
           <StatusBadge tone="success">{activeCount} active</StatusBadge>
           <strong>{shipments[0] ? `Next update: ${shipments[0].eta}` : 'No live shipment updates yet'}</strong>
-          <span>{shipments[0] ? `${shipments[0].route} - ${shipments[0].id}` : 'Create a booking to start tracking'}</span>
+          <span>
+            {shipments[0] ? `${shipments[0].route} - ${shipments[0].id}` : 'Create a booking to start tracking'}
+          </span>
         </div>
       </section>
 
       <section className="metrics-grid">
-        <MetricCard icon={PackageCheck} label="Total Shipments" value={shipments.length} detail="MongoDB booking records" />
+        <MetricCard
+          icon={PackageCheck}
+          label="Total Shipments"
+          value={shipments.length}
+          detail="MongoDB booking records"
+        />
         <MetricCard icon={Truck} label="In Transit" value={inTransitCount} detail="Live shipment status" />
-        <MetricCard icon={AlertTriangle} label="Awaiting Action" value={openRequests.length} detail="Bids, docs, payment" />
+        <MetricCard
+          icon={AlertTriangle}
+          label="Awaiting Action"
+          value={openRequests.length}
+          detail="Bids, docs, payment"
+        />
         <MetricCard icon={Wallet} label="Wallet" value="$4.2k" detail="Escrow held: $1,260" />
       </section>
 
       <section className="workspace-layout">
         <div className="stack">
-          <Panel title="Shipment Command" eyebrow="Live Work" action="View map" onAction={() => navigate('/app/tracking')}>
+          <Panel
+            title="Shipment Command"
+            eyebrow="Live Work"
+            action="View map"
+            onAction={() => navigate('/app/tracking')}
+          >
             <div className="shipment-stack">
-              {shipments.length ? shipments.map(item => (
-                <article
-                  className="shipment-row"
-                  key={item.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => navigate(`/app/tracking?shipment=${item.id}`)}
-                  onKeyDown={event => activateOnEnter(event, () => navigate(`/app/tracking?shipment=${item.id}`))}
-                >
-                  <div>
-                    <StatusBadge tone={item.status === 'Delivered' ? 'success' : item.status === 'Bids open' ? 'warn' : 'default'}>{item.status}</StatusBadge>
-                    <h3>{item.id}</h3>
-                    <p>{item.route}</p>
-                    <small>{item.cargo} - {item.eta}</small>
-                  </div>
-                  <div className="progress-block">
-                    <strong>{item.progress}%</strong>
-                    <div className="progress"><span style={{ width: `${item.progress}%` }} /></div>
-                    <button
-                      className="ghost"
-                      type="button"
-                      onClick={event => {
-                        event.stopPropagation();
-                        navigate(`/app/tracking?shipment=${item.id}`);
-                      }}
-                    >
-                      Open
-                    </button>
-                  </div>
-                </article>
-              )) : <EmptyState title="No live shipments yet" detail="Create a booking or connect MongoDB data to populate this dashboard." />}
+              {shipments.length ? (
+                shipments.map((item) => (
+                  <article
+                    className="shipment-row"
+                    key={item.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/app/tracking?shipment=${item.id}`)}
+                    onKeyDown={(event) => activateOnEnter(event, () => navigate(`/app/tracking?shipment=${item.id}`))}
+                  >
+                    <div>
+                      <StatusBadge
+                        tone={
+                          item.status === 'Delivered' ? 'success' : item.status === 'Bids open' ? 'warn' : 'default'
+                        }
+                      >
+                        {item.status}
+                      </StatusBadge>
+                      <h3>{item.id}</h3>
+                      <p>{item.route}</p>
+                      <small>
+                        {item.cargo} - {item.eta}
+                      </small>
+                    </div>
+                    <div className="progress-block">
+                      <strong>{item.progress}%</strong>
+                      <div className="progress">
+                        <span style={{ width: `${item.progress}%` }} />
+                      </div>
+                      <button
+                        className="ghost"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          navigate(`/app/tracking?shipment=${item.id}`);
+                        }}
+                      >
+                        Open
+                      </button>
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <EmptyState
+                  title="No live shipments yet"
+                  detail="Create a booking or connect MongoDB data to populate this dashboard."
+                />
+              )}
             </div>
           </Panel>
 
           <Panel title="Open Requests" eyebrow="Quotes" action="Create request" onAction={() => navigate('/app/book')}>
             <div className="cards-grid">
-              {openRequests.length ? openRequests.map(item => (
-                <article className="quote-card" key={item.id}>
-                  <StatusBadge>{item.status}</StatusBadge>
-                  <h3>{item.route}</h3>
-                  <p>{item.vehicle}</p>
-                  <strong>{item.payment}</strong>
-                  <button
-                    className="secondary"
-                    type="button"
-                    onClick={() => {
-                      saveLocal('action_reviews', { type: 'open-request-bids', bookingId: item.id, route: item.route });
-                      notify(`Bid review opened for ${item.route}`);
-                    }}
-                  >
-                    Review Bids
-                  </button>
-                </article>
-              )) : <EmptyState title="No open quote requests" detail="New booking requests will appear here from MongoDB." />}
+              {openRequests.length ? (
+                openRequests.map((item) => (
+                  <article className="quote-card" key={item.id}>
+                    <StatusBadge>{item.status}</StatusBadge>
+                    <h3>{item.route}</h3>
+                    <p>{item.vehicle}</p>
+                    <strong>{item.payment}</strong>
+                    <button
+                      className="secondary"
+                      type="button"
+                      onClick={() => {
+                        saveLocal('action_reviews', {
+                          type: 'open-request-bids',
+                          bookingId: item.id,
+                          route: item.route
+                        });
+                        notify(`Bid review opened for ${item.route}`);
+                      }}
+                    >
+                      Review Bids
+                    </button>
+                  </article>
+                ))
+              ) : (
+                <EmptyState
+                  title="No open quote requests"
+                  detail="New booking requests will appear here from MongoDB."
+                />
+              )}
             </div>
           </Panel>
         </div>
@@ -543,15 +598,19 @@ function ShipperPage({ notify }) {
         <aside className="side-stack">
           <Panel title="Action Queue" eyebrow="Today">
             <div className="action-list">
-              {actionQueue.map(item => (
-                <button className="action-item" type="button" key={item.label} onClick={item.run}>{item.label}</button>
+              {actionQueue.map((item) => (
+                <button className="action-item" type="button" key={item.label} onClick={item.run}>
+                  {item.label}
+                </button>
               ))}
             </div>
           </Panel>
           <Panel title="Documents" eyebrow="Readiness">
             <div className="doc-list">
               {readinessDocs.map(([label, message]) => (
-                <button type="button" key={label} onClick={() => notify(message)}>{label}</button>
+                <button type="button" key={label} onClick={() => notify(message)}>
+                  {label}
+                </button>
               ))}
             </div>
           </Panel>
@@ -570,8 +629,9 @@ function BookingPage({ notify }) {
   useEffect(() => {
     let active = true;
     const payload = { ...form, crossBorder: form.border === 'Cross-border' };
-    api.estimate(payload)
-      .then(data => active && setEstimate(data))
+    api
+      .estimate(payload)
+      .then((data) => active && setEstimate(data))
       .catch(() => active && setEstimate(fallbackEstimate(payload)));
     return () => {
       active = false;
@@ -579,11 +639,11 @@ function BookingPage({ notify }) {
   }, [form]);
 
   function update(key, value) {
-    setForm(current => ({ ...current, [key]: value }));
+    setForm((current) => ({ ...current, [key]: value }));
   }
 
   function toggleService(service) {
-    setForm(current => {
+    setForm((current) => {
       const set = new Set(current.optionalServices || []);
       set.has(service) ? set.delete(service) : set.add(service);
       return { ...current, optionalServices: [...set] };
@@ -616,27 +676,63 @@ function BookingPage({ notify }) {
       <section className="form-sections">
         <Panel title="Route" eyebrow="Step 1">
           <div className="form-grid">
-            <Input label="Pickup" value={form.pickup} onChange={value => update('pickup', value)} />
-            <Input label="Destination" value={form.destination} onChange={value => update('destination', value)} />
-            <Input label="Distance km" type="number" value={form.distance} onChange={value => update('distance', Number(value))} />
-            <Select label="Border" value={form.border} onChange={value => update('border', value)} options={['Domestic', 'Cross-border']} />
-            <Select label="Pickup window" value={form.pickupWindow} onChange={value => update('pickupWindow', value)} options={['Flexible pickup window', 'Morning pickup', 'Afternoon pickup', 'Evening pickup', 'Appointment required']} />
+            <Input label="Pickup" value={form.pickup} onChange={(value) => update('pickup', value)} />
+            <Input label="Destination" value={form.destination} onChange={(value) => update('destination', value)} />
+            <Input
+              label="Distance km"
+              type="number"
+              value={form.distance}
+              onChange={(value) => update('distance', Number(value))}
+            />
+            <Select
+              label="Border"
+              value={form.border}
+              onChange={(value) => update('border', value)}
+              options={['Domestic', 'Cross-border']}
+            />
+            <Select
+              label="Pickup window"
+              value={form.pickupWindow}
+              onChange={(value) => update('pickupWindow', value)}
+              options={[
+                'Flexible pickup window',
+                'Morning pickup',
+                'Afternoon pickup',
+                'Evening pickup',
+                'Appointment required'
+              ]}
+            />
           </div>
         </Panel>
 
         <Panel title="Vehicle & Cargo" eyebrow="Step 2">
           <div className="vehicle-picks">
-            {vehicleTypes.map(type => (
-              <button className={form.vehicleType === type ? 'active' : ''} type="button" key={type} onClick={() => update('vehicleType', type)}>
+            {vehicleTypes.map((type) => (
+              <button
+                className={form.vehicleType === type ? 'active' : ''}
+                type="button"
+                key={type}
+                onClick={() => update('vehicleType', type)}
+              >
                 {type}
               </button>
             ))}
           </div>
           <div className="form-grid">
-            <TextArea label="Cargo" value={form.cargo} onChange={value => update('cargo', value)} />
-            <Input label="Weight" value={form.weight} onChange={value => update('weight', value)} />
-            <Select label="Handling" value={form.requirements} onChange={value => update('requirements', value)} options={['Standard', 'Refrigerated', 'Crane', 'Hazardous']} />
-            <Input label="Cargo value USD" type="number" value={form.cargoValue} onChange={value => update('cargoValue', Number(value))} />
+            <TextArea label="Cargo" value={form.cargo} onChange={(value) => update('cargo', value)} />
+            <Input label="Weight" value={form.weight} onChange={(value) => update('weight', value)} />
+            <Select
+              label="Handling"
+              value={form.requirements}
+              onChange={(value) => update('requirements', value)}
+              options={['Standard', 'Refrigerated', 'Crane', 'Hazardous']}
+            />
+            <Input
+              label="Cargo value USD"
+              type="number"
+              value={form.cargoValue}
+              onChange={(value) => update('cargoValue', Number(value))}
+            />
           </div>
           <div className="service-grid">
             {[
@@ -647,7 +743,11 @@ function BookingPage({ notify }) {
               ['returnLoadFlexible', 'Flexible return load']
             ].map(([key, label]) => (
               <label key={key}>
-                <input type="checkbox" checked={(form.optionalServices || []).includes(key)} onChange={() => toggleService(key)} />
+                <input
+                  type="checkbox"
+                  checked={(form.optionalServices || []).includes(key)}
+                  onChange={() => toggleService(key)}
+                />
                 <span>{label}</span>
               </label>
             ))}
@@ -656,10 +756,28 @@ function BookingPage({ notify }) {
 
         <Panel title="Receiver & Payment" eyebrow="Step 3">
           <div className="form-grid">
-            <Input label="Receiver name" value={form.receiverName} onChange={value => update('receiverName', value)} />
-            <Input label="Receiver phone" value={form.receiverPhone} onChange={value => update('receiverPhone', value)} />
-            <Select label="Updates" value={form.communicationPreference} onChange={value => update('communicationPreference', value)} options={['WhatsApp + SMS updates', 'SMS only', 'Email updates', 'Phone calls for exceptions only']} />
-            <Select label="Payment" value={form.paymentMethod} onChange={value => update('paymentMethod', value)} options={['Wallet', 'M-Pesa', 'MTN MoMo', 'Airtel Money', 'Card escrow', 'Cash on delivery']} />
+            <Input
+              label="Receiver name"
+              value={form.receiverName}
+              onChange={(value) => update('receiverName', value)}
+            />
+            <Input
+              label="Receiver phone"
+              value={form.receiverPhone}
+              onChange={(value) => update('receiverPhone', value)}
+            />
+            <Select
+              label="Updates"
+              value={form.communicationPreference}
+              onChange={(value) => update('communicationPreference', value)}
+              options={['WhatsApp + SMS updates', 'SMS only', 'Email updates', 'Phone calls for exceptions only']}
+            />
+            <Select
+              label="Payment"
+              value={form.paymentMethod}
+              onChange={(value) => update('paymentMethod', value)}
+              options={['Wallet', 'M-Pesa', 'MTN MoMo', 'Airtel Money', 'Card escrow', 'Cash on delivery']}
+            />
           </div>
         </Panel>
       </section>
@@ -669,10 +787,12 @@ function BookingPage({ notify }) {
           <div className="estimate-total">
             <span>{estimate?.confidence || 'medium'} confidence</span>
             <strong>{money(estimate?.total, estimate?.currency)}</strong>
-            <small>{estimate?.recommendedMode?.replace('-', ' ') || 'instant match'} - {estimate?.routeRisk || 'low'} risk</small>
+            <small>
+              {estimate?.recommendedMode?.replace('-', ' ') || 'instant match'} - {estimate?.routeRisk || 'low'} risk
+            </small>
           </div>
           <div className="line-items">
-            {(estimate?.lineItems || []).map(item => (
+            {(estimate?.lineItems || []).map((item) => (
               <div key={item.key}>
                 <span>{item.label}</span>
                 <strong>{money(item.amount, estimate.currency)}</strong>
@@ -680,10 +800,12 @@ function BookingPage({ notify }) {
             ))}
           </div>
           <div className="doc-list compact">
-            {(estimate?.requiredDocuments || demoDocuments.slice(0, 3)).map(item => <span key={item}>{item}</span>)}
+            {(estimate?.requiredDocuments || demoDocuments.slice(0, 3)).map((item) => (
+              <span key={item}>{item}</span>
+            ))}
           </div>
           <label className="ack-row">
-            <input type="checkbox" checked={ack} onChange={event => setAck(event.target.checked)} />
+            <input type="checkbox" checked={ack} onChange={(event) => setAck(event.target.checked)} />
             <span>I reviewed fees, optional services, and required documents.</span>
           </label>
           <button className="primary full icon-label" type="submit" disabled={saving}>
@@ -696,7 +818,7 @@ function BookingPage({ notify }) {
   );
 }
 
-function MarketplacePage({ notify }) {
+function MarketplacePage({ notify, route }) {
   const [trucks, setTrucks] = useState(workspaceFleet);
   const [search, setSearch] = useState('');
   const [type, setType] = useState('');
@@ -704,8 +826,9 @@ function MarketplacePage({ notify }) {
   const [sort, setSort] = useState('best');
 
   useEffect(() => {
-    api.listTrucks()
-      .then(data => {
+    api
+      .listTrucks()
+      .then((data) => {
         if (Array.isArray(data.trucks) && data.trucks.length) setTrucks(data.trucks.map(normalizeTruck));
       })
       .catch(() => setTrucks(workspaceFleet));
@@ -714,8 +837,19 @@ function MarketplacePage({ notify }) {
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return trucks
-      .filter(truck => {
-        const haystack = [truck.name, truck.type, truck.owner, truck.company, truck.plate, truck.price, ...(truck.routes || []), ...(truck.features || [])].join(' ').toLowerCase();
+      .filter((truck) => {
+        const haystack = [
+          truck.name,
+          truck.type,
+          truck.owner,
+          truck.company,
+          truck.plate,
+          truck.price,
+          ...(truck.routes || []),
+          ...(truck.features || [])
+        ]
+          .join(' ')
+          .toLowerCase();
         return (!type || truck.type === type) && (!verified || truck.verified) && haystack.includes(q);
       })
       .sort((a, b) => {
@@ -726,24 +860,34 @@ function MarketplacePage({ notify }) {
       });
   }, [trucks, search, type, verified, sort]);
 
+  const selectedTruckKey = useMemo(() => new URLSearchParams(route.split('?')[1] || '').get('truck'), [route]);
+  const selectedTruck = useMemo(() => {
+    if (!selectedTruckKey) return null;
+    return trucks
+      .map(normalizeTruck)
+      .find((truck) => [truck.id, truck.plate].some((value) => String(value) === selectedTruckKey));
+  }, [selectedTruckKey, trucks]);
+
   async function submitRating(truck, score) {
     const currentCount = Number(truck.ratingCount || 0);
     const currentAverage = Number(truck.rating || 0);
     const nextCount = currentCount + 1;
-    const localRating = Number((((currentAverage * currentCount) + score) / nextCount).toFixed(2));
+    const localRating = Number(((currentAverage * currentCount + score) / nextCount).toFixed(2));
 
     try {
       const data = await api.rateTruck(truck.id, { score, comment: 'Rated from iTruck workspace' });
-      const updatedTruck = normalizeTruck(data.truck || { ...truck, ratingAverage: localRating, ratingCount: nextCount });
-      setTrucks(current => current.map(item => (normalizeTruck(item).id === truck.id ? updatedTruck : item)));
+      const updatedTruck = normalizeTruck(
+        data.truck || { ...truck, ratingAverage: localRating, ratingCount: nextCount }
+      );
+      setTrucks((current) => current.map((item) => (normalizeTruck(item).id === truck.id ? updatedTruck : item)));
       notify(`${truck.name} rating updated to ${updatedTruck.rating.toFixed(1)}`);
     } catch (_err) {
-      setTrucks(current => current.map(item => {
-        const normalized = normalizeTruck(item);
-        return normalized.id === truck.id
-          ? { ...normalized, rating: localRating, ratingCount: nextCount }
-          : item;
-      }));
+      setTrucks((current) =>
+        current.map((item) => {
+          const normalized = normalizeTruck(item);
+          return normalized.id === truck.id ? { ...normalized, rating: localRating, ratingCount: nextCount } : item;
+        })
+      );
       saveLocal('ratings', { truckId: truck.id, score, comment: 'Rated from iTruck workspace' });
       notify('Rating saved locally until API sync is available');
     }
@@ -758,18 +902,65 @@ function MarketplacePage({ notify }) {
         </div>
         <label className="search-field">
           <Search size={18} />
-          <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search route, owner, plate" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search route, owner, plate"
+          />
         </label>
-        <Select label="Vehicle type" value={type} onChange={setType} options={['', ...vehicleTypes]} emptyLabel="All vehicles" />
+        <Select
+          label="Vehicle type"
+          value={type}
+          onChange={setType}
+          options={['', ...vehicleTypes]}
+          emptyLabel="All vehicles"
+        />
         <Select label="Sort" value={sort} onChange={setSort} options={['best', 'price', 'rating', 'trips']} />
         <label className="toggle-row">
-          <input type="checkbox" checked={verified} onChange={event => setVerified(event.target.checked)} />
+          <input type="checkbox" checked={verified} onChange={(event) => setVerified(event.target.checked)} />
           <span />
           <strong>Verified only</strong>
         </label>
       </aside>
 
       <div className="stack">
+        {selectedTruck ? (
+          <section className="truck-profile-panel">
+            <div>
+              <StatusBadge tone={selectedTruck.verified ? 'success' : 'warn'}>
+                {selectedTruck.verified ? 'Verified' : 'Pending'}
+              </StatusBadge>
+              <h2>{selectedTruck.name}</h2>
+              <p>
+                {selectedTruck.type} by {selectedTruck.owner}
+              </p>
+            </div>
+            <div className="facts-grid">
+              <span>Plate</span>
+              <strong>{selectedTruck.plate}</strong>
+              <span>Capacity</span>
+              <strong>{selectedTruck.capacity}</strong>
+              <span>Rate</span>
+              <strong>{selectedTruck.price}</strong>
+              <span>Rating</span>
+              <strong>
+                {selectedTruck.rating.toFixed(1)} / {selectedTruck.ratingCount || selectedTruck.trips}
+              </strong>
+            </div>
+            <div className="button-row">
+              <button
+                className="primary"
+                type="button"
+                onClick={() => navigate(`/app/book?truck=${encodeURIComponent(selectedTruck.plate)}`)}
+              >
+                Request Truck
+              </button>
+              <button className="ghost" type="button" onClick={() => navigate('/app/marketplace')}>
+                Close
+              </button>
+            </div>
+          </section>
+        ) : null}
         <div className="result-bar">
           <strong>{filtered.length} trucks found</strong>
           <button className="ghost icon-label" type="button" onClick={() => navigate('/app/book')}>
@@ -778,7 +969,7 @@ function MarketplacePage({ notify }) {
           </button>
         </div>
         <div className="cards-grid truck-grid">
-          {filtered.map(truck => (
+          {filtered.map((truck) => (
             <article className="truck-card" key={truck.id}>
               <div className={`truck-media ${truck.photo ? '' : 'is-empty'}`}>
                 {truck.photo ? (
@@ -786,7 +977,7 @@ function MarketplacePage({ notify }) {
                     src={truck.photo}
                     alt={`${truck.name} ${truck.plate}`}
                     loading="lazy"
-                    onError={event => {
+                    onError={(event) => {
                       event.currentTarget.style.display = 'none';
                       event.currentTarget.parentElement.classList.add('is-empty');
                     }}
@@ -798,19 +989,34 @@ function MarketplacePage({ notify }) {
                 </div>
               </div>
               <div className="truck-head">
-                <StatusBadge tone={truck.verified ? 'success' : 'warn'}>{truck.verified ? 'Verified' : 'Pending'}</StatusBadge>
+                <StatusBadge tone={truck.verified ? 'success' : 'warn'}>
+                  {truck.verified ? 'Verified' : 'Pending'}
+                </StatusBadge>
                 <strong>{truck.routeFit}% fit</strong>
               </div>
               <h3>{truck.name}</h3>
-              <p>{truck.type} by {truck.owner}</p>
-              <small>{truck.plate} - {truck.capacity}</small>
+              <p>
+                {truck.type} by {truck.owner}
+              </p>
+              <small>
+                {truck.plate} - {truck.capacity}
+              </small>
               <div className="decision-grid">
-                <span>Rate<strong>{truck.price}</strong></span>
-                <span>Rating<strong>{truck.rating.toFixed(1)} / {truck.ratingCount || truck.trips}</strong></span>
-                <span>Status<strong>{truck.availability}</strong></span>
+                <span>
+                  Rate<strong>{truck.price}</strong>
+                </span>
+                <span>
+                  Rating
+                  <strong>
+                    {truck.rating.toFixed(1)} / {truck.ratingCount || truck.trips}
+                  </strong>
+                </span>
+                <span>
+                  Status<strong>{truck.availability}</strong>
+                </span>
               </div>
               <div className="rating-strip" aria-label={`Rate ${truck.name}`}>
-                {[1, 2, 3, 4, 5].map(score => (
+                {[1, 2, 3, 4, 5].map((score) => (
                   <button
                     type="button"
                     key={score}
@@ -822,13 +1028,21 @@ function MarketplacePage({ notify }) {
                   </button>
                 ))}
               </div>
-              <div className="chips">{truck.routes.slice(0, 2).map(route => <span key={route}>{route}</span>)}</div>
+              <div className="chips">
+                {truck.routes.slice(0, 2).map((route) => (
+                  <span key={route}>{route}</span>
+                ))}
+              </div>
               <div className="trust-line">
                 <span>{truck.documentStatus}</span>
                 <span>{truck.responseTime}</span>
               </div>
               <div className="button-row">
-                <button className="primary" type="button" onClick={() => notify(`${truck.name} profile opened`)}>
+                <button
+                  className="primary"
+                  type="button"
+                  onClick={() => navigate(`/app/marketplace?truck=${encodeURIComponent(truck.id || truck.plate)}`)}
+                >
                   View Profile
                 </button>
                 <button className="ghost" type="button" onClick={() => navigate(`/app/book?truck=${truck.plate}`)}>
@@ -837,22 +1051,33 @@ function MarketplacePage({ notify }) {
               </div>
             </article>
           ))}
-          {!filtered.length ? <EmptyState title="No trucks found" detail="Live marketplace data will appear here after carriers are added and verified." /> : null}
+          {!filtered.length ? (
+            <EmptyState
+              title="No trucks found"
+              detail="Live marketplace data will appear here after carriers are added and verified."
+            />
+          ) : null}
         </div>
       </div>
     </section>
   );
 }
 
-function TrackingPage({ notify, user }) {
+function TrackingPage({ notify, route, user }) {
   const [selected, setSelected] = useState(0);
   const [shipments, setShipments] = useState(workspaceShipments);
   const [messages, setMessages] = useState([]);
   const [draftMessage, setDraftMessage] = useState('');
+  const chatInputRef = useRef(null);
+
+  const trackingParams = useMemo(() => new URLSearchParams(route.split('?')[1] || ''), [route]);
+  const routeShipment = trackingParams.get('shipment');
+  const contactMode = trackingParams.get('contact');
 
   useEffect(() => {
-    api.listBookings()
-      .then(data => {
+    api
+      .listBookings()
+      .then((data) => {
         if (Array.isArray(data.bookings)) setShipments(data.bookings.map(normalizeBookingShipment));
       })
       .catch(() => setShipments(workspaceShipments));
@@ -862,17 +1087,26 @@ function TrackingPage({ notify, user }) {
   const shipmentMessageKey = shipment?.bookingId || shipment?.id || '';
 
   useEffect(() => {
+    if (!routeShipment || !shipments.length) return;
+    const index = shipments.findIndex((item) =>
+      [item.id, item.bookingId].some((value) => String(value) === routeShipment)
+    );
+    if (index >= 0 && index !== selected) setSelected(index);
+  }, [routeShipment, selected, shipments]);
+
+  useEffect(() => {
     if (!shipment) return;
 
     let active = true;
     setMessages(readLocalChat(shipment));
 
-    api.listMessages(shipmentMessageKey)
-      .then(data => {
+    api
+      .listMessages(shipmentMessageKey)
+      .then((data) => {
         if (!active) return;
         const items = Array.isArray(data.items) ? data.items : [];
         if (items.length) {
-          const normalized = items.map(item => normalizeWorkflowMessage(item, user?._id));
+          const normalized = items.map((item) => normalizeWorkflowMessage(item, user?._id));
           setMessages(normalized);
           persistLocalChat(shipment.id, normalized);
         }
@@ -883,6 +1117,10 @@ function TrackingPage({ notify, user }) {
       active = false;
     };
   }, [shipmentMessageKey, shipment, user?._id]);
+
+  useEffect(() => {
+    if (contactMode === 'driver') chatInputRef.current?.focus();
+  }, [contactMode, shipmentMessageKey]);
 
   async function sendChatMessage(event) {
     event.preventDefault();
@@ -920,7 +1158,10 @@ function TrackingPage({ notify, user }) {
   if (!shipment) {
     return (
       <Panel title="Live Tracking" eyebrow="Shipments">
-        <EmptyState title="No active live shipments" detail="Tracking opens after a booking is confirmed and a vehicle starts sending route updates." />
+        <EmptyState
+          title="No active live shipments"
+          detail="Tracking opens after a booking is confirmed and a vehicle starts sending route updates."
+        />
       </Panel>
     );
   }
@@ -932,10 +1173,17 @@ function TrackingPage({ notify, user }) {
       <Panel title="Active Routes" eyebrow="Shipments">
         <div className="tracking-list">
           {shipments.map((item, index) => (
-            <button className={index === selected ? 'active' : ''} type="button" key={item.id} onClick={() => setSelected(index)}>
+            <button
+              className={index === selected ? 'active' : ''}
+              type="button"
+              key={item.id}
+              onClick={() => setSelected(index)}
+            >
               <strong>{item.id}</strong>
               <span>{item.route}</span>
-              <small>{item.progress}% - {item.position}</small>
+              <small>
+                {item.progress}% - {item.position}
+              </small>
             </button>
           ))}
         </div>
@@ -956,40 +1204,69 @@ function TrackingPage({ notify, user }) {
         <div className="map-status">
           <span>Current position</span>
           <strong>{shipment.position}</strong>
-          <small>{shipment.speed} - ETA {shipment.eta}</small>
+          <small>
+            {shipment.speed} - ETA {shipment.eta}
+          </small>
         </div>
       </section>
 
       <aside className="tracking-side">
         <Panel title="Shipment Detail" eyebrow="Control">
           <div className="facts-grid">
-            <span>Driver</span><strong>{shipment.driver}</strong>
-            <span>Cargo</span><strong>{shipment.cargo}</strong>
-            <span>Vehicle</span><strong>{shipment.vehicle} - {shipment.plate}</strong>
-            <span>Payment</span><strong>{shipment.payment}</strong>
+            <span>Driver</span>
+            <strong>{shipment.driver}</strong>
+            <span>Cargo</span>
+            <strong>{shipment.cargo}</strong>
+            <span>Vehicle</span>
+            <strong>
+              {shipment.vehicle} - {shipment.plate}
+            </strong>
+            <span>Payment</span>
+            <strong>{shipment.payment}</strong>
           </div>
-          <div className="progress"><span style={{ width: `${shipment.progress}%` }} /></div>
+          <div className="progress">
+            <span style={{ width: `${shipment.progress}%` }} />
+          </div>
           <div className="doc-list compact">
-            {shipment.documents.map(item => <span key={item}>{item}</span>)}
+            {shipment.documents.map((item) => (
+              <span key={item}>{item}</span>
+            ))}
           </div>
           <div className="stack-actions">
-            <button className="primary" type="button" onClick={() => notify('Delivery confirmation recorded')}>Confirm Delivery</button>
-            <button className="secondary" type="button" onClick={() => notify('Driver contact opened')}>Contact Driver</button>
-            <button className="ghost" type="button" onClick={() => notify('Issue report sent to operations')}>Report Issue</button>
+            <button className="primary" type="button" onClick={() => notify('Delivery confirmation recorded')}>
+              Confirm Delivery
+            </button>
+            <button
+              className="secondary"
+              type="button"
+              onClick={() => navigate(`/app/tracking?shipment=${encodeURIComponent(shipment.id)}&contact=driver`)}
+            >
+              Contact Driver
+            </button>
+            <button className="ghost" type="button" onClick={() => notify('Issue report sent to operations')}>
+              Report Issue
+            </button>
           </div>
         </Panel>
 
         <Panel title="Driver Chat" eyebrow="In-house Text">
           <div className="chat-thread">
-            {messages.map(message => (
+            {messages.map((message) => (
               <div className={`chat-message ${message.author === 'me' ? 'me' : 'them'}`} key={message.id}>
                 <p>{message.text}</p>
-                <small>{message.name} - {formatMessageTime(message.createdAt)}</small>
+                <small>
+                  {message.name} - {formatMessageTime(message.createdAt)}
+                </small>
               </div>
             ))}
           </div>
           <form className="chat-compose" onSubmit={sendChatMessage}>
-            <input value={draftMessage} onChange={event => setDraftMessage(event.target.value)} placeholder="Type a message..." />
+            <input
+              ref={chatInputRef}
+              value={draftMessage}
+              onChange={(event) => setDraftMessage(event.target.value)}
+              placeholder="Type a message..."
+            />
             <button className="primary" type="submit" aria-label="Send message">
               <Send size={18} />
             </button>
@@ -1014,20 +1291,23 @@ function OwnerPage({ notify }) {
   });
 
   useEffect(() => {
-    api.fleetTrucks()
-      .then(data => {
+    api
+      .fleetTrucks()
+      .then((data) => {
         if (Array.isArray(data.trucks)) setFleet(data.trucks.map(normalizeTruck));
       })
       .catch(() => setFleet(workspaceFleet.slice(0, 3)));
 
-    api.listOpenBookings()
-      .then(data => {
+    api
+      .listOpenBookings()
+      .then((data) => {
         if (Array.isArray(data.bookings)) setLoads(data.bookings.map(normalizeOpenLoad));
       })
       .catch(() => setLoads(workspaceLoads));
 
-    api.wallet()
-      .then(data => {
+    api
+      .wallet()
+      .then((data) => {
         if (Number.isFinite(Number(data.balance))) setWalletBalance(Number(data.balance));
       })
       .catch(() => {});
@@ -1049,11 +1329,11 @@ function OwnerPage({ notify }) {
 
     try {
       const data = await api.createTruck(payload);
-      setFleet(current => [normalizeTruck(data.truck || payload), ...current]);
+      setFleet((current) => [normalizeTruck(data.truck || payload), ...current]);
       notify('Vehicle saved to MongoDB');
     } catch (_err) {
       const truck = normalizeTruck({ ...payload, id: draftPlate, plate: draftPlate });
-      setFleet(current => [truck, ...current]);
+      setFleet((current) => [truck, ...current]);
       saveLocal('vehicles', truck);
       notify('Vehicle saved locally until API sync is available');
     } finally {
@@ -1098,7 +1378,7 @@ function OwnerPage({ notify }) {
   }
 
   function updateWithdraw(key, value) {
-    setWithdrawDraft(current => ({ ...current, [key]: value }));
+    setWithdrawDraft((current) => ({ ...current, [key]: value }));
   }
 
   async function requestWithdrawal(event) {
@@ -1124,11 +1404,11 @@ function OwnerPage({ notify }) {
 
     try {
       await api.withdraw(payload);
-      setWalletBalance(current => Math.max(0, Number(current || 0) - amount));
+      setWalletBalance((current) => Math.max(0, Number(current || 0) - amount));
       notify(`Withdrawal request queued to ${withdrawDraft.method.toUpperCase()}`);
     } catch (_err) {
       saveLocal('withdrawals', { ...payload, status: 'local-pending' });
-      setWalletBalance(current => Math.max(0, Number(current || 0) - amount));
+      setWalletBalance((current) => Math.max(0, Number(current || 0) - amount));
       notify('Withdrawal saved locally until API sync is available');
     } finally {
       setWithdrawBusy(false);
@@ -1148,70 +1428,87 @@ function OwnerPage({ notify }) {
         <div className="stack">
           <Panel title="Job Board" eyebrow="Available Loads">
             <div className="shipment-stack">
-              {loads.length ? loads.map(load => (
-                <article
-                  className="load-row"
-                  key={load.route}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => placeBid(load)}
-                  onKeyDown={event => activateOnEnter(event, () => placeBid(load))}
-                >
-                  <div>
-                    <StatusBadge tone={load.risk === 'High' ? 'warn' : 'success'}>{load.fit}</StatusBadge>
-                    <h3>{load.cargo}</h3>
-                    <p>{load.route}</p>
-                    <small>{load.distance} - {load.window}</small>
-                  </div>
-                  <div>
-                    <strong>${load.price.toLocaleString()}</strong>
-                    <button
-                      className="primary"
-                      type="button"
-                      onClick={event => {
-                        event.stopPropagation();
-                        placeBid(load);
-                      }}
-                    >
-                      Place Bid
-                    </button>
-                  </div>
-                </article>
-              )) : <EmptyState title="No live loads yet" detail="Verified shipper requests will appear here when the booking workflow is connected to owner matching." />}
+              {loads.length ? (
+                loads.map((load) => (
+                  <article
+                    className="load-row"
+                    key={load.route}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => placeBid(load)}
+                    onKeyDown={(event) => activateOnEnter(event, () => placeBid(load))}
+                  >
+                    <div>
+                      <StatusBadge tone={load.risk === 'High' ? 'warn' : 'success'}>{load.fit}</StatusBadge>
+                      <h3>{load.cargo}</h3>
+                      <p>{load.route}</p>
+                      <small>
+                        {load.distance} - {load.window}
+                      </small>
+                    </div>
+                    <div>
+                      <strong>${load.price.toLocaleString()}</strong>
+                      <button
+                        className="primary"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          placeBid(load);
+                        }}
+                      >
+                        Place Bid
+                      </button>
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <EmptyState
+                  title="No live loads yet"
+                  detail="Verified shipper requests will appear here when the booking workflow is connected to owner matching."
+                />
+              )}
             </div>
           </Panel>
 
           <Panel title="Vehicle Readiness" eyebrow="Fleet">
             <div className="add-row">
-              <input value={draftPlate} onChange={event => setDraftPlate(event.target.value)} placeholder="Plate number" />
+              <input
+                value={draftPlate}
+                onChange={(event) => setDraftPlate(event.target.value)}
+                placeholder="Plate number"
+              />
               <button className="secondary icon-label" type="button" onClick={addTruck}>
                 <Plus size={18} />
                 <span>Add</span>
               </button>
             </div>
             <div className="shipment-stack">
-              {fleet.map(truck => (
+              {fleet.map((truck) => (
                 <article
                   className="shipment-row"
                   key={truck.id}
                   role="button"
                   tabIndex={0}
                   onClick={() => notify(`${truck.plate} readiness opened`)}
-                  onKeyDown={event => activateOnEnter(event, () => notify(`${truck.plate} readiness opened`))}
+                  onKeyDown={(event) => activateOnEnter(event, () => notify(`${truck.plate} readiness opened`))}
                 >
                   <div>
                     <StatusBadge tone={truck.verified ? 'success' : 'warn'}>{truck.documentStatus}</StatusBadge>
                     <h3>{truck.plate}</h3>
                     <p>{truck.name}</p>
-                    <small>{truck.routes[0] || 'Route pending'} - {truck.availability}</small>
+                    <small>
+                      {truck.routes[0] || 'Route pending'} - {truck.availability}
+                    </small>
                   </div>
                   <div className="progress-block">
                     <strong>{truck.routeFit}%</strong>
-                    <div className="progress"><span style={{ width: `${truck.routeFit}%` }} /></div>
+                    <div className="progress">
+                      <span style={{ width: `${truck.routeFit}%` }} />
+                    </div>
                     <button
                       className="ghost"
                       type="button"
-                      onClick={event => {
+                      onClick={(event) => {
                         event.stopPropagation();
                         notify(`${truck.plate} readiness opened`);
                       }}
@@ -1233,10 +1530,28 @@ function OwnerPage({ notify }) {
                 <strong>{money(walletBalance)}</strong>
                 <small>Payouts are queued for finance approval.</small>
               </div>
-              <Input label="Amount USD" type="number" value={withdrawDraft.amount} onChange={value => updateWithdraw('amount', Number(value))} />
-              <Select label="Method" value={withdrawDraft.method} onChange={value => updateWithdraw('method', value)} options={['mpesa', 'mtn', 'bank', 'stripe']} />
-              <Input label="Phone or account" value={withdrawDraft.destination} onChange={value => updateWithdraw('destination', value)} />
-              <Input label="Account name" value={withdrawDraft.accountName} onChange={value => updateWithdraw('accountName', value)} />
+              <Input
+                label="Amount USD"
+                type="number"
+                value={withdrawDraft.amount}
+                onChange={(value) => updateWithdraw('amount', Number(value))}
+              />
+              <Select
+                label="Method"
+                value={withdrawDraft.method}
+                onChange={(value) => updateWithdraw('method', value)}
+                options={['mpesa', 'mtn', 'bank', 'stripe']}
+              />
+              <Input
+                label="Phone or account"
+                value={withdrawDraft.destination}
+                onChange={(value) => updateWithdraw('destination', value)}
+              />
+              <Input
+                label="Account name"
+                value={withdrawDraft.accountName}
+                onChange={(value) => updateWithdraw('accountName', value)}
+              />
               <button className="primary full icon-label" type="submit" disabled={withdrawBusy}>
                 <Wallet size={18} />
                 <span>{withdrawBusy ? 'Queuing...' : 'Withdraw Cash'}</span>
@@ -1245,8 +1560,14 @@ function OwnerPage({ notify }) {
           </Panel>
           <Panel title="Owner Queue" eyebrow="Today">
             <div className="action-list">
-              {['Submit bid - Construction steel', 'Upload insurance - Toyota Hilux', 'Confirm pickup - Kampala depot'].map(item => (
-                <button className="action-item" type="button" key={item} onClick={() => runOwnerQueue(item)}>{item}</button>
+              {[
+                'Submit bid - Construction steel',
+                'Upload insurance - Toyota Hilux',
+                'Confirm pickup - Kampala depot'
+              ].map((item) => (
+                <button className="action-item" type="button" key={item} onClick={() => runOwnerQueue(item)}>
+                  {item}
+                </button>
               ))}
             </div>
           </Panel>
@@ -1266,7 +1587,8 @@ function AdminPage({ notify }) {
   ];
 
   useEffect(() => {
-    api.adminStats()
+    api
+      .adminStats()
       .then(setStats)
       .catch(() => setStats(null));
   }, []);
@@ -1276,7 +1598,12 @@ function AdminPage({ notify }) {
       <section className="metrics-grid">
         <MetricCard icon={ShieldCheck} label="Users" value={stats?.totalUsers ?? 0} detail="MongoDB accounts" />
         <MetricCard icon={Truck} label="Trucks" value={stats?.totalTrucks ?? 0} detail="Registered vehicles" />
-        <MetricCard icon={CreditCard} label="Revenue" value={money(stats?.totalRevenue || 0)} detail="Completed transactions" />
+        <MetricCard
+          icon={CreditCard}
+          label="Revenue"
+          value={money(stats?.totalRevenue || 0)}
+          detail="Completed transactions"
+        />
         <MetricCard icon={FileText} label="Bookings" value={stats?.totalBookings ?? 0} detail="Shipment records" />
       </section>
       <section className="workspace-layout">
@@ -1286,14 +1613,14 @@ function AdminPage({ notify }) {
               ['Verify owner KYC', 'Grace Wanjiku - logbook and insurance ready', 'success'],
               ['Resolve route delay', 'ITK-2044 border document check', 'warn'],
               ['Release escrow', 'ITK-2028 POD received', 'default']
-            ].map(item => (
+            ].map((item) => (
               <article
                 className="shipment-row"
                 key={item[0]}
                 role="button"
                 tabIndex={0}
                 onClick={() => notify(`${item[0]} opened`)}
-                onKeyDown={event => activateOnEnter(event, () => notify(`${item[0]} opened`))}
+                onKeyDown={(event) => activateOnEnter(event, () => notify(`${item[0]} opened`))}
               >
                 <div>
                   <StatusBadge tone={item[2]}>{item[0]}</StatusBadge>
@@ -1303,7 +1630,7 @@ function AdminPage({ notify }) {
                 <button
                   className="secondary"
                   type="button"
-                  onClick={event => {
+                  onClick={(event) => {
                     event.stopPropagation();
                     notify(`${item[0]} opened`);
                   }}
@@ -1363,7 +1690,9 @@ function ProfilePage({ notify, user, setUser, signOut }) {
           <Input label="Email" value={email} onChange={setEmail} />
           <Input label="Password" type="password" value={password} onChange={setPassword} />
           <div className="button-row">
-            <button className="primary" type="submit" disabled={busy}>{busy ? 'Signing in...' : 'Sign In'}</button>
+            <button className="primary" type="submit" disabled={busy}>
+              {busy ? 'Signing in...' : 'Sign In'}
+            </button>
             <button className="ghost icon-label" type="button" onClick={signOut}>
               <LogOut size={18} />
               <span>Sign Out</span>
@@ -1375,15 +1704,21 @@ function ProfilePage({ notify, user, setUser, signOut }) {
         <div className="verification-card">
           <CheckCircle2 size={28} />
           <strong>{user.email ? `${user.firstName || 'User'} ${user.lastName || ''}` : 'Demo mode'}</strong>
-          <span>{user.role || 'No live session'} - {user.country || 'Local workspace'}</span>
+          <span>
+            {user.role || 'No live session'} - {user.country || 'Local workspace'}
+          </span>
         </div>
         <div className="doc-list compact">
-          {verificationItems.map(item => (
+          {verificationItems.map((item) => (
             <button
               type="button"
               key={item}
               onClick={() => {
-                saveLocal('verification_reviews', { item, user: user.email || email, openedAt: new Date().toISOString() });
+                saveLocal('verification_reviews', {
+                  item,
+                  user: user.email || email,
+                  openedAt: new Date().toISOString()
+                });
                 notify(`${item} verification opened`);
               }}
             >
@@ -1409,7 +1744,11 @@ function Panel({ title, eyebrow, action, onAction, children }) {
           {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
           <h2>{title}</h2>
         </div>
-        {action ? <button className="text-button" type="button" onClick={onAction}>{action}</button> : null}
+        {action ? (
+          <button className="text-button" type="button" onClick={onAction}>
+            {action}
+          </button>
+        ) : null}
       </div>
       {children}
     </section>
@@ -1430,7 +1769,7 @@ function Input({ label, value, onChange, type = 'text' }) {
   return (
     <label className="field">
       <span>{label}</span>
-      <input type={type} value={value ?? ''} onChange={event => onChange(event.target.value)} />
+      <input type={type} value={value ?? ''} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
@@ -1439,7 +1778,7 @@ function TextArea({ label, value, onChange }) {
   return (
     <label className="field">
       <span>{label}</span>
-      <textarea value={value ?? ''} onChange={event => onChange(event.target.value)} />
+      <textarea value={value ?? ''} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
@@ -1448,9 +1787,11 @@ function Select({ label, value, onChange, options, emptyLabel }) {
   return (
     <label className="field">
       <span>{label}</span>
-      <select value={value} onChange={event => onChange(event.target.value)}>
-        {options.map(option => (
-          <option key={option || 'empty'} value={option}>{option || emptyLabel || 'All'}</option>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => (
+          <option key={option || 'empty'} value={option}>
+            {option || emptyLabel || 'All'}
+          </option>
         ))}
       </select>
     </label>

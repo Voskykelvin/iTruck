@@ -9,32 +9,51 @@ const router = express.Router();
 
 router.use(protect);
 
-router.get('/wallet', asyncHandler(async (req, res) => {
-  res.json({ balance: await payment.wallet.getBalance(req.user._id) });
-}));
+router.get(
+  '/wallet',
+  asyncHandler(async (req, res) => {
+    res.json({ balance: await payment.wallet.getBalance(req.user._id) });
+  })
+);
 
-router.post('/wallet/debit', amountSchema, validate, asyncHandler(async (req, res) => {
-  res.json(await payment.wallet.debit(req.user._id, req.body.amount, req.body.description));
-}));
+router.post(
+  '/wallet/debit',
+  amountSchema,
+  validate,
+  asyncHandler(async (req, res) => {
+    res.json(await payment.wallet.debit(req.user._id, req.body.amount, req.body.description));
+  })
+);
 
-router.post('/wallet/credit', amountSchema, validate, asyncHandler(async (req, res) => {
-  res.json(await payment.wallet.credit(req.user._id, req.body.amount, req.body.description));
-}));
+router.post(
+  '/wallet/credit',
+  amountSchema,
+  validate,
+  asyncHandler(async (req, res) => {
+    res.json(await payment.wallet.credit(req.user._id, req.body.amount, req.body.description));
+  })
+);
 
-router.post('/withdraw', restrictTo('owner', 'admin'), withdrawalSchema, validate, asyncHandler(async (req, res) => {
-  const transaction = await payment.wallet.withdraw(
-    req.user._id,
-    req.body.amount,
-    req.body.method,
-    {
-      destination: req.body.destination,
-      accountName: req.body.accountName || '',
-      requestedByRole: req.user.role
-    },
-    req.body.description || 'Owner wallet withdrawal'
-  );
+router.post(
+  '/withdraw',
+  restrictTo('owner', 'admin'),
+  withdrawalSchema,
+  validate,
+  asyncHandler(async (req, res) => {
+    const transaction = await payment.wallet.withdraw(
+      req.user._id,
+      req.body.amount,
+      req.body.method,
+      {
+        destination: req.body.destination,
+        accountName: req.body.accountName || '',
+        requestedByRole: req.user.role
+      },
+      req.body.description || 'Owner wallet withdrawal'
+    );
 
-  res.status(201).json({ transaction });
-}));
+    res.status(201).json({ transaction });
+  })
+);
 
 module.exports = router;

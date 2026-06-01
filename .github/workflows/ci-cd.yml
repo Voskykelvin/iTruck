@@ -15,5 +15,6 @@ jobs:
       - run: npm ci --prefix backend
       - run: npm ci --prefix workspace
       - run: npm run lint
+      - run: npm run format:check
       - run: npm test
       - run: npm run app:build

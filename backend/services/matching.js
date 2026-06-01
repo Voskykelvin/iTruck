@@ -23,13 +23,15 @@ function suggestPrice(distance = 100, vehicleType = 'Lorry') {
 function selectedServices(input = {}) {
   const source = Array.isArray(input)
     ? input
-    : Object.entries(input || {}).filter(([, value]) => value === true || value === 'true' || value === 'on').map(([key]) => key);
+    : Object.entries(input || {})
+        .filter(([, value]) => value === true || value === 'true' || value === 'on')
+        .map(([key]) => key);
 
-  return [...new Set(source)].filter(key => optionalServiceRules[key]);
+  return [...new Set(source)].filter((key) => optionalServiceRules[key]);
 }
 
 function serviceLineItems(basePrice, services) {
-  return services.map(key => {
+  return services.map((key) => {
     const rule = optionalServiceRules[key];
     const raw = Math.round(basePrice * rule.rate);
     const amount = rule.rate < 0 ? Math.max(rule.minimum, raw) : Math.max(rule.minimum, raw);
@@ -69,7 +71,7 @@ function buildEstimate(input = {}) {
   const insurance = Math.max(25, Math.round(basePrice * 0.035));
   const escrowFee = Math.round(basePrice * 0.025);
   const cargoValue = Number(input.cargoValue || 0);
-  const missingFields = ['pickup', 'destination', 'cargo', 'weight'].filter(key => !input[key]);
+  const missingFields = ['pickup', 'destination', 'cargo', 'weight'].filter((key) => !input[key]);
   const lineItems = [
     { key: 'basePrice', label: `${vehicleType} lane estimate`, amount: basePrice },
     ...(crossBorderFee ? [{ key: 'crossBorderFee', label: 'Cross-border handling', amount: crossBorderFee }] : []),
@@ -77,7 +79,10 @@ function buildEstimate(input = {}) {
     { key: 'escrowFee', label: 'Escrow and payment handling', amount: escrowFee },
     ...serviceItems
   ];
-  const total = Math.max(0, lineItems.reduce((sum, item) => sum + item.amount, 0));
+  const total = Math.max(
+    0,
+    lineItems.reduce((sum, item) => sum + item.amount, 0)
+  );
   const risk = routeRisk({ distance, crossBorder, requirements, missingFields });
 
   return {
@@ -95,8 +100,9 @@ function buildEstimate(input = {}) {
     recommendedMode: distance > 900 || crossBorder ? 'open-bids' : 'instant-match',
     routeRisk: risk,
     requiredDocuments: requiredDocuments({ crossBorder, requirements, cargoValue }),
-    warnings: missingFields.map(field => `${field} missing may change carrier pricing`),
-    quoteProtection: 'Estimate includes visible platform, insurance, escrow, and selected service fees before carrier bids.'
+    warnings: missingFields.map((field) => `${field} missing may change carrier pricing`),
+    quoteProtection:
+      'Estimate includes visible platform, insurance, escrow, and selected service fees before carrier bids.'
   };
 }
 

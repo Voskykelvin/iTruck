@@ -38,7 +38,9 @@ function bookingPayload(booking) {
     destination: booking.destination,
     cargo: booking.cargo,
     vehicle: booking.vehicleType || booking.truck?.plateNumber || 'Assigned vehicle',
-    driver: booking.owner ? `${booking.owner.firstName || ''} ${booking.owner.lastName || ''}`.trim() : 'Assigned driver',
+    driver: booking.owner
+      ? `${booking.owner.firstName || ''} ${booking.owner.lastName || ''}`.trim()
+      : 'Assigned driver',
     amount: booking.budget || booking.estimate?.total || 0,
     paymentMethod: booking.paymentMethod
   };
@@ -64,7 +66,7 @@ function cacheable(record) {
 async function cachedDocumentUrl(record, type, create, payload) {
   if (!cacheable(record)) return null;
 
-  const existing = (record.documents || []).find(item => item.type === type && item.url);
+  const existing = (record.documents || []).find((item) => item.type === type && item.url);
   if (existing) return existing.url;
   if (!cloudinary.isConfigured()) return null;
 
@@ -95,9 +97,17 @@ async function renderDocument(req, res, next, type, create) {
   }
 }
 
-router.get('/waybill/:bookingId', bookingDocumentSchema, validate, (req, res, next) => renderDocument(req, res, next, 'waybill', docs.createWaybill));
-router.get('/pod/:bookingId', bookingDocumentSchema, validate, (req, res, next) => renderDocument(req, res, next, 'pod', docs.createPOD));
-router.get('/invoice/:bookingId', bookingDocumentSchema, validate, (req, res, next) => renderDocument(req, res, next, 'invoice', docs.createInvoice));
-router.get('/customs/:bookingId', bookingDocumentSchema, validate, (req, res, next) => renderDocument(req, res, next, 'customs', docs.createCustoms));
+router.get('/waybill/:bookingId', bookingDocumentSchema, validate, (req, res, next) =>
+  renderDocument(req, res, next, 'waybill', docs.createWaybill)
+);
+router.get('/pod/:bookingId', bookingDocumentSchema, validate, (req, res, next) =>
+  renderDocument(req, res, next, 'pod', docs.createPOD)
+);
+router.get('/invoice/:bookingId', bookingDocumentSchema, validate, (req, res, next) =>
+  renderDocument(req, res, next, 'invoice', docs.createInvoice)
+);
+router.get('/customs/:bookingId', bookingDocumentSchema, validate, (req, res, next) =>
+  renderDocument(req, res, next, 'customs', docs.createCustoms)
+);
 
 module.exports = router;
