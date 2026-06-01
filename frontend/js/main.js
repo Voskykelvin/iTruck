@@ -88,7 +88,9 @@ function bindCountryControls() {
   });
 }
 
-function redirectForRole(role) {
+function redirectForRole(role, options = {}) {
+  if (options.onboarding) return '/app/onboarding';
+
   if (location.protocol === 'file:') {
     if (role === 'owner') return '/app/owner';
     if (role === 'admin') return '/app/admin';
@@ -114,7 +116,7 @@ function bindAuthForms() {
         localStorage.setItem('itruck_user', JSON.stringify(data.user));
         toast('Account created');
         setTimeout(() => {
-          location.href = redirectForRole(data.user.role);
+          location.href = redirectForRole(data.user.role, { onboarding: true });
         }, 500);
       } catch (err) {
         toast(err.message);

@@ -1,4 +1,4 @@
-const { body, query } = require('express-validator');
+const { body, param, query } = require('express-validator');
 const {
   liveMongoIdBody,
   liveMongoIdParam,
@@ -64,11 +64,18 @@ const ratingSchema = [
 ];
 
 const archiveTruckSchema = [...truckIdSchema, optionalString('reason', 240)];
+const truckDocumentSchema = [
+  ...truckIdSchema,
+  param('documentType').trim().isLength({ min: 1, max: 80 }).withMessage('documentType is required'),
+  body('url').trim().isURL({ require_protocol: true }).withMessage('url must be a valid document URL'),
+  optionalString('fileName', 240)
+];
 
 module.exports = {
   archiveTruckSchema,
   createTruckSchema,
   listTrucksSchema,
   ratingSchema,
+  truckDocumentSchema,
   truckIdSchema
 };

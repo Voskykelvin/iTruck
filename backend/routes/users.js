@@ -3,7 +3,7 @@ const User = require('../models/User');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
-const { updatePasswordSchema, updateProfileSchema } = require('../validators/users');
+const { documentUploadSchema, updatePasswordSchema, updateProfileSchema } = require('../validators/users');
 
 const router = express.Router();
 const profileFields = ['firstName', 'lastName', 'phone', 'countryCode', 'country', 'accountType', 'company', 'avatar'];
@@ -17,6 +17,22 @@ function profileUpdates(body) {
     if (body[field] !== undefined) updates[field] = body[field];
     return updates;
   }, {});
+}
+
+function upsertDocument(documents = [], type, patch) {
+  const existing = documents.find((item) => item.type === type);
+  const update = {
+    type,
+    url: patch.url,
+    fileName: patch.fileName,
+    status: 'pending',
+    notes: patch.notes || '',
+    reviewedAt: undefined
+  };
+
+  if (existing) Object.assign(existing, update);
+  else documents.push(update);
+  return documents;
 }
 
 router.patch('/profile', updateProfileSchema, validate, async (req, res, next) => {
@@ -53,6 +69,31 @@ router.patch('/password', updatePasswordSchema, validate, async (req, res, next)
     user.password = req.body.newPassword;
     await user.save();
     res.json({ message: 'Password updated' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/documents/:documentType', documentUploadSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+
+    if (!mongoReady()) {
+      return res.json({
+        user: {
+          ...req.user,
+          documents: upsertDocument([...(req.user.documents || [])], req.params.documentType, req.body)
+        },
+        mode: 'memory'
+      });
+    }
+
+    const user = await User.findById(req.user._id).select('-password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    user.documents = upsertDocument(user.documents || [], req.params.documentType, req.body);
+    await user.save();
+    res.json({ user });
   } catch (err) {
     next(err);
   }

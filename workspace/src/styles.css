@@ -1659,3 +1659,94 @@ input[type='radio'] {
     border-radius: var(--radius);
   }
 }
+
+/* Role-mode polish: match the live backend workspace tone and calm the typography. */
+:root {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #f7f8fa;
+  --surface-3: #eef2f7;
+  --lime: #f97316;
+  --lime-mid: #ea580c;
+  --lime-dark: #c2410c;
+  --lime-text: #7c2d12;
+  --lime-soft: rgba(249, 115, 22, 0.1);
+  --lime-border: rgba(249, 115, 22, 0.22);
+  --ink: #111827;
+  --text: #243041;
+  --muted: #64748b;
+  --dim: #8593a7;
+  --line: rgba(15, 23, 42, 0.1);
+  --line-strong: rgba(15, 23, 42, 0.16);
+  --navy: #111827;
+  --shadow-sm: 0 1px 4px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 14px 34px rgba(15, 23, 42, 0.08);
+  --font-main: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-heading: 'Manrope', 'Inter', system-ui, sans-serif;
+}
+
+.brand,
+.app-topbar h1,
+.intro-band h2,
+.panel-heading h2,
+.truck-profile-panel h2,
+.empty-state strong,
+.verification-card strong {
+  font-family: var(--font-heading);
+  letter-spacing: 0;
+}
+
+.brand {
+  color: var(--ink);
+}
+
+.brand span {
+  background: linear-gradient(135deg, var(--navy), var(--orange));
+}
+
+.intro-band {
+  border-color: var(--line);
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.98) 0%,
+      rgba(248, 250, 252, 0.98) 66%,
+      rgba(255, 247, 237, 0.88) 100%
+    ),
+    var(--surface);
+}
+
+.compact-intro {
+  grid-template-columns: 1fr;
+}
+
+.app-sidebar nav button:hover,
+.app-sidebar nav button.active,
+.mobile-bottom-nav button.active,
+.tracking-list button.active {
+  background: var(--orange-soft);
+  border-color: var(--orange-border);
+  color: var(--orange-dark);
+}
+
+.action-item,
+.doc-list :is(span, button),
+.field input,
+.field select,
+.field textarea,
+.add-row input,
+.search-field,
+.toggle-row,
+.decision-grid span,
+.facts-grid span,
+.chat-compose input {
+  background: #f8fafc;
+}
+
+.verification-card {
+  background: linear-gradient(135deg, #111827, #1f2937);
+}
+
+.secondary {
+  background: #fff7ed;
+}
