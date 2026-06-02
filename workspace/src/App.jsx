@@ -9,6 +9,7 @@ import {
   FileText,
   Filter,
   Gauge,
+  Image,
   LayoutDashboard,
   LogOut,
   Map,
@@ -309,7 +310,8 @@ function normalizeTruck(truck) {
     responseTime: truck.responseTime || (verified ? '< 20 min' : 'Manual review'),
     routes,
     features: truck.features || [],
-    verified
+    verified,
+    documents: truck.documents || []
   };
 }
 
@@ -2243,6 +2245,18 @@ function OwnerPage({ notify }) {
                 onChange={(value) => updateWithdraw('method', value)}
                 options={['mpesa', 'mtn', 'bank', 'stripe']}
               />
+              {withdrawDraft.method === 'mpesa' && (
+                <div className="payout-hint-card">
+                  <AlertTriangle size={16} />
+                  <div>
+                    <strong>Safaricom East Africa M-Pesa</strong>
+                    <p style={{ margin: '2px 0 0', fontSize: '11px', lineHeight: 1.3 }}>
+                      Enter your mobile number starting with your country code (e.g. +254 for Kenya, +255 for Tanzania,
+                      +256 for Uganda).
+                    </p>
+                  </div>
+                </div>
+              )}
               <Input
                 label="Phone or account"
                 value={withdrawDraft.destination}
@@ -2289,7 +2303,6 @@ function OnboardingPage({ notify, user, setUser }) {
     routes: 'Nairobi-Kampala',
     photos: []
   });
-  const [vehiclePhotoName, setVehiclePhotoName] = useState('');
   const pendingDocRef = useRef('');
   const profileDocInputRef = useRef(null);
   const vehiclePhotoInputRef = useRef(null);
@@ -2340,7 +2353,6 @@ function OnboardingPage({ notify, user, setUser }) {
       const url = data.urls?.[0];
       if (!url) throw new Error('Photo upload did not return a URL');
       setTruckDraft((current) => ({ ...current, photos: [...(current.photos || []), url] }));
-      setVehiclePhotoName(file.name);
       notify('Vehicle photo attached to this enrollment');
     } catch (err) {
       notify(err.message);
@@ -2371,7 +2383,6 @@ function OnboardingPage({ notify, user, setUser }) {
       setFleet((current) => [normalizeTruck(data.truck || payload), ...current]);
       notify('Vehicle sent to admin review');
       setTruckDraft((current) => ({ ...current, plateNumber: '', photos: [] }));
-      setVehiclePhotoName('');
     } catch (err) {
       notify(err.message);
     }
@@ -2425,9 +2436,52 @@ function OnboardingPage({ notify, user, setUser }) {
           <div className="doc-list">
             {profileDocs.map((item) => {
               const slug = slugDocumentType(item);
+              const existingDoc = (user.documents || []).find((doc) => doc.type === slug);
+              const docStatus = existingDoc ? existingDoc.status : 'missing';
+
+              let tone = 'default';
+              let statusText = 'Not Uploaded';
+              if (docStatus === 'approved') {
+                tone = 'success';
+                statusText = 'Verified';
+              } else if (docStatus === 'pending') {
+                tone = 'warn';
+                statusText = 'Pending Review';
+              } else if (docStatus === 'rejected') {
+                tone = 'danger';
+                statusText = 'Rejected';
+              } else if (docStatus === 'expired') {
+                tone = 'danger';
+                statusText = 'Expired';
+              }
+
               return (
-                <button type="button" key={item} disabled={uploading === slug} onClick={() => openProfileDoc(item)}>
-                  {uploading === slug ? 'Uploading...' : item}
+                <button
+                  type="button"
+                  key={item}
+                  disabled={uploading === slug}
+                  onClick={() => openProfileDoc(item)}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    width: '100%',
+                    padding: '10px 12px',
+                    margin: '4px 0',
+                    borderRadius: 'var(--radius)',
+                    border: '1px solid var(--line)',
+                    background:
+                      docStatus === 'approved'
+                        ? 'rgba(132, 204, 22, 0.06)'
+                        : docStatus === 'pending'
+                          ? 'rgba(245, 158, 11, 0.06)'
+                          : docStatus === 'rejected'
+                            ? 'rgba(239, 68, 68, 0.05)'
+                            : '#f8fafc'
+                  }}
+                >
+                  <span style={{ fontWeight: 700 }}>{item}</span>
+                  <StatusBadge tone={tone}>{uploading === slug ? 'Uploading...' : statusText}</StatusBadge>
                 </button>
               );
             })}
@@ -2462,20 +2516,42 @@ function OnboardingPage({ notify, user, setUser }) {
                   onChange={(value) => updateTruckDraft('routes', value)}
                 />
               </div>
-              <div className="button-row">
+              <div style={{ display: 'grid', gap: '10px', width: '100%', margin: '10px 0' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 800, color: 'var(--muted)' }}>
+                  Vehicle Photos
+                </label>
+                <div className="photo-preview-grid">
+                  {truckDraft.photos.length
+                    ? truckDraft.photos.map((photo, i) => (
+                        <div key={photo} className="photo-preview-card">
+                          <img src={photo} alt={`Vehicle photo ${i + 1}`} loading="lazy" />
+                          <button
+                            type="button"
+                            className="photo-remove-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTruckDraft((current) => ({
+                                ...current,
+                                photos: current.photos.filter((p) => p !== photo)
+                              }));
+                            }}
+                          >
+                            &times;
+                          </button>
+                        </div>
+                      ))
+                    : null}
+                </div>
                 <button
-                  className="secondary icon-label"
                   type="button"
+                  className="premium-upload-zone"
                   disabled={uploading === 'vehicle-photo'}
                   onClick={() => vehiclePhotoInputRef.current?.click()}
                 >
-                  <FileText size={18} />
-                  <span>{uploading === 'vehicle-photo' ? 'Uploading photo...' : 'Upload Vehicle Photo'}</span>
+                  <Image size={28} />
+                  <span>{uploading === 'vehicle-photo' ? 'Uploading photo...' : 'Click to Upload Vehicle Photo'}</span>
+                  <small>Supports JPEG, PNG, WEBP (Max 10MB)</small>
                 </button>
-                <span className="muted-note">
-                  {vehiclePhotoName ||
-                    `${truckDraft.photos.length} vehicle photo${truckDraft.photos.length === 1 ? '' : 's'} attached`}
-                </span>
               </div>
               <button className="primary icon-label" type="submit">
                 <Truck size={18} />
@@ -2763,17 +2839,56 @@ function DocumentsPage({ notify, user }) {
                     <StatusBadge tone={truck.verified ? 'success' : 'warn'}>{truck.documentStatus}</StatusBadge>
                     <h3>{truck.plate}</h3>
                     <p>{truck.name}</p>
-                    <div className="doc-list compact">
+                    <div className="doc-list compact" style={{ display: 'grid', gap: '4px' }}>
                       {ownerVehicleDocuments.map((item) => {
                         const slug = slugDocumentType(item);
+                        const existingDoc = (truck.documents || []).find((doc) => doc.type === slug);
+                        const docStatus = existingDoc ? existingDoc.status : 'missing';
+
+                        let tone = 'default';
+                        let statusText = 'Not Uploaded';
+                        if (docStatus === 'approved') {
+                          tone = 'success';
+                          statusText = 'Verified';
+                        } else if (docStatus === 'pending') {
+                          tone = 'warn';
+                          statusText = 'Pending Review';
+                        } else if (docStatus === 'rejected') {
+                          tone = 'danger';
+                          statusText = 'Rejected';
+                        } else if (docStatus === 'expired') {
+                          tone = 'danger';
+                          statusText = 'Expired';
+                        }
+
                         return (
                           <button
                             type="button"
                             key={item}
                             disabled={busy === `${truck.id}-${slug}`}
                             onClick={() => openUpload('truck', truck.id, slug)}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: 'var(--radius)',
+                              border: '1px solid var(--line)',
+                              background:
+                                docStatus === 'approved'
+                                  ? 'rgba(132, 204, 22, 0.06)'
+                                  : docStatus === 'pending'
+                                    ? 'rgba(245, 158, 11, 0.06)'
+                                    : docStatus === 'rejected'
+                                      ? 'rgba(239, 68, 68, 0.05)'
+                                      : '#f8fafc'
+                            }}
                           >
-                            {busy === `${truck.id}-${slug}` ? 'Uploading...' : item}
+                            <span style={{ fontWeight: 700 }}>{item}</span>
+                            <StatusBadge tone={tone}>
+                              {busy === `${truck.id}-${slug}` ? 'Uploading...' : statusText}
+                            </StatusBadge>
                           </button>
                         );
                       })}
