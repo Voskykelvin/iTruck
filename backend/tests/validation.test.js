@@ -365,3 +365,21 @@ test('admin document review validates supported statuses', async () => {
 
   expect(res.status).toBe(422);
 });
+
+test('admin can update user verification state', async () => {
+  const held = await request(app)
+    .patch('/api/admin/users/demo-owner-primary/verification')
+    .set('Authorization', authHeader({ id: 'demo-admin', role: 'admin' }))
+    .send({ isVerified: false });
+
+  expect(held.status).toBe(200);
+  expect(held.body.user.isVerified).toBe(false);
+
+  const approved = await request(app)
+    .patch('/api/admin/users/demo-owner-primary/verification')
+    .set('Authorization', authHeader({ id: 'demo-admin', role: 'admin' }))
+    .send({ isVerified: true });
+
+  expect(approved.status).toBe(200);
+  expect(approved.body.user.isVerified).toBe(true);
+});

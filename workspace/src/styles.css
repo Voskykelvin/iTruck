@@ -507,6 +507,11 @@ textarea {
   transform: translateY(-2px);
 }
 
+.shipment-row.active {
+  border-color: var(--lime-border);
+  background: var(--surface-2);
+}
+
 .shipment-row:focus-visible,
 .load-row:focus-visible,
 .tracking-list button:focus-visible,
@@ -632,6 +637,18 @@ textarea {
   width: 100%;
 }
 
+.doc-list button.active {
+  border-color: var(--lime-border);
+  background: var(--surface-2);
+}
+
+.doc-list button small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .doc-list > span {
   display: block;
 }
@@ -645,6 +662,96 @@ textarea {
 .payout-form {
   display: grid;
   gap: 12px;
+}
+
+.admin-review-list,
+.admin-documents {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-review-row {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.admin-review-summary,
+.admin-document-row {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-review-summary h3,
+.admin-document-main strong {
+  margin: 8px 0 4px;
+  color: var(--ink);
+  font-size: 21px;
+  line-height: 1.15;
+}
+
+.admin-review-summary p,
+.admin-document-main small {
+  margin: 0;
+  color: var(--muted);
+}
+
+.admin-review-meta,
+.admin-action-row,
+.admin-document-actions,
+.admin-photo-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-review-meta span,
+.admin-photo-strip :is(a, span) {
+  min-height: 28px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #f7fbf2;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-document-row {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f8fafc;
+}
+
+.admin-document-main {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-document-main a,
+.admin-photo-strip a {
+  color: var(--orange-dark);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.admin-document-actions button,
+.admin-action-row button {
+  min-height: 40px;
+}
+
+.danger-action {
+  border-color: rgba(239, 68, 68, 0.24);
+  background: rgba(239, 68, 68, 0.08);
+  color: #b91c1c;
+}
+
+.review-note {
+  margin-top: 4px;
 }
 
 .wallet-card {
@@ -1695,6 +1802,16 @@ input[type='radio'] {
   .load-row {
     grid-template-columns: minmax(0, 1fr) 190px;
     align-items: center;
+  }
+
+  .admin-review-summary,
+  .admin-document-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .admin-document-actions {
+    justify-content: end;
   }
 
   .load-row > div:last-child {

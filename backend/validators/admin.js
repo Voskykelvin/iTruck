@@ -6,6 +6,11 @@ const userStatusSchema = [
   body('isActive').isBoolean().withMessage('isActive must be true or false').toBoolean()
 ];
 
+const userVerificationSchema = [
+  liveMongoIdParam('id'),
+  body('isVerified').isBoolean().withMessage('isVerified must be true or false').toBoolean()
+];
+
 const truckVerificationSchema = [
   liveMongoIdParam('id'),
   body('isVerified').isBoolean().withMessage('isVerified must be true or false').toBoolean()
@@ -25,4 +30,10 @@ const documentReviewSchema = [
   optionalString('notes', 1000)
 ];
 
-module.exports = { documentReviewSchema, notifySchema, truckVerificationSchema, userStatusSchema };
+module.exports = {
+  documentReviewSchema,
+  notifySchema,
+  truckVerificationSchema,
+  userStatusSchema,
+  userVerificationSchema
+};
