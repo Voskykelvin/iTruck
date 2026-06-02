@@ -72,19 +72,11 @@ const commonRoutes = [
   '/app/messages',
   '/app/tracking'
 ];
+const neutralRoutes = ['/app/marketplace'];
 const roleRoutes = {
-  client: ['/app/shipper', '/app/book', '/app/marketplace', '/app/bids', ...commonRoutes],
+  client: ['/app/shipper', '/app/book', '/app/bids', ...commonRoutes],
   owner: ['/app/owner', '/app/vehicles', '/app/bids', ...commonRoutes],
-  admin: [
-    '/app/admin',
-    '/app/shipper',
-    '/app/book',
-    '/app/marketplace',
-    '/app/owner',
-    '/app/vehicles',
-    '/app/bids',
-    ...commonRoutes
-  ]
+  admin: ['/app/admin', '/app/shipper', '/app/book', '/app/owner', '/app/vehicles', '/app/bids', ...commonRoutes]
 };
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
@@ -176,6 +168,7 @@ function routeAllowedForUser(route, user) {
   const role = roleForUser(user);
   const path = pathOnly(route);
   if (path === '/app' || path === '/app/') return true;
+  if (neutralRoutes.some((allowed) => path === allowed || path.startsWith(`${allowed}/`))) return true;
   return (roleRoutes[role] || roleRoutes.client).some((allowed) => path === allowed || path.startsWith(`${allowed}/`));
 }
 
