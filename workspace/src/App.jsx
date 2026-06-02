@@ -3597,7 +3597,7 @@ function AdminPage({ notify }) {
   }
 
   function documentRows(record, expectedLabels = []) {
-    const byType = new Map(documentList(record).map((doc) => [doc.type, doc]));
+    const byType = new globalThis.Map(documentList(record).map((doc) => [doc.type, doc]));
     const rows = expectedLabels.map((label) => {
       const type = slugDocumentType(label);
       const existing = byType.get(type);
@@ -3670,7 +3670,7 @@ function AdminPage({ notify }) {
     return date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
   }
 
-  const usersById = adminData.users.reduce((map, user) => map.set(recordId(user), user), new Map());
+  const usersById = adminData.users.reduce((map, user) => map.set(recordId(user), user), new globalThis.Map());
 
   function ownerNameForTruck(truck) {
     const ownerId = typeof truck?.owner === 'object' ? recordId(truck.owner) : String(truck?.owner || '');
