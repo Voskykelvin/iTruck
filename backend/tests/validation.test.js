@@ -271,6 +271,16 @@ test('users can submit verification documents for admin review', async () => {
   );
 });
 
+test('verification document uploads require document slugs', async () => {
+  const res = await request(app)
+    .patch('/api/users/documents/Owner KYC')
+    .set('Authorization', authHeader({ id: 'demo-owner-primary', role: 'owner' }))
+    .send({ url: 'https://res.cloudinary.com/itruck/raw/upload/owner-kyc.pdf', fileName: 'owner-kyc.pdf' });
+
+  expect(res.status).toBe(422);
+  expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ field: 'documentType' })]));
+});
+
 test('owners can attach truck documents for admin review', async () => {
   const created = await request(app)
     .post('/api/trucks')

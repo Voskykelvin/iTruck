@@ -31,6 +31,7 @@ const truckSchema = new mongoose.Schema(
       {
         type: String,
         url: String,
+        fileName: String,
         status: { type: String, enum: ['pending', 'approved', 'rejected', 'expired'], default: 'pending' },
         notes: String,
         reviewedAt: Date

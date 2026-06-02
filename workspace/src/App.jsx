@@ -82,6 +82,9 @@ const vehicleTypes = ['Matatu', 'Pickup', 'Lorry', 'Large Truck', 'Trailer', 'Bu
 const ownerProfileDocuments = ['Owner KYC', 'Driver ID', 'Business registration', 'Insurance'];
 const shipperProfileDocuments = ['Shipper KYC', 'Business registration', 'Tax certificate'];
 const ownerVehicleDocuments = ['Vehicle photos', 'Insurance', 'Vehicle logbook', 'Road license', 'Inspection report'];
+const documentUploadAccept = 'image/jpeg,image/png,image/webp,application/pdf';
+const imageUploadAccept = 'image/jpeg,image/png,image/webp';
+const documentUploadLimitText = 'PDF, JPG, PNG, or WebP up to 10 MB';
 const documentStages = {
   owner: [
     'Submit owner identity and business documents',
@@ -1009,7 +1012,7 @@ function ShipperPage({ notify, user }) {
       <input
         ref={cargoInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp,application/pdf"
+        accept={documentUploadAccept}
         multiple
         onChange={uploadShipmentCargoPhotos}
         style={{ display: 'none' }}
@@ -1378,7 +1381,7 @@ function BookingPage({ notify }) {
       <input
         ref={quoteUploadInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp,application/pdf"
+        accept={documentUploadAccept}
         multiple
         onChange={uploadQuoteDocumentFiles}
         style={{ display: 'none' }}
@@ -2629,14 +2632,14 @@ function OnboardingPage({ notify, user, setUser }) {
       <input
         ref={profileDocInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp,application/pdf"
+        accept={documentUploadAccept}
         onChange={uploadProfileDoc}
         style={{ display: 'none' }}
       />
       <input
         ref={vehiclePhotoInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept={imageUploadAccept}
         onChange={uploadVehiclePhoto}
         style={{ display: 'none' }}
       />
@@ -2722,7 +2725,9 @@ function OnboardingPage({ notify, user, setUser }) {
               );
             })}
           </div>
-          <p className="muted-note">Approved documents unlock the correct workspace tools for this account role.</p>
+          <p className="muted-note">
+            {documentUploadLimitText}. Rejected or expired documents can be replaced from this list.
+          </p>
         </Panel>
 
         {role === 'owner' ? (
@@ -3198,7 +3203,7 @@ function DocumentsPage({ notify, user }) {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp,application/pdf"
+        accept={documentUploadAccept}
         onChange={uploadDocument}
         style={{ display: 'none' }}
       />
@@ -3304,7 +3309,9 @@ function DocumentsPage({ notify, user }) {
       </div>
       <aside className="side-stack">
         <Panel title="Verification" eyebrow="Account">
-          <p className="muted-note">Profile and vehicle documents land in the admin queue for approval.</p>
+          <p className="muted-note">
+            {documentUploadLimitText}. Profile and vehicle files land in the admin review queue.
+          </p>
           <button className="secondary full icon-label" type="button" onClick={() => navigate('/app/onboarding')}>
             <ShieldCheck size={18} />
             <span>Open Verification</span>
@@ -3698,6 +3705,12 @@ function AdminPage({ notify }) {
   const truckReviewItems = adminData.trucks.filter(
     (truck) => !truck.isVerified || needsDocumentReview(truck) || hasDuplicatePlate(truck)
   );
+  const approvedUsers = adminData.users.filter(
+    (user) => user.role !== 'admin' && user.isVerified && !needsDocumentReview(user)
+  );
+  const approvedTrucks = adminData.trucks.filter(
+    (truck) => truck.isVerified && !needsDocumentReview(truck) && !hasDuplicatePlate(truck)
+  );
   const delayedBookings = adminData.bookings.filter((booking) =>
     ['in_transit', 'disputed', 'delayed'].includes(String(adminBookingStatus(booking)).toLowerCase())
   );
@@ -3719,42 +3732,7 @@ function AdminPage({ notify }) {
     )
   ];
 
-  const operationQueue = [
-    {
-      key: 'kyc',
-      label: 'Review KYC profiles',
-      detail: kycUsers.length
-        ? `${kycUsers.length} profile${kycUsers.length === 1 ? '' : 's'} need document decisions`
-        : 'No KYC reviews waiting',
-      tone: kycUsers.length ? 'warn' : 'success'
-    },
-    {
-      key: 'trucks',
-      label: 'Review trucks',
-      detail: truckReviewItems.length
-        ? `${truckReviewItems.length} truck${truckReviewItems.length === 1 ? '' : 's'} need approval checks`
-        : 'No truck approvals waiting',
-      tone: truckReviewItems.length ? 'warn' : 'success'
-    },
-    {
-      key: 'delay',
-      label: 'Resolve route delay',
-      detail: delayedBookings[0]
-        ? `${adminBookingRef(delayedBookings[0])} needs route follow-up`
-        : 'No delayed routes need review',
-      tone: delayedBookings.length ? 'warn' : 'default'
-    },
-    {
-      key: 'escrow',
-      label: 'Release escrow',
-      detail: releaseReadyBookings.length
-        ? `${adminBookingRef(releaseReadyBookings[0])} is delivered and escrowed`
-        : 'No delivered escrow booking is release-ready',
-      tone: releaseReadyBookings.length ? 'success' : 'default'
-    }
-  ];
-
-  const riskControls = [
+  const riskItems = [
     {
       key: 'duplicates',
       label: 'Duplicate listing checks',
@@ -3774,6 +3752,32 @@ function AdminPage({ notify }) {
       key: 'expiry',
       label: 'Carrier document expiry alerts',
       count: expiredDocumentReviews.length
+    }
+  ];
+
+  const adminTabs = [
+    { key: 'kyc', label: 'KYC', count: kycUsers.length, tone: kycUsers.length ? 'warn' : 'success' },
+    {
+      key: 'trucks',
+      label: 'Trucks',
+      count: truckReviewItems.length,
+      tone: truckReviewItems.length ? 'warn' : 'success'
+    },
+    { key: 'approved-profiles', label: 'Approved profiles', count: approvedUsers.length, tone: 'success' },
+    { key: 'approved-trucks', label: 'Approved trucks', count: approvedTrucks.length, tone: 'success' },
+    {
+      key: 'payments',
+      label: 'Payments',
+      count: releaseReadyBookings.length,
+      tone: releaseReadyBookings.length ? 'warn' : 'default'
+    },
+    {
+      key: 'risk',
+      label: 'Risk',
+      count:
+        duplicatePlateGroups.length + highValueBookings.length + expiredDocumentReviews.length + delayedBookings.length,
+      tone:
+        duplicatePlateGroups.length || highValueBookings.length || expiredDocumentReviews.length ? 'warn' : 'default'
     }
   ];
 
@@ -3953,11 +3957,12 @@ function AdminPage({ notify }) {
                 <strong>{formatDocumentLabel(doc.type)}</strong>
                 {doc.url ? (
                   <a href={doc.url} target="_blank" rel="noreferrer">
-                    Open document
+                    View file
                   </a>
                 ) : (
-                  <small>No file link</small>
+                  <small>Awaiting user upload</small>
                 )}
+                {doc.fileName ? <small>{doc.fileName}</small> : null}
                 {doc.reviewedAt ? <small>Reviewed {formatDateTime(doc.reviewedAt)}</small> : null}
                 {!doc.missing ? (
                   <label className="field review-note">
@@ -3970,35 +3975,63 @@ function AdminPage({ notify }) {
                   </label>
                 ) : null}
               </div>
-              <div className="admin-document-actions">
-                <button
-                  className="secondary"
-                  type="button"
-                  disabled={doc.missing || busyAction === `${targetType}-${recordId(record)}-${doc.type}-approved`}
-                  onClick={() => reviewDocument(targetType, record, doc, 'approved')}
-                >
-                  Approve
-                </button>
-                <button
-                  className="secondary danger-action"
-                  type="button"
-                  disabled={doc.missing || busyAction === `${targetType}-${recordId(record)}-${doc.type}-rejected`}
-                  onClick={() => reviewDocument(targetType, record, doc, 'rejected')}
-                >
-                  Reject
-                </button>
-                <button
-                  className="secondary"
-                  type="button"
-                  disabled={doc.missing || busyAction === `${targetType}-${recordId(record)}-${doc.type}-expired`}
-                  onClick={() => reviewDocument(targetType, record, doc, 'expired')}
-                >
-                  Expire
-                </button>
-              </div>
+              {doc.missing ? (
+                <div className="admin-document-actions">
+                  <StatusBadge>Upload needed</StatusBadge>
+                </div>
+              ) : (
+                <div className="admin-document-actions">
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={busyAction === `${targetType}-${recordId(record)}-${doc.type}-approved`}
+                    onClick={() => reviewDocument(targetType, record, doc, 'approved')}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    className="secondary danger-action"
+                    type="button"
+                    disabled={busyAction === `${targetType}-${recordId(record)}-${doc.type}-rejected`}
+                    onClick={() => reviewDocument(targetType, record, doc, 'rejected')}
+                  >
+                    Reject
+                  </button>
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={busyAction === `${targetType}-${recordId(record)}-${doc.type}-expired`}
+                    onClick={() => reviewDocument(targetType, record, doc, 'expired')}
+                  >
+                    Expire
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
+      </div>
+    );
+  }
+
+  function renderDocumentArchive(record, expectedLabels = []) {
+    const rows = documentRows(record, expectedLabels);
+    if (!rows.length) return null;
+
+    return (
+      <div className="admin-document-archive">
+        {rows.map((doc) => (
+          <span key={doc.type}>
+            <StatusBadge tone={documentTone(doc.status)}>{documentStatusText(doc.status)}</StatusBadge>
+            {doc.url ? (
+              <a href={doc.url} target="_blank" rel="noreferrer">
+                {formatDocumentLabel(doc.type)}
+              </a>
+            ) : (
+              formatDocumentLabel(doc.type)
+            )}
+          </span>
+        ))}
       </div>
     );
   }
@@ -4141,6 +4174,60 @@ function AdminPage({ notify }) {
             </article>
           );
         })}
+      </div>
+    );
+  }
+
+  function renderApprovedProfiles() {
+    if (!approvedUsers.length)
+      return <EmptyState title="No approved profiles" detail="Approved shippers and owners will appear here." />;
+
+    return (
+      <div className="admin-review-list">
+        {approvedUsers.map((user) => (
+          <article className="admin-review-row compact" key={recordId(user)}>
+            <div className="admin-review-summary">
+              <div>
+                <StatusBadge tone="success">Approved</StatusBadge>
+                <h3>{personName(user)}</h3>
+                <div className="admin-review-meta">
+                  <span>{roleLabel(user.role)}</span>
+                  <span>{user.email}</span>
+                  <span>{user.phone || 'Phone pending'}</span>
+                </div>
+              </div>
+            </div>
+            {renderDocumentArchive(user, expectedProfileDocuments(user))}
+          </article>
+        ))}
+      </div>
+    );
+  }
+
+  function renderApprovedTrucks() {
+    if (!approvedTrucks.length)
+      return <EmptyState title="No approved trucks" detail="Approved fleet records will appear here." />;
+
+    return (
+      <div className="admin-review-list">
+        {approvedTrucks.map((truck) => (
+          <article className="admin-review-row compact" key={recordId(truck)}>
+            <div className="admin-review-summary">
+              <div>
+                <StatusBadge tone="success">Approved</StatusBadge>
+                <h3>
+                  {plateKey(truck) || 'Plate pending'} - {truckName(truck)}
+                </h3>
+                <div className="admin-review-meta">
+                  <span>{ownerNameForTruck(truck)}</span>
+                  <span>{truck.type || 'Vehicle type pending'}</span>
+                  <span>{truck.capacityTonnes ? `${truck.capacityTonnes} tonnes` : 'Capacity pending'}</span>
+                </div>
+              </div>
+            </div>
+            {renderDocumentArchive(truck, expectedTruckDocuments())}
+          </article>
+        ))}
       </div>
     );
   }
@@ -4313,9 +4400,48 @@ function AdminPage({ notify }) {
     );
   }
 
+  function renderRiskReview() {
+    return (
+      <div className="admin-review-list">
+        <div className="admin-risk-grid">
+          {riskItems.map((item) => (
+            <button
+              className={activeReview === item.key ? 'active' : ''}
+              type="button"
+              key={item.key}
+              onClick={() => setActiveReview(item.key)}
+            >
+              <strong>{item.label}</strong>
+              <span>{item.count}</span>
+            </button>
+          ))}
+        </div>
+        {duplicatePlateGroups.length ||
+        highValueBookings.length ||
+        expiredDocumentReviews.length ||
+        delayedBookings.length ? (
+          <div className="admin-review-row compact">
+            <StatusBadge tone="warn">Open risk work</StatusBadge>
+            <div className="admin-review-meta">
+              <span>{duplicatePlateGroups.length} duplicate plate groups</span>
+              <span>{highValueBookings.length} high-value bookings</span>
+              <span>{expiredDocumentReviews.length} expired documents</span>
+              <span>{delayedBookings.length} route exceptions</span>
+            </div>
+          </div>
+        ) : (
+          <EmptyState title="No risk work" detail="Risk checks that need action will appear here." />
+        )}
+      </div>
+    );
+  }
+
   const reviewTitles = {
-    kyc: 'KYC Review',
-    trucks: 'Truck Review',
+    kyc: 'KYC Review Queue',
+    trucks: 'Truck Review Queue',
+    'approved-profiles': 'Approved Profiles',
+    'approved-trucks': 'Approved Trucks',
+    risk: 'Risk Overview',
     delay: 'Route Exceptions',
     escrow: 'Escrow Release',
     duplicates: 'Duplicate Listings',
@@ -4327,6 +4453,9 @@ function AdminPage({ notify }) {
   function renderActiveReview() {
     if (activeReview === 'kyc') return renderKycReview();
     if (activeReview === 'trucks') return renderTruckReview();
+    if (activeReview === 'approved-profiles') return renderApprovedProfiles();
+    if (activeReview === 'approved-trucks') return renderApprovedTrucks();
+    if (activeReview === 'risk') return renderRiskReview();
     if (activeReview === 'delay') return renderDelayReview();
     if (activeReview === 'escrow') return renderEscrowReview();
     if (activeReview === 'duplicates') return renderDuplicateReview();
@@ -4349,68 +4478,44 @@ function AdminPage({ notify }) {
         />
         <MetricCard icon={FileText} label="Bookings" value={stats?.totalBookings ?? 0} detail="Shipment records" />
       </section>
-      <section className="workspace-layout">
-        <Panel title="Operations Queue" eyebrow="Admin">
-          <div className="shipment-stack">
-            {operationQueue.map((item) => (
-              <article
-                className={`shipment-row ${activeReview === item.key ? 'active' : ''}`}
-                key={item.key}
-                role="button"
-                tabIndex={0}
-                onClick={() => setActiveReview(item.key)}
-                onKeyDown={(event) => activateOnEnter(event, () => setActiveReview(item.key))}
-              >
+      <section className="admin-console">
+        <Panel title="Approvals Console" eyebrow="Admin Desk">
+          <div className="admin-console-shell">
+            <nav className="admin-tab-list" aria-label="Admin review queues">
+              {adminTabs.map((item) => (
+                <button
+                  className={
+                    activeReview === item.key ||
+                    (item.key === 'risk' && ['duplicates', 'high-value', 'expiry', 'delay'].includes(activeReview))
+                      ? 'active'
+                      : ''
+                  }
+                  type="button"
+                  key={item.key}
+                  onClick={() => setActiveReview(item.key)}
+                >
+                  <span>{item.label}</span>
+                  <StatusBadge tone={item.tone}>{item.count}</StatusBadge>
+                </button>
+              ))}
+            </nav>
+            <div className="admin-review-desk">
+              <div className="admin-review-header">
                 <div>
-                  <StatusBadge tone={item.tone}>{item.label}</StatusBadge>
-                  <h3>{item.label}</h3>
-                  <p>{item.detail}</p>
+                  <p className="eyebrow">Review Desk</p>
+                  <h2>{reviewTitles[activeReview] || 'Review'}</h2>
                 </div>
                 <button
-                  className="secondary"
+                  className="secondary compact-button"
                   type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setActiveReview(item.key);
-                  }}
+                  disabled={busyAction === 'refresh'}
+                  onClick={refreshAdminData}
                 >
-                  Review
+                  {busyAction === 'refresh' ? 'Refreshing...' : 'Refresh'}
                 </button>
-              </article>
-            ))}
-          </div>
-        </Panel>
-        <Panel title="Risk Controls" eyebrow="Trust">
-          <div className="doc-list">
-            {riskControls.map((item) => (
-              <button
-                className={activeReview === item.key ? 'active' : ''}
-                type="button"
-                key={item.key}
-                onClick={() => setActiveReview(item.key)}
-              >
-                {item.label}
-                <small>{item.count}</small>
-              </button>
-            ))}
-          </div>
-        </Panel>
-        <Panel title={reviewTitles[activeReview] || 'Review'} eyebrow="Review Desk">
-          {renderActiveReview()}
-        </Panel>
-        <Panel title="Admin Activity" eyebrow="Audit">
-          <div className="doc-list compact">
-            <button type="button" disabled={busyAction === 'refresh'} onClick={refreshAdminData}>
-              {busyAction === 'refresh' ? 'Refreshing...' : 'Refresh admin data'}
-            </button>
-            <span>{adminData.logs.length} audit log entries loaded</span>
-            <span>{adminData.payments.length} payment records loaded</span>
-            <span>{truckReviewItems.length} truck reviews pending</span>
-            {adminData.logs.slice(0, 3).map((log, index) => (
-              <span key={log._id || log.id || index}>
-                {statusLabel(String(log.action || 'audit').replaceAll('.', ' '))}
-              </span>
-            ))}
+              </div>
+              {renderActiveReview()}
+            </div>
           </div>
         </Panel>
       </section>
@@ -4686,7 +4791,7 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
           <input
             ref={documentInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/webp,application/pdf"
+            accept={documentUploadAccept}
             onChange={uploadVerificationDocument}
             style={{ display: 'none' }}
           />
@@ -4709,6 +4814,7 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
               </button>
             ))}
           </div>
+          <p className="muted-note">{documentUploadLimitText}. Admin reviews uploaded files from the console.</p>
         </Panel>
       ) : null}
       {signedIn ? (

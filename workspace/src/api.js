@@ -2,6 +2,9 @@ import { getDeviceId } from './utils/deviceId.js';
 
 const configuredApiBase = import.meta.env.VITE_API_BASE || '';
 const API_BASE = configuredApiBase.includes('your-domain.example') ? '/api' : configuredApiBase || '/api';
+const DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
+const documentUploadTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
+const imageUploadTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 function token() {
   return localStorage.getItem('itruck_token') || '';
@@ -120,6 +123,7 @@ async function uploadCargoFiles(files) {
 }
 
 async function uploadDocument(path, documentType, file) {
+  assertUploadFile(file, documentUploadTypes, 'Document');
   const data = await uploadCargoFiles([file]);
   const url = data.urls?.[0];
   if (!url) throw new Error('Document upload did not return a URL');
@@ -127,6 +131,12 @@ async function uploadDocument(path, documentType, file) {
     method: 'PATCH',
     body: JSON.stringify({ url, fileName: file.name, documentType })
   });
+}
+
+function assertUploadFile(file, allowedTypes, label) {
+  if (!file) throw new Error(`${label} file is required`);
+  if (file.size > DOCUMENT_MAX_BYTES) throw new Error(`${label} must be 10 MB or smaller`);
+  if (file.type && !allowedTypes.has(file.type)) throw new Error(`${label} file type is not supported`);
 }
 
 export const api = {
@@ -194,6 +204,7 @@ export const api = {
       file
     ),
   uploadTruckPhoto: async (truckId, file) => {
+    assertUploadFile(file, imageUploadTypes, 'Vehicle photo');
     const data = await uploadCargoFiles([file]);
     const url = data.urls?.[0];
     if (!url) throw new Error('Photo upload did not return a URL');
