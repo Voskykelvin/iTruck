@@ -213,8 +213,14 @@ function money(value, currency = 'USD') {
 function saveLocal(type, data) {
   const key = `itruck_${type}`;
   const list = JSON.parse(localStorage.getItem(key) || '[]');
-  list.unshift({ id: `${type}-${Date.now()}`, ...data, createdAt: new Date().toISOString(), mode: 'local' });
+  const record = { id: `${type}-${Date.now()}`, ...data, createdAt: new Date().toISOString(), mode: 'local' };
+  list.unshift(record);
   localStorage.setItem(key, JSON.stringify(list));
+  return record;
+}
+
+function readLocal(type) {
+  return JSON.parse(localStorage.getItem(`itruck_${type}`) || '[]');
 }
 
 function slugDocumentType(value) {
@@ -362,6 +368,8 @@ function ratingSummary(entity) {
 function normalizeBid(bid = {}) {
   const owner = bid.owner && typeof bid.owner === 'object' ? bid.owner : {};
   const truck = bid.truck && typeof bid.truck === 'object' ? bid.truck : {};
+  const ownerId = userIdFor(owner) || String(bid.owner || bid.ownerId || '');
+  const truckId = truck._id || truck.id || bid.truck || bid.truckId || '';
   const ownerName =
     [owner.firstName, owner.lastName].filter(Boolean).join(' ') ||
     owner.company ||
@@ -372,6 +380,8 @@ function normalizeBid(bid = {}) {
 
   return {
     id: id || `${bid.amount || 'bid'}-${bid.createdAt || Date.now()}`,
+    ownerId,
+    truckId,
     ownerName,
     truckName: truck.name || [truck.make, truck.model].filter(Boolean).join(' ') || bid.truckName || 'Truck pending',
     amount: Number(bid.amount || bid.price || 0),
@@ -454,6 +464,51 @@ function normalizeOpenLoad(booking) {
     risk: estimate.routeRisk || 'Medium',
     bidCount: Array.isArray(booking.bids) ? booking.bids.length : 0
   };
+}
+
+function normalizeOwnerBidRecord(record = {}) {
+  return {
+    id: record.id || `${record.bookingId || record.route || 'bid'}-${record.createdAt || Date.now()}`,
+    bookingId: record.bookingId || record.id || '',
+    route: record.route || 'Route pending',
+    cargo: record.cargo || 'Cargo pending',
+    amount: Number(record.amount || 0),
+    message: record.message || 'Bid note pending',
+    status: record.status || 'pending',
+    truckName: record.truckName || record.truck || 'Selected vehicle',
+    createdAt: record.createdAt
+  };
+}
+
+function ownerBidRecordsFromShipments(shipments, user) {
+  const currentUserId = userIdFor(user);
+  return shipments.flatMap((shipment) =>
+    (shipment.bids || [])
+      .filter((bid) => !currentUserId || [bid.ownerId, bid.id].some((value) => String(value) === currentUserId))
+      .map((bid) =>
+        normalizeOwnerBidRecord({
+          id: `${shipment.bookingId || shipment.id}-${bid.id}`,
+          bookingId: shipment.bookingId || shipment.id,
+          route: shipment.route,
+          cargo: shipment.cargo,
+          amount: bid.amount,
+          message: bid.message,
+          status: bid.status,
+          truckName: bid.truckName,
+          createdAt: bid.createdAt
+        })
+      )
+  );
+}
+
+function uniqueBidRecords(records) {
+  const seen = new Set();
+  return records.filter((record) => {
+    const key = record.bookingId || record.id;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function fallbackEstimate(payload) {
@@ -2031,10 +2086,11 @@ function TrackingPage({ notify, route, user }) {
   );
 }
 
-function OwnerPage({ notify }) {
+function OwnerPage({ notify, user }) {
   const [fleet, setFleet] = useState(workspaceFleet.slice(0, 3));
   const [loads, setLoads] = useState(workspaceLoads);
   const [ownerBookings, setOwnerBookings] = useState([]);
+  const [localBids, setLocalBids] = useState(() => readLocal('bids').map(normalizeOwnerBidRecord));
   const [draftPlate, setDraftPlate] = useState('');
   const [walletBalance, setWalletBalance] = useState(3180);
   const [withdrawBusy, setWithdrawBusy] = useState(false);
@@ -2077,6 +2133,19 @@ function OwnerPage({ notify }) {
       })
       .catch(() => {});
   }, []);
+
+  const ownerBidRecords = useMemo(
+    () => uniqueBidRecords([...ownerBidRecordsFromShipments(ownerBookings, user), ...localBids]),
+    [localBids, ownerBookings, user]
+  );
+  const ownerBidLoadIds = useMemo(
+    () => new Set(ownerBidRecords.map((record) => String(record.bookingId)).filter(Boolean)),
+    [ownerBidRecords]
+  );
+  const availableLoads = useMemo(
+    () => loads.filter((load) => !load.bidSubmitted && !ownerBidLoadIds.has(String(load.id || load.bookingId))),
+    [loads, ownerBidLoadIds]
+  );
 
   async function addTruck() {
     if (!draftPlate.trim()) {
@@ -2142,17 +2211,25 @@ function OwnerPage({ notify }) {
     setBidBusy(true);
     try {
       if (!bidTarget.id) throw new Error('Bid needs a synced booking');
-      await api.submitBookingBid(bidTarget.id, payload);
-      setLoads((current) =>
-        current.map((load) =>
-          load.id === bidTarget.id ? { ...load, bidSubmitted: true, bidCount: Number(load.bidCount || 0) + 1 } : load
-        )
-      );
-      notify(`Bid submitted for ${bidTarget.route}`);
+      const data = await api.submitBookingBid(bidTarget.id, payload);
+      if (data.booking) {
+        const updated = normalizeBookingShipment(data.booking);
+        setOwnerBookings((current) => [
+          updated,
+          ...current.filter(
+            (booking) => String(booking.bookingId || booking.id) !== String(updated.bookingId || updated.id)
+          )
+        ]);
+      }
+      setLoads((current) => current.filter((load) => String(load.id || load.bookingId) !== String(bidTarget.id)));
+      notify(`Bid submitted for ${bidTarget.route}. Moved to My Bids.`);
       setBidTarget(null);
     } catch (err) {
-      saveLocal('bids', localPayload);
-      notify(err.message || 'Bid held until account sync completes');
+      const record = saveLocal('bids', localPayload);
+      setLocalBids((current) => [normalizeOwnerBidRecord(record), ...current]);
+      setLoads((current) => current.filter((load) => String(load.id || load.bookingId) !== String(bidTarget.id)));
+      setBidTarget(null);
+      notify(err.message || 'Bid held in My Bids until account sync completes');
     } finally {
       setBidBusy(false);
     }
@@ -2160,7 +2237,7 @@ function OwnerPage({ notify }) {
 
   function runOwnerQueue(label) {
     if (label.startsWith('Submit bid')) {
-      openBidReview(loads[0]);
+      openBidReview(availableLoads[0]);
       return;
     }
 
@@ -2260,7 +2337,7 @@ function OwnerPage({ notify }) {
       <section className="metrics-grid">
         <MetricCard icon={Wallet} label="Wallet Balance" value={money(walletBalance)} detail="Available for payout" />
         <MetricCard icon={Truck} label="Active Jobs" value={activeJobs} detail="Confirmed or in transit" />
-        <MetricCard icon={Gauge} label="Open Loads" value={loads.length} detail="Ready for owner bids" />
+        <MetricCard icon={Gauge} label="Open Loads" value={availableLoads.length} detail="Ready for owner bids" />
         <MetricCard
           icon={ShieldCheck}
           label="Rating"
@@ -2277,8 +2354,8 @@ function OwnerPage({ notify }) {
         <div className="stack">
           <Panel title="Job Board" eyebrow="Available Loads">
             <div className="shipment-stack">
-              {loads.length ? (
-                loads.map((load) => (
+              {availableLoads.length ? (
+                availableLoads.map((load) => (
                   <article
                     className="load-row"
                     key={load.route}
@@ -2288,9 +2365,7 @@ function OwnerPage({ notify }) {
                     onKeyDown={(event) => activateOnEnter(event, () => openBidReview(load))}
                   >
                     <div>
-                      <StatusBadge tone={load.bidSubmitted ? 'success' : load.risk === 'High' ? 'warn' : 'success'}>
-                        {load.bidSubmitted ? 'Bid sent' : load.fit}
-                      </StatusBadge>
+                      <StatusBadge tone={load.risk === 'High' ? 'warn' : 'success'}>{load.fit}</StatusBadge>
                       <h3>{load.cargo}</h3>
                       <p>{load.route}</p>
                       <small>
@@ -2314,8 +2389,8 @@ function OwnerPage({ notify }) {
                 ))
               ) : (
                 <EmptyState
-                  title="No live loads yet"
-                  detail="Verified shipper requests will appear here when the booking workflow is connected to owner matching."
+                  title="No unbid loads"
+                  detail="New shipper requests will appear here. Submitted offers move into your bids workspace."
                 />
               )}
             </div>
@@ -2762,27 +2837,59 @@ function OnboardingPage({ notify, user, setUser }) {
 function BidsPage({ notify, user }) {
   const role = roleForUser(user);
   const [items, setItems] = useState([]);
+  const [ownerBookings, setOwnerBookings] = useState([]);
+  const [localBids, setLocalBids] = useState(() => readLocal('bids').map(normalizeOwnerBidRecord));
   const [fleet, setFleet] = useState([]);
   const [busy, setBusy] = useState('');
   const [bidTarget, setBidTarget] = useState(null);
   const [bidDraft, setBidDraft] = useState(() => bidDraftForLoad(null));
 
   useEffect(() => {
-    const loader = role === 'owner' ? api.listOpenBookings : api.listBookings;
-    loader()
-      .then((data) => {
-        const bookings = Array.isArray(data.bookings) ? data.bookings : [];
-        setItems(role === 'owner' ? bookings.map(normalizeOpenLoad) : bookings.map(normalizeBookingShipment));
-      })
-      .catch(() => setItems(role === 'owner' ? workspaceLoads : workspaceShipments));
-
     if (role === 'owner') {
+      api
+        .listOpenBookings()
+        .then((data) => {
+          const bookings = Array.isArray(data.bookings) ? data.bookings : [];
+          setItems(bookings.map(normalizeOpenLoad));
+        })
+        .catch(() => setItems(workspaceLoads));
+
+      api
+        .listBookings()
+        .then((data) => {
+          const bookings = Array.isArray(data.bookings) ? data.bookings : [];
+          setOwnerBookings(bookings.map(normalizeBookingShipment));
+        })
+        .catch(() => {});
+
       api
         .fleetTrucks()
         .then((data) => Array.isArray(data.trucks) && setFleet(data.trucks.map(normalizeTruck)))
         .catch(() => setFleet(workspaceFleet.slice(0, 3)));
+      return;
     }
+
+    api
+      .listBookings()
+      .then((data) => {
+        const bookings = Array.isArray(data.bookings) ? data.bookings : [];
+        setItems(bookings.map(normalizeBookingShipment));
+      })
+      .catch(() => setItems(workspaceShipments));
   }, [role]);
+
+  const ownerBidRecords = useMemo(
+    () => uniqueBidRecords([...ownerBidRecordsFromShipments(ownerBookings, user), ...localBids]),
+    [localBids, ownerBookings, user]
+  );
+  const ownerBidLoadIds = useMemo(
+    () => new Set(ownerBidRecords.map((record) => String(record.bookingId)).filter(Boolean)),
+    [ownerBidRecords]
+  );
+  const availableOwnerLoads = useMemo(
+    () => items.filter((load) => !load.bidSubmitted && !ownerBidLoadIds.has(String(load.id || load.bookingId))),
+    [items, ownerBidLoadIds]
+  );
 
   function openOwnerBidReview(load) {
     setBidTarget(load);
@@ -2815,17 +2922,25 @@ function BidsPage({ notify, user }) {
     setBusy(`bid-${bidTarget.id || bidTarget.route}`);
     try {
       if (!bidTarget.id) throw new Error('Bid needs a synced booking');
-      await api.submitBookingBid(bidTarget.id, payload);
-      setItems((current) =>
-        current.map((load) =>
-          load.id === bidTarget.id ? { ...load, bidSubmitted: true, bidCount: Number(load.bidCount || 0) + 1 } : load
-        )
-      );
-      notify(`Bid submitted for ${bidTarget.route}`);
+      const data = await api.submitBookingBid(bidTarget.id, payload);
+      if (data.booking) {
+        const updated = normalizeBookingShipment(data.booking);
+        setOwnerBookings((current) => [
+          updated,
+          ...current.filter(
+            (booking) => String(booking.bookingId || booking.id) !== String(updated.bookingId || updated.id)
+          )
+        ]);
+      }
+      setItems((current) => current.filter((load) => String(load.id || load.bookingId) !== String(bidTarget.id)));
+      notify(`Bid submitted for ${bidTarget.route}. Moved to My Bids.`);
       setBidTarget(null);
     } catch (err) {
-      saveLocal('bids', localPayload);
-      notify(err.message || 'Bid held until account sync completes');
+      const record = saveLocal('bids', localPayload);
+      setLocalBids((current) => [normalizeOwnerBidRecord(record), ...current]);
+      setItems((current) => current.filter((load) => String(load.id || load.bookingId) !== String(bidTarget.id)));
+      setBidTarget(null);
+      notify(err.message || 'Bid held in My Bids until account sync completes');
     } finally {
       setBusy('');
     }
@@ -2851,13 +2966,11 @@ function BidsPage({ notify, user }) {
         <div className="stack">
           <Panel title="Available Loads" eyebrow="Find Work">
             <div className="shipment-stack">
-              {items.length ? (
-                items.map((load) => (
+              {availableOwnerLoads.length ? (
+                availableOwnerLoads.map((load) => (
                   <article className="load-row" key={load.id || load.route}>
                     <div>
-                      <StatusBadge tone={load.bidSubmitted ? 'success' : load.risk === 'High' ? 'warn' : 'success'}>
-                        {load.bidSubmitted ? 'Bid sent' : load.fit}
-                      </StatusBadge>
+                      <StatusBadge tone={load.risk === 'High' ? 'warn' : 'success'}>{load.fit}</StatusBadge>
                       <h3>{load.cargo}</h3>
                       <p>{load.route}</p>
                       <small>
@@ -2878,7 +2991,7 @@ function BidsPage({ notify, user }) {
                   </article>
                 ))
               ) : (
-                <EmptyState title="No open loads" detail="New shipper requests will appear here after verification." />
+                <EmptyState title="No unbid loads" detail="Submitted offers are tracked below in My Bids." />
               )}
             </div>
           </Panel>
@@ -2891,6 +3004,39 @@ function BidsPage({ notify, user }) {
             onSubmit={submitOwnerBid}
             onClose={() => setBidTarget(null)}
           />
+          <Panel title="My Bids" eyebrow="Submitted Offers">
+            <div className="bid-options">
+              {ownerBidRecords.length ? (
+                ownerBidRecords.map((bid) => (
+                  <div className="bid-option" key={bid.id}>
+                    <div>
+                      <StatusBadge tone={bid.status === 'accepted' ? 'success' : 'default'}>
+                        {statusLabel(bid.status)}
+                      </StatusBadge>
+                      <strong>{bid.route}</strong>
+                      <span>{bid.cargo}</span>
+                      <small>{bid.message}</small>
+                    </div>
+                    <div>
+                      <strong>{money(bid.amount)}</strong>
+                      <button
+                        className="ghost"
+                        type="button"
+                        onClick={() => navigate(`/app/tracking?shipment=${encodeURIComponent(bid.bookingId)}`)}
+                      >
+                        Open
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <EmptyState
+                  title="No bids submitted"
+                  detail="Review an available load, enter your rate, and place a bid."
+                />
+              )}
+            </div>
+          </Panel>
         </div>
         <aside className="side-stack">
           <Panel title="Owner Rules" eyebrow="Bidding">
