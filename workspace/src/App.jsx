@@ -261,16 +261,59 @@ function persistLocalChat(shipmentId, messages) {
   localStorage.setItem(chatKey(shipmentId), JSON.stringify(messages.slice(-80)));
 }
 
-function normalizeWorkflowMessage(item, currentUserId) {
+function userIdFor(user) {
+  if (typeof user === 'string') return user;
+  return String(user?._id || user?.id || user?.userId || '');
+}
+
+function userDisplayName(user, fallback = 'You') {
+  return [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.company || user?.email || fallback;
+}
+
+function mongoObjectId(value) {
+  return /^[a-f0-9]{24}$/i.test(String(value || ''));
+}
+
+function bidDraftForLoad(load, fleet = []) {
+  const preferredTruck = fleet.find((truck) => truck.verified) || fleet[0] || null;
+  const amount = Number(load?.price || 0);
+
+  return {
+    amount: amount ? Math.round(amount) : '',
+    truck: preferredTruck?.id || '',
+    message: `Available for ${load?.window || 'the pickup window'}. Documents ready for shipper review.`
+  };
+}
+
+function bidPayloadForDraft(draft, fleet = []) {
+  const amount = Number(draft.amount || 0);
+  const selectedTruck = fleet.find((truck) => String(truck.id) === String(draft.truck));
+  const truckLine = selectedTruck ? `Vehicle: ${selectedTruck.plate} ${selectedTruck.name}.` : '';
+  const note = String(draft.message || '').trim() || 'Available for pickup. Documents ready.';
+  const payload = {
+    amount,
+    message: [truckLine, note].filter(Boolean).join(' ').slice(0, 1000)
+  };
+
+  if (mongoObjectId(draft.truck)) payload.truck = draft.truck;
+  return payload;
+}
+
+function normalizeWorkflowMessage(item, currentUser) {
   const payload = item.payload || {};
   const user = item.user || {};
-  const authorId = String(user._id || payload.user || payload.senderId || '');
-  const mine = authorId && currentUserId && authorId === String(currentUserId);
+  const currentUserId = userIdFor(currentUser);
+  const authorId = String(user._id || user.id || item.user || payload.user || payload.senderId || '');
+  const mine = Boolean(authorId && currentUserId && authorId === currentUserId);
+  const payloadOnlyMine = !authorId && payload.sender === 'me';
+  const senderRole = user.role || payload.senderRole;
+  const fallbackName = senderRole === 'owner' ? 'Fleet owner' : senderRole === 'client' ? 'Shipper' : 'Counterparty';
+  const senderName = [user.firstName, user.lastName].filter(Boolean).join(' ') || payload.senderName || fallbackName;
 
   return {
     id: item._id || item.id || `message-${Date.now()}`,
-    author: mine || payload.sender === 'me' ? 'me' : 'driver',
-    name: mine ? 'You' : [user.firstName, user.lastName].filter(Boolean).join(' ') || payload.senderName || 'Driver',
+    author: mine || payloadOnlyMine ? 'me' : 'them',
+    name: mine || payloadOnlyMine ? 'You' : senderName,
     text: payload.text || payload.message || '',
     createdAt: item.createdAt || payload.createdAt || new Date().toISOString()
   };
@@ -392,15 +435,24 @@ function normalizeBookingShipment(booking) {
 function normalizeOpenLoad(booking) {
   const estimate = booking.estimate || {};
   const amount = Number(booking.budget || estimate.total || 0);
+  const client = booking.client && typeof booking.client === 'object' ? booking.client : {};
   return {
     id: bookingRef(booking),
+    bookingId: booking._id || booking.id || booking.bookingId,
     cargo: booking.cargo || 'Cargo pending',
     route: bookingRoute(booking),
+    pickup: booking.pickup || 'Pickup pending',
+    destination: booking.destination || 'Destination pending',
+    vehicle: booking.vehicleType || 'Vehicle pending',
+    shipper: userDisplayName(client, 'Shipper'),
     price: amount,
     distance: booking.distance ? `${Number(booking.distance).toLocaleString()} km` : 'Distance pending',
     window: booking.pickupWindow || 'Pickup window pending',
+    requirements: booking.requirements || 'Standard handling',
+    payment: booking.paymentMethod || 'Payment pending',
     fit: `${booking.routeFit || 82}% fit`,
-    risk: estimate.routeRisk || 'Medium'
+    risk: estimate.routeRisk || 'Medium',
+    bidCount: Array.isArray(booking.bids) ? booking.bids.length : 0
   };
 }
 
@@ -615,6 +667,78 @@ function MetricCard({ icon: Icon, label, value, detail }) {
 
 function StatusBadge({ children, tone = 'default' }) {
   return <span className={`badge ${tone}`}>{children}</span>;
+}
+
+function ChatBubble({ message }) {
+  const mine = message.author === 'me';
+
+  return (
+    <div className={`chat-message ${mine ? 'me' : 'them'}`} key={message.id}>
+      <small>
+        <strong>{mine ? 'You' : message.name || 'Counterparty'}</strong>
+        <span>{formatMessageTime(message.createdAt)}</span>
+      </small>
+      <p>{message.text}</p>
+    </div>
+  );
+}
+
+function OwnerBidReviewPanel({ load, draft, fleet = [], busy, onChange, onSubmit, onClose }) {
+  if (!load) return null;
+
+  const selectedTruck = fleet.find((truck) => String(truck.id) === String(draft.truck));
+  const amount = Number(draft.amount || 0);
+
+  return (
+    <Panel title="Bid Review" eyebrow="Owner Offer" action="Close" onAction={onClose}>
+      <div className="facts-grid">
+        <span>Cargo</span>
+        <strong>{load.cargo}</strong>
+        <span>Route</span>
+        <strong>{load.route}</strong>
+        <span>Pickup</span>
+        <strong>{load.window}</strong>
+        <span>Shipper target</span>
+        <strong>{load.price ? money(load.price) : 'Open rate'}</strong>
+      </div>
+      <form className="modal-form" onSubmit={onSubmit}>
+        <Input
+          label="Your bid amount USD"
+          type="number"
+          value={draft.amount}
+          onChange={(value) => onChange('amount', value)}
+        />
+        <label className="field">
+          <span>Vehicle for this bid</span>
+          <select value={draft.truck || ''} onChange={(event) => onChange('truck', event.target.value)}>
+            <option value="">Best available vehicle</option>
+            {fleet.map((truck) => (
+              <option value={truck.id} key={truck.id}>
+                {truck.plate} - {truck.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <TextArea label="Bid note to shipper" value={draft.message} onChange={(value) => onChange('message', value)} />
+        <div className="bid-review-note">
+          <strong>{amount > 0 ? money(amount) : 'Enter your offer'}</strong>
+          <span>
+            {selectedTruck
+              ? `${selectedTruck.plate} will be shown with your note.`
+              : 'The shipper will compare your amount, note, and vehicle readiness before awarding.'}
+          </span>
+        </div>
+        <div className="button-row">
+          <button className="primary" type="submit" disabled={busy || amount <= 0}>
+            {busy ? 'Submitting...' : 'Place Bid'}
+          </button>
+          <button className="ghost" type="button" onClick={onClose}>
+            Cancel
+          </button>
+        </div>
+      </form>
+    </Panel>
+  );
 }
 
 function ShipperPage({ notify, user }) {
@@ -1605,6 +1729,7 @@ function TrackingPage({ notify, route, user }) {
   const trackingParams = useMemo(() => new URLSearchParams(route.split('?')[1] || ''), [route]);
   const routeShipment = trackingParams.get('shipment');
   const contactMode = trackingParams.get('contact');
+  const currentUserId = userIdFor(user);
 
   useEffect(() => {
     api
@@ -1638,7 +1763,7 @@ function TrackingPage({ notify, route, user }) {
         if (!active) return;
         const items = Array.isArray(data.items) ? data.items : [];
         if (items.length) {
-          const normalized = items.map((item) => normalizeWorkflowMessage(item, user?._id));
+          const normalized = items.map((item) => normalizeWorkflowMessage(item, user));
           setMessages(normalized);
           persistLocalChat(shipment.id, normalized);
         }
@@ -1648,7 +1773,7 @@ function TrackingPage({ notify, route, user }) {
     return () => {
       active = false;
     };
-  }, [shipmentMessageKey, shipment, user?._id]);
+  }, [shipmentMessageKey, shipment, currentUserId, user]);
 
   useEffect(() => {
     if (contactMode === 'driver') chatInputRef.current?.focus();
@@ -1679,6 +1804,9 @@ function TrackingPage({ notify, route, user }) {
         shipmentId: shipment.id,
         route: shipment.route,
         text,
+        senderId: userIdFor(user),
+        senderName: userDisplayName(user),
+        senderRole: activeRole,
         sender: 'me',
         status: 'sent'
       });
@@ -1883,12 +2011,7 @@ function TrackingPage({ notify, route, user }) {
         <Panel title="Driver Chat" eyebrow="In-house Text">
           <div className="chat-thread">
             {messages.map((message) => (
-              <div className={`chat-message ${message.author === 'me' ? 'me' : 'them'}`} key={message.id}>
-                <p>{message.text}</p>
-                <small>
-                  {message.name} - {formatMessageTime(message.createdAt)}
-                </small>
-              </div>
+              <ChatBubble message={message} key={message.id} />
             ))}
           </div>
           <form className="chat-compose" onSubmit={sendChatMessage}>
@@ -1921,6 +2044,9 @@ function OwnerPage({ notify }) {
     destination: '+254700000000',
     accountName: ''
   });
+  const [bidTarget, setBidTarget] = useState(null);
+  const [bidDraft, setBidDraft] = useState(() => bidDraftForLoad(null));
+  const [bidBusy, setBidBusy] = useState(false);
 
   useEffect(() => {
     api
@@ -1980,34 +2106,61 @@ function OwnerPage({ notify }) {
     }
   }
 
-  async function placeBid(load) {
-    if (!load?.id) {
-      notify('Bid needs a synced booking');
+  function openBidReview(load) {
+    if (!load) {
+      notify('No available load is ready for bidding');
       return;
     }
 
-    const payload = {
-      bookingId: load.id,
-      route: load.route,
-      cargo: load.cargo,
-      amount: load.price || 0,
-      message: 'Available for pickup. Documents ready.',
+    setBidTarget(load);
+    setBidDraft(bidDraftForLoad(load, fleet));
+  }
+
+  function updateBidDraft(key, value) {
+    setBidDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  async function submitOwnerBid(event) {
+    event.preventDefault();
+    if (!bidTarget) return;
+
+    const amount = Number(bidDraft.amount || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      notify('Enter a bid amount greater than zero');
+      return;
+    }
+
+    const payload = bidPayloadForDraft(bidDraft, fleet);
+    const localPayload = {
+      ...payload,
+      bookingId: bidTarget.id,
+      route: bidTarget.route,
+      cargo: bidTarget.cargo,
       status: 'submitted'
     };
 
+    setBidBusy(true);
     try {
-      await api.submitBookingBid(load.id, { amount: payload.amount, message: payload.message });
-      notify(`Bid saved for ${load.route}`);
-    } catch (_err) {
-      saveLocal('bids', payload);
-      notify('Sign in to keep this bid in your account');
+      if (!bidTarget.id) throw new Error('Bid needs a synced booking');
+      await api.submitBookingBid(bidTarget.id, payload);
+      setLoads((current) =>
+        current.map((load) =>
+          load.id === bidTarget.id ? { ...load, bidSubmitted: true, bidCount: Number(load.bidCount || 0) + 1 } : load
+        )
+      );
+      notify(`Bid submitted for ${bidTarget.route}`);
+      setBidTarget(null);
+    } catch (err) {
+      saveLocal('bids', localPayload);
+      notify(err.message || 'Bid held until account sync completes');
+    } finally {
+      setBidBusy(false);
     }
   }
 
   function runOwnerQueue(label) {
     if (label.startsWith('Submit bid')) {
-      if (loads[0]) placeBid(loads[0]);
-      else notify('No available load is ready for bidding');
+      openBidReview(loads[0]);
       return;
     }
 
@@ -2131,11 +2284,13 @@ function OwnerPage({ notify }) {
                     key={load.route}
                     role="button"
                     tabIndex={0}
-                    onClick={() => placeBid(load)}
-                    onKeyDown={(event) => activateOnEnter(event, () => placeBid(load))}
+                    onClick={() => openBidReview(load)}
+                    onKeyDown={(event) => activateOnEnter(event, () => openBidReview(load))}
                   >
                     <div>
-                      <StatusBadge tone={load.risk === 'High' ? 'warn' : 'success'}>{load.fit}</StatusBadge>
+                      <StatusBadge tone={load.bidSubmitted ? 'success' : load.risk === 'High' ? 'warn' : 'success'}>
+                        {load.bidSubmitted ? 'Bid sent' : load.fit}
+                      </StatusBadge>
                       <h3>{load.cargo}</h3>
                       <p>{load.route}</p>
                       <small>
@@ -2149,10 +2304,10 @@ function OwnerPage({ notify }) {
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          placeBid(load);
+                          openBidReview(load);
                         }}
                       >
-                        Place Bid
+                        Review Bid
                       </button>
                     </div>
                   </article>
@@ -2165,6 +2320,16 @@ function OwnerPage({ notify }) {
               )}
             </div>
           </Panel>
+
+          <OwnerBidReviewPanel
+            load={bidTarget}
+            draft={bidDraft}
+            fleet={fleet}
+            busy={bidBusy}
+            onChange={updateBidDraft}
+            onSubmit={submitOwnerBid}
+            onClose={() => setBidTarget(null)}
+          />
 
           <Panel title="Vehicle Readiness" eyebrow="Fleet">
             <div className="add-row">
@@ -2597,7 +2762,10 @@ function OnboardingPage({ notify, user, setUser }) {
 function BidsPage({ notify, user }) {
   const role = roleForUser(user);
   const [items, setItems] = useState([]);
+  const [fleet, setFleet] = useState([]);
   const [busy, setBusy] = useState('');
+  const [bidTarget, setBidTarget] = useState(null);
+  const [bidDraft, setBidDraft] = useState(() => bidDraftForLoad(null));
 
   useEffect(() => {
     const loader = role === 'owner' ? api.listOpenBookings : api.listBookings;
@@ -2607,23 +2775,57 @@ function BidsPage({ notify, user }) {
         setItems(role === 'owner' ? bookings.map(normalizeOpenLoad) : bookings.map(normalizeBookingShipment));
       })
       .catch(() => setItems(role === 'owner' ? workspaceLoads : workspaceShipments));
+
+    if (role === 'owner') {
+      api
+        .fleetTrucks()
+        .then((data) => Array.isArray(data.trucks) && setFleet(data.trucks.map(normalizeTruck)))
+        .catch(() => setFleet(workspaceFleet.slice(0, 3)));
+    }
   }, [role]);
 
-  async function submitOwnerBid(load) {
-    if (!load?.id) {
-      notify('Bid needs a synced booking');
+  function openOwnerBidReview(load) {
+    setBidTarget(load);
+    setBidDraft(bidDraftForLoad(load, fleet));
+  }
+
+  function updateBidDraft(key, value) {
+    setBidDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  async function submitOwnerBid(event) {
+    event.preventDefault();
+    if (!bidTarget) return;
+
+    const amount = Number(bidDraft.amount || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      notify('Enter a bid amount greater than zero');
       return;
     }
 
-    setBusy(load.id);
+    const payload = bidPayloadForDraft(bidDraft, fleet);
+    const localPayload = {
+      ...payload,
+      bookingId: bidTarget.id,
+      route: bidTarget.route,
+      cargo: bidTarget.cargo,
+      status: 'submitted'
+    };
+
+    setBusy(`bid-${bidTarget.id || bidTarget.route}`);
     try {
-      await api.submitBookingBid(load.id, {
-        amount: load.price || 1,
-        message: 'Available for pickup. Documents ready.'
-      });
-      notify(`Bid submitted for ${load.route}`);
+      if (!bidTarget.id) throw new Error('Bid needs a synced booking');
+      await api.submitBookingBid(bidTarget.id, payload);
+      setItems((current) =>
+        current.map((load) =>
+          load.id === bidTarget.id ? { ...load, bidSubmitted: true, bidCount: Number(load.bidCount || 0) + 1 } : load
+        )
+      );
+      notify(`Bid submitted for ${bidTarget.route}`);
+      setBidTarget(null);
     } catch (err) {
-      notify(err.message);
+      saveLocal('bids', localPayload);
+      notify(err.message || 'Bid held until account sync completes');
     } finally {
       setBusy('');
     }
@@ -2653,7 +2855,9 @@ function BidsPage({ notify, user }) {
                 items.map((load) => (
                   <article className="load-row" key={load.id || load.route}>
                     <div>
-                      <StatusBadge tone={load.risk === 'High' ? 'warn' : 'success'}>{load.fit}</StatusBadge>
+                      <StatusBadge tone={load.bidSubmitted ? 'success' : load.risk === 'High' ? 'warn' : 'success'}>
+                        {load.bidSubmitted ? 'Bid sent' : load.fit}
+                      </StatusBadge>
                       <h3>{load.cargo}</h3>
                       <p>{load.route}</p>
                       <small>
@@ -2665,10 +2869,10 @@ function BidsPage({ notify, user }) {
                       <button
                         className="primary"
                         type="button"
-                        disabled={busy === load.id}
-                        onClick={() => submitOwnerBid(load)}
+                        disabled={busy === `bid-${load.id || load.route}`}
+                        onClick={() => openOwnerBidReview(load)}
                       >
-                        {busy === load.id ? 'Submitting...' : 'Place Bid'}
+                        Review Bid
                       </button>
                     </div>
                   </article>
@@ -2678,13 +2882,22 @@ function BidsPage({ notify, user }) {
               )}
             </div>
           </Panel>
+          <OwnerBidReviewPanel
+            load={bidTarget}
+            draft={bidDraft}
+            fleet={fleet}
+            busy={Boolean(busy)}
+            onChange={updateBidDraft}
+            onSubmit={submitOwnerBid}
+            onClose={() => setBidTarget(null)}
+          />
         </div>
         <aside className="side-stack">
           <Panel title="Owner Rules" eyebrow="Bidding">
             <div className="doc-list compact">
-              <span>Bid on open work</span>
-              <span>Keep vehicle documents ready</span>
-              <span>Start pickup after award</span>
+              <span>Review the load before entering a rate</span>
+              <span>Share vehicle readiness in the bid note</span>
+              <span>Start pickup only after the shipper awards the job</span>
             </div>
           </Panel>
         </aside>
@@ -2704,17 +2917,34 @@ function BidsPage({ notify, user }) {
                   <h3>{booking.route}</h3>
                   <p>{booking.cargo}</p>
                   <small>{booking.bids?.length || 0} carrier bids</small>
-                  <div className="doc-list compact">
-                    {(booking.bids || []).map((bid) => (
-                      <button
-                        type="button"
-                        key={bid.id}
-                        disabled={busy === `${booking.bookingId}-${bid.id}` || bid.status === 'accepted'}
-                        onClick={() => acceptBid(booking, bid)}
-                      >
-                        {bid.status === 'accepted' ? 'Awarded' : `${bid.ownerName} - ${money(bid.amount)}`}
-                      </button>
-                    ))}
+                  <div className="bid-options">
+                    {(booking.bids || []).length ? (
+                      booking.bids.map((bid) => (
+                        <div className="bid-option" key={bid.id}>
+                          <div>
+                            <StatusBadge tone={bid.status === 'accepted' ? 'success' : 'default'}>
+                              {statusLabel(bid.status)}
+                            </StatusBadge>
+                            <strong>{bid.ownerName}</strong>
+                            <span>{bid.truckName}</span>
+                            <small>{bid.message}</small>
+                          </div>
+                          <div>
+                            <strong>{money(bid.amount)}</strong>
+                            <button
+                              className="primary"
+                              type="button"
+                              disabled={busy === `${booking.bookingId}-${bid.id}` || bid.status === 'accepted'}
+                              onClick={() => acceptBid(booking, bid)}
+                            >
+                              {bid.status === 'accepted' ? 'Awarded' : 'Award'}
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <span className="muted-note">No carrier offers yet.</span>
+                    )}
                   </div>
                 </article>
               ))
@@ -3051,6 +3281,7 @@ function MessagesPage({ notify, user }) {
 
   const shipment = shipments[selected] || shipments[0];
   const messageKey = shipment?.bookingId || shipment?.id || '';
+  const currentUserId = userIdFor(user);
 
   useEffect(() => {
     if (!shipment) return;
@@ -3059,10 +3290,10 @@ function MessagesPage({ notify, user }) {
       .listMessages(messageKey)
       .then((data) => {
         const items = Array.isArray(data.items) ? data.items : [];
-        if (items.length) setMessages(items.map((item) => normalizeWorkflowMessage(item, user?._id)));
+        if (items.length) setMessages(items.map((item) => normalizeWorkflowMessage(item, user)));
       })
       .catch(() => {});
-  }, [messageKey, shipment, user?._id]);
+  }, [messageKey, shipment, currentUserId, user]);
 
   async function sendMessage(event) {
     event.preventDefault();
@@ -3084,6 +3315,9 @@ function MessagesPage({ notify, user }) {
         shipmentId: shipment.id,
         route: shipment.route,
         text,
+        senderId: userIdFor(user),
+        senderName: userDisplayName(user),
+        senderRole: roleForUser(user),
         sender: 'me',
         status: 'sent'
       });
@@ -3116,12 +3350,7 @@ function MessagesPage({ notify, user }) {
       <Panel title={shipment?.route || 'Messages'} eyebrow="In-house Text">
         <div className="chat-thread">
           {messages.map((message) => (
-            <div className={`chat-message ${message.author === 'me' ? 'me' : 'them'}`} key={message.id}>
-              <p>{message.text}</p>
-              <small>
-                {message.name} - {formatMessageTime(message.createdAt)}
-              </small>
-            </div>
+            <ChatBubble message={message} key={message.id} />
           ))}
         </div>
         <form className="chat-compose" onSubmit={sendMessage}>

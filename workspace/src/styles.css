@@ -1212,6 +1212,7 @@ input[type='radio'] {
   display: grid;
   gap: 4px;
   max-width: 88%;
+  justify-self: start;
 }
 
 .chat-message p {
@@ -1225,12 +1226,24 @@ input[type='radio'] {
 }
 
 .chat-message small {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: var(--muted);
+  font-size: 11px;
+}
+
+.chat-message small strong {
+  color: var(--ink);
   font-size: 11px;
 }
 
 .chat-message.me {
   justify-self: end;
+}
+
+.chat-message.me small {
+  justify-content: flex-end;
 }
 
 .chat-message.me p {
@@ -1242,6 +1255,10 @@ input[type='radio'] {
 
 .chat-message.them p {
   border-bottom-left-radius: 4px;
+}
+
+.chat-message.them {
+  justify-self: start;
 }
 
 .chat-compose {
@@ -1332,6 +1349,50 @@ input[type='radio'] {
 .modal-form {
   display: grid;
   gap: 12px;
+}
+
+.bid-review-note,
+.bid-option {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f8fafc;
+}
+
+.bid-review-note strong,
+.bid-option > div:last-child > strong {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 23px;
+  font-weight: 500;
+}
+
+.bid-review-note span,
+.bid-option span,
+.bid-option small {
+  color: var(--muted);
+}
+
+.bid-options {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.bid-option {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.bid-option > div {
+  display: grid;
+  gap: 6px;
+}
+
+.bid-option > div:last-child {
+  justify-items: end;
 }
 
 .verification-card {
