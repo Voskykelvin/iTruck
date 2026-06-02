@@ -25,6 +25,20 @@ test('auth login returns structured validation errors', async () => {
   expect(res.body.errors.map((error) => error.field)).toEqual(expect.arrayContaining(['email', 'password']));
 });
 
+test('forgot password returns a generic response', async () => {
+  const res = await request(app).post('/api/auth/forgot-password').send({ email: 'unknown@example.com' });
+
+  expect(res.status).toBe(200);
+  expect(res.body.message).toContain('If that email exists');
+});
+
+test('google sign-in start reports unconfigured provider', async () => {
+  const res = await request(app).get('/api/auth/google/start');
+
+  expect(res.status).toBe(501);
+  expect(res.body.message).toContain('not configured');
+});
+
 test('truck list rejects invalid query filters before querying data', async () => {
   const res = await request(app).get('/api/trucks?verified=maybe');
 
