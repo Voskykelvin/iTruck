@@ -213,6 +213,11 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ isActive })
     }),
+  adminVerifyUser: (userId, isVerified) =>
+    request(`/admin/users/${encodeURIComponent(userId)}/verification`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isVerified })
+    }),
   adminVerifyTruck: (truckId, isVerified) =>
     request(`/admin/trucks/${encodeURIComponent(truckId)}/verification`, {
       method: 'PATCH',

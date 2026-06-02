@@ -11,7 +11,8 @@ const {
   documentReviewSchema,
   notifySchema,
   truckVerificationSchema,
-  userStatusSchema
+  userStatusSchema,
+  userVerificationSchema
 } = require('../validators/admin');
 const { demoUsers, demoTrucks } = require('../data/demo-users');
 
@@ -162,6 +163,26 @@ router.patch('/users/:id/status', userStatusSchema, validate, async (req, res, n
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     await recordAudit(req, 'user.status.updated', 'user', user._id, { isActive: user.isActive });
+    res.json({ user });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/users/:id/verification', userVerificationSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) {
+      const user = demoUsers.find((item) => item._id === req.params.id);
+      if (!user) return res.status(404).json({ message: 'User not found' });
+      user.isVerified = req.body.isVerified;
+      return res.json({ user, mode: 'memory' });
+    }
+
+    const user = await User.findByIdAndUpdate(req.params.id, { isVerified: req.body.isVerified }, { new: true });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    await recordAudit(req, 'user.verification.updated', 'user', user._id, { isVerified: user.isVerified });
     res.json({ user });
   } catch (err) {
     next(err);
