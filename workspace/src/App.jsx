@@ -53,13 +53,7 @@ const roleNavigation = {
     { path: '/app/profile', label: 'Settings', icon: UserRound }
   ],
   admin: [
-    { path: '/app/admin', label: 'Admin', icon: BarChart3 },
-    { path: '/app/shipper', label: 'Shipper', icon: LayoutDashboard },
-    { path: '/app/owner', label: 'Owner', icon: Truck },
-    { path: '/app/bids', label: 'Bids', icon: Search },
-    { path: '/app/documents', label: 'Documents', icon: FileText },
-    { path: '/app/payments', label: 'Payments', icon: Wallet },
-    { path: '/app/messages', label: 'Messages', icon: MessageSquare },
+    { path: '/app/admin', label: 'Console', icon: BarChart3 },
     { path: '/app/profile', label: 'Settings', icon: UserRound }
   ]
 };
@@ -76,7 +70,7 @@ const neutralRoutes = ['/app/marketplace'];
 const roleRoutes = {
   client: ['/app/shipper', '/app/book', '/app/bids', ...commonRoutes],
   owner: ['/app/owner', '/app/vehicles', '/app/bids', ...commonRoutes],
-  admin: ['/app/admin', '/app/shipper', '/app/book', '/app/owner', '/app/vehicles', '/app/bids', ...commonRoutes]
+  admin: ['/app/admin', '/app/profile']
 };
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
@@ -168,6 +162,9 @@ function routeAllowedForUser(route, user) {
   const role = roleForUser(user);
   const path = pathOnly(route);
   if (path === '/app' || path === '/app/') return true;
+  if (role === 'admin') {
+    return roleRoutes.admin.some((allowed) => path === allowed || path.startsWith(`${allowed}/`));
+  }
   if (neutralRoutes.some((allowed) => path === allowed || path.startsWith(`${allowed}/`))) return true;
   return (roleRoutes[role] || roleRoutes.client).some((allowed) => path === allowed || path.startsWith(`${allowed}/`));
 }
@@ -587,6 +584,12 @@ function App() {
 
   const page = useMemo(() => {
     const props = { notify, route, user, setUser };
+    if (!routeAllowedForUser(route, user)) {
+      if (activeRole === 'admin') return <AdminPage {...props} />;
+      if (activeRole === 'owner') return <OwnerPage {...props} />;
+      return <ShipperPage {...props} />;
+    }
+
     if (route.startsWith('/app/onboarding')) return <OnboardingPage {...props} />;
     if (route.startsWith('/app/bids')) return <BidsPage {...props} />;
     if (route.startsWith('/app/documents')) return <DocumentsPage {...props} />;
@@ -4419,16 +4422,34 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
   const [email, setEmail] = useState(user.email || '');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [authMode, setAuthMode] = useState('signin');
+  const [resetEmail, setResetEmail] = useState(user.email || '');
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
   const [uploadingDocument, setUploadingDocument] = useState('');
   const [pendingDocument, setPendingDocument] = useState('');
   const pendingDocumentRef = useRef('');
   const documentInputRef = useRef(null);
-  const verificationItems = ['Owner KYC', 'Driver ID', 'Vehicle logbook', 'Insurance', 'Route history'];
+  const signedIn = Boolean(user.email);
+  const activeUserRole = roleForUser(user);
+  const verificationItems =
+    activeUserRole === 'owner' ? ownerProfileDocuments : activeUserRole === 'admin' ? [] : shipperProfileDocuments;
 
   const selectPendingDocument = useCallback((item) => {
     pendingDocumentRef.current = item;
     setPendingDocument(item);
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(route.split('?')[1] || '');
+    const token = params.get('reset') || '';
+    if (!token) return;
+
+    setAuthMode('reset');
+    setResetToken(token);
+    setResetEmail(params.get('email') || user.email || email);
+  }, [email, route, user.email]);
 
   useEffect(() => {
     const requestedDocument = new URLSearchParams(route.split('?')[1] || '').get('document');
@@ -4456,6 +4477,49 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
       notify(err.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function startGoogleSignIn() {
+    try {
+      const data = await api.googleSignInStart();
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      notify('Google sign-in is not configured yet');
+    } catch (err) {
+      notify(err.message || 'Google sign-in is not configured yet');
+    }
+  }
+
+  async function requestPasswordReset(event) {
+    event.preventDefault();
+    setResetBusy(true);
+    try {
+      const data = await api.requestPasswordReset({ email: resetEmail || email });
+      notify(data.message || 'If that email exists, password reset instructions have been sent.');
+      setAuthMode('signin');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setResetBusy(false);
+    }
+  }
+
+  async function resetPassword(event) {
+    event.preventDefault();
+    setResetBusy(true);
+    try {
+      const data = await api.resetPassword({ email: resetEmail || email, token: resetToken, password: newPassword });
+      setPassword('');
+      setNewPassword('');
+      setAuthMode('signin');
+      notify(data.message || 'Password updated. Sign in with your new password.');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setResetBusy(false);
     }
   }
 
@@ -4491,51 +4555,163 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
   }
 
   return (
-    <section className="profile-layout">
-      <Panel title="Session" eyebrow="Account">
-        <form className="modal-form" onSubmit={login}>
-          <Input label="Email" value={email} onChange={setEmail} />
-          <Input label="Password" type="password" value={password} onChange={setPassword} />
-          <div className="button-row">
-            <button className="primary" type="submit" disabled={busy}>
-              {busy ? 'Signing in...' : 'Sign In'}
-            </button>
-            <button className="ghost icon-label" type="button" onClick={signOut}>
-              <LogOut size={18} />
-              <span>Sign Out</span>
+    <section className={`profile-layout ${signedIn ? '' : 'auth-only'}`}>
+      <Panel title={signedIn ? 'Account' : 'Sign in'} eyebrow={signedIn ? 'Session' : 'Access'}>
+        {signedIn ? (
+          <div className="account-summary">
+            <div>
+              <StatusBadge tone={user.isVerified ? 'success' : 'warn'}>{roleName(activeUserRole)}</StatusBadge>
+              <strong>{[user.firstName, user.lastName].filter(Boolean).join(' ') || user.email}</strong>
+              <span>{user.email}</span>
+              <small>{user.country || 'Country pending'}</small>
+            </div>
+            <button className="ghost compact-button icon-label" type="button" onClick={signOut}>
+              <LogOut size={16} />
+              <span>Sign out</span>
             </button>
           </div>
-        </form>
+        ) : (
+          <div className="auth-card">
+            <div className="auth-copy">
+              <h3>{authMode === 'reset' ? 'Create a new password' : 'Welcome back'}</h3>
+              <p>Access your iTruck workspace with your account credentials.</p>
+            </div>
+
+            {authMode !== 'reset' ? (
+              <>
+                <button className="auth-provider-button" type="button" onClick={startGoogleSignIn}>
+                  <span className="google-mark">G</span>
+                  Continue with Google
+                </button>
+                <div className="auth-divider">
+                  <span>or</span>
+                </div>
+              </>
+            ) : null}
+
+            {authMode === 'forgot' ? (
+              <form className="auth-form" onSubmit={requestPasswordReset}>
+                <label className="field">
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    value={resetEmail}
+                    autoComplete="email"
+                    onChange={(event) => setResetEmail(event.target.value)}
+                  />
+                </label>
+                <div className="auth-actions">
+                  <button className="primary auth-submit" type="submit" disabled={resetBusy}>
+                    {resetBusy ? 'Sending...' : 'Send reset link'}
+                  </button>
+                  <button className="text-button" type="button" onClick={() => setAuthMode('signin')}>
+                    Back to sign in
+                  </button>
+                </div>
+              </form>
+            ) : authMode === 'reset' ? (
+              <form className="auth-form" onSubmit={resetPassword}>
+                <label className="field">
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    value={resetEmail}
+                    autoComplete="email"
+                    onChange={(event) => setResetEmail(event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>New password</span>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    autoComplete="new-password"
+                    onChange={(event) => setNewPassword(event.target.value)}
+                  />
+                </label>
+                <div className="auth-actions">
+                  <button className="primary auth-submit" type="submit" disabled={resetBusy}>
+                    {resetBusy ? 'Updating...' : 'Update password'}
+                  </button>
+                  <button className="text-button" type="button" onClick={() => setAuthMode('signin')}>
+                    Back to sign in
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form className="auth-form" onSubmit={login}>
+                <label className="field">
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    value={email}
+                    autoComplete="email"
+                    onChange={(event) => {
+                      setEmail(event.target.value);
+                      setResetEmail(event.target.value);
+                    }}
+                  />
+                </label>
+                <label className="field">
+                  <span>Password</span>
+                  <input
+                    type="password"
+                    value={password}
+                    autoComplete="current-password"
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                </label>
+                <div className="auth-actions">
+                  <button className="primary auth-submit" type="submit" disabled={busy}>
+                    {busy ? 'Signing in...' : 'Sign in'}
+                  </button>
+                  <button
+                    className="text-button"
+                    type="button"
+                    onClick={() => {
+                      setResetEmail(email);
+                      setAuthMode('forgot');
+                    }}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
       </Panel>
-      <Panel title="Verification" eyebrow="Trust">
-        <input
-          ref={documentInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,application/pdf"
-          onChange={uploadVerificationDocument}
-          style={{ display: 'none' }}
-        />
-        <div className="verification-card">
-          <CheckCircle2 size={28} />
-          <strong>{user.email ? `${user.firstName || 'User'} ${user.lastName || ''}` : 'Sign in required'}</strong>
-          <span>
-            {user.role || 'No live session'} - {user.country || 'Local workspace'}
-          </span>
-        </div>
-        <div className="doc-list compact">
-          {verificationItems.map((item) => (
-            <button
-              type="button"
-              key={item}
-              disabled={Boolean(uploadingDocument)}
-              onClick={() => openVerificationUpload(item)}
-            >
-              {uploadingDocument === item ? 'Uploading...' : item}
-            </button>
-          ))}
-        </div>
-      </Panel>
-      {user.email ? (
+      {signedIn && verificationItems.length ? (
+        <Panel title="Verification" eyebrow="Trust">
+          <input
+            ref={documentInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            onChange={uploadVerificationDocument}
+            style={{ display: 'none' }}
+          />
+          <div className="verification-card">
+            <CheckCircle2 size={28} />
+            <strong>{[user.firstName, user.lastName].filter(Boolean).join(' ') || user.email}</strong>
+            <span>
+              {roleName(activeUserRole)} - {user.country || 'Local workspace'}
+            </span>
+          </div>
+          <div className="doc-list compact">
+            {verificationItems.map((item) => (
+              <button
+                type="button"
+                key={item}
+                disabled={Boolean(uploadingDocument)}
+                onClick={() => openVerificationUpload(item)}
+              >
+                {uploadingDocument === item ? 'Uploading...' : item}
+              </button>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
+      {signedIn ? (
         <Panel title="Active Sessions" eyebrow="Security">
           <SessionsManager notify={notify} />
         </Panel>

@@ -8,8 +8,9 @@ const asyncHandler = require('../config/asyncHandler');
 const logger = require('../config/logger');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
-const { loginSchema, registerSchema } = require('../validators/auth');
+const { forgotPasswordSchema, loginSchema, registerSchema, resetPasswordSchema } = require('../validators/auth');
 const { mongoIdParam } = require('../validators/common');
+const { sendMail } = require('../services/email');
 const AppError = require('../utils/AppError');
 const { parseDevice } = require('../utils/deviceParser');
 const { demoUsers, safeUser } = require('../data/demo-users');
@@ -17,6 +18,8 @@ const { demoUsers, safeUser } = require('../data/demo-users');
 const router = express.Router();
 const memoryUsers = [...demoUsers];
 const REFRESH_COOKIE = process.env.REFRESH_COOKIE_NAME || 'itruck_refresh';
+const PASSWORD_RESET_MS = 60 * 60 * 1000;
+const PASSWORD_RESET_MESSAGE = 'If that email exists, password reset instructions have been sent.';
 
 function parseDurationMs(value, fallbackMs) {
   const input = String(value || '').trim();
@@ -91,6 +94,10 @@ function getRefreshToken(req) {
 
 function getDeviceId(req) {
   return req.get('x-device-id') || req.body?.deviceId || null;
+}
+
+function frontendBaseUrl(req) {
+  return (process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
 }
 
 function requestIp(req) {
@@ -192,6 +199,68 @@ router.post(
     return sendAuthResponse(user, req, res);
   })
 );
+
+router.post(
+  '/forgot-password',
+  forgotPasswordSchema,
+  validate,
+  asyncHandler(async (req, res) => {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.json({ message: PASSWORD_RESET_MESSAGE, mode: 'memory' });
+
+    const user = await User.findOne({ email: req.body.email });
+    if (user && user.isActive !== false) {
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      user.passwordResetToken = hashToken(resetToken);
+      user.passwordResetExpires = new Date(Date.now() + PASSWORD_RESET_MS);
+      await user.save({ validateBeforeSave: false });
+
+      const resetUrl = `${frontendBaseUrl(req)}/app/profile?reset=${resetToken}&email=${encodeURIComponent(user.email)}`;
+      try {
+        await sendMail({
+          to: user.email,
+          subject: 'Reset your iTruck password',
+          text: `Use this secure link to reset your iTruck password: ${resetUrl}`,
+          html: `<p>Use this secure link to reset your iTruck password:</p><p><a href="${resetUrl}">Reset password</a></p>`
+        });
+      } catch (err) {
+        logger.warn({ err, userId: user._id }, 'Password reset email failed');
+      }
+    }
+
+    res.json({ message: PASSWORD_RESET_MESSAGE });
+  })
+);
+
+router.post(
+  '/reset-password',
+  resetPasswordSchema,
+  validate,
+  asyncHandler(async (req, res) => {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) throw AppError.badRequest('Password reset is unavailable until a database session exists');
+
+    const user = await User.findOne({
+      email: req.body.email,
+      passwordResetToken: hashToken(req.body.token),
+      passwordResetExpires: { $gt: new Date() }
+    }).select('+password');
+
+    if (!user) throw AppError.unauthorized('Password reset link is invalid or expired');
+
+    user.password = req.body.password;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save();
+    await RefreshToken.revokeAll(user._id);
+
+    return res.json({ message: 'Password updated. Sign in with your new password.' });
+  })
+);
+
+router.get('/google/start', (_req, res) => {
+  res.status(501).json({ message: 'Google sign-in is not configured yet' });
+});
 
 router.post(
   '/refresh',

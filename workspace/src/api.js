@@ -244,6 +244,14 @@ export const api = {
   reportIssue: (payload) => request('/workflow/reports', { method: 'POST', body: JSON.stringify(payload) }),
   login: (payload) =>
     request('/auth/login', { method: 'POST', body: JSON.stringify({ ...payload, deviceId: getDeviceId() }) }),
+  requestPasswordReset: (payload) =>
+    request('/auth/forgot-password', { method: 'POST', body: JSON.stringify(payload) }),
+  resetPassword: (payload) =>
+    request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  googleSignInStart: () => request('/auth/google/start'),
   logout: () => request('/auth/logout', { method: 'POST' }).finally(clearSession),
   listSessions: () => request('/auth/sessions'),
   revokeSession: (id) => request(`/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),

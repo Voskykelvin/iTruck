@@ -26,4 +26,12 @@ const loginSchema = [
   body('deviceId').optional({ checkFalsy: true }).trim().isUUID().withMessage('deviceId is invalid')
 ];
 
-module.exports = { loginSchema, registerSchema };
+const forgotPasswordSchema = [body('email').isEmail().withMessage('Provide a valid email address').normalizeEmail()];
+
+const resetPasswordSchema = [
+  body('email').isEmail().withMessage('Provide a valid email address').normalizeEmail(),
+  body('token').trim().isLength({ min: 20, max: 200 }).withMessage('Reset token is invalid'),
+  body('password').isLength({ min: 8, max: 128 }).withMessage('Password must be at least 8 characters')
+];
+
+module.exports = { forgotPasswordSchema, loginSchema, registerSchema, resetPasswordSchema };
