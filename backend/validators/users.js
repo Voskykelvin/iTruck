@@ -20,7 +20,10 @@ const updatePasswordSchema = [
 ];
 
 const documentUploadSchema = [
-  param('documentType').trim().isLength({ min: 1, max: 80 }).withMessage('documentType is required'),
+  param('documentType')
+    .trim()
+    .matches(/^[a-z0-9][a-z0-9-]{0,79}$/)
+    .withMessage('documentType must be a document slug'),
   body('url').trim().isURL({ require_protocol: true }).withMessage('url must be a valid document URL'),
   optionalString('fileName', 240)
 ];

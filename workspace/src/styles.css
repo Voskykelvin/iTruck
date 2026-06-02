@@ -670,6 +670,79 @@ textarea {
   gap: 12px;
 }
 
+.admin-console {
+  display: grid;
+}
+
+.admin-console-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-tab-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.admin-tab-list button,
+.admin-risk-grid button {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f7fbf2;
+  color: var(--ink);
+  font-weight: 800;
+  text-align: left;
+}
+
+.admin-tab-list button.active,
+.admin-risk-grid button.active {
+  border-color: var(--lime-border);
+  background: var(--surface-2);
+}
+
+.admin-review-desk {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+}
+
+.admin-review-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-review-header h2 {
+  margin: 3px 0 0;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.1;
+}
+
+.admin-risk-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-risk-grid span {
+  display: grid;
+  min-width: 28px;
+  min-height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .admin-review-row {
   display: grid;
   gap: 14px;
@@ -677,6 +750,10 @@ textarea {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
+}
+
+.admin-review-row.compact {
+  gap: 10px;
 }
 
 .admin-review-summary,
@@ -732,8 +809,29 @@ textarea {
   gap: 6px;
 }
 
+.admin-document-archive {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-document-archive span {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .admin-document-main a,
-.admin-photo-strip a {
+.admin-photo-strip a,
+.admin-document-archive a {
   color: var(--orange-dark);
   font-weight: 800;
   text-decoration: none;
@@ -1906,6 +2004,16 @@ input[type='radio'] {
   .load-row {
     grid-template-columns: minmax(0, 1fr) 190px;
     align-items: center;
+  }
+
+  .admin-console-shell {
+    grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .admin-tab-list {
+    position: sticky;
+    top: 88px;
   }
 
   .admin-review-summary,
