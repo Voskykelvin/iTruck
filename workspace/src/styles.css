@@ -606,7 +606,7 @@ textarea {
 }
 
 .action-item,
-.doc-list :is(span, button) {
+.doc-list > :is(span, button) {
   min-height: 48px;
   padding: 12px;
   border: 1px solid transparent;
@@ -632,11 +632,11 @@ textarea {
   width: 100%;
 }
 
-.doc-list span {
+.doc-list > span {
   display: block;
 }
 
-.doc-list.compact :is(span, button) {
+.doc-list.compact > :is(span, button) {
   min-height: 38px;
   padding: 9px 10px;
   font-size: 13px;
@@ -1862,7 +1862,7 @@ input[type='radio'] {
 }
 
 .action-item,
-.doc-list :is(span, button),
+.doc-list > :is(span, button),
 .field input,
 .field select,
 .field textarea,
@@ -1881,4 +1881,125 @@ input[type='radio'] {
 
 .secondary {
   background: #fff7ed;
+}
+
+/* Premium Uploader and Verification Badges */
+.badge.danger {
+  border-color: rgba(239, 68, 68, 0.32);
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.premium-upload-zone {
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  background: #f8fafc;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.premium-upload-zone:hover {
+  border-color: var(--orange);
+  background: #fffaf5;
+  box-shadow: 0 4px 12px rgba(251, 146, 60, 0.08);
+}
+
+.premium-upload-zone:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.premium-upload-zone svg {
+  color: var(--orange-dark);
+}
+
+.premium-upload-zone span {
+  font-weight: 800;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.premium-upload-zone small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.photo-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+  width: 100%;
+}
+
+.photo-preview-card {
+  position: relative;
+  width: 100%;
+  height: 100px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease;
+}
+
+.photo-preview-card:hover {
+  transform: scale(1.03);
+}
+
+.photo-preview-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.photo-remove-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(239, 68, 68, 0.9);
+  color: #ffffff;
+  border: none;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+  padding: 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  transition: background 0.1s ease;
+}
+
+.photo-remove-btn:hover {
+  background: #dc2626;
+}
+
+.payout-hint-card {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: rgba(251, 146, 60, 0.08);
+  border: 1px solid rgba(251, 146, 60, 0.16);
+  color: var(--orange-dark);
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.payout-hint-card svg {
+  margin-top: 2px;
+  flex-shrink: 0;
 }
