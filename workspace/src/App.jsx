@@ -2487,6 +2487,26 @@ function OwnerPage({ notify, user }) {
                     >
                       Manage
                     </button>
+                    <button
+                      className="ghost danger-action"
+                      type="button"
+                      onClick={async (event) => {
+                        event.stopPropagation();
+                        if (!window.confirm(`Remove ${truck.plate} from your fleet?`)) return;
+                        setBusyAction(`remove-truck-${truck.id}`);
+                        try {
+                          await api.removeTruck(truck.id);
+                          setFleet((current) => current.filter((t) => t.id !== truck.id));
+                          notify('Vehicle removed');
+                        } catch (err) {
+                          notify(err.message);
+                        } finally {
+                          setBusyAction('');
+                        }
+                      }}
+                    >
+                      {busyAction === `remove-truck-${truck.id}` ? '...' : 'Remove'}
+                    </button>
                   </div>
                 </article>
               ))}
@@ -3211,6 +3231,10 @@ function DocumentsPage({ notify, user }) {
           }
         } else {
           await api.uploadTruckDocument(pending.targetId, pending.documentType, file);
+          api
+            .fleetTrucks()
+            .then((data) => Array.isArray(data.trucks) && setFleet(data.trucks.map(normalizeTruck)))
+            .catch(() => {});
         }
       } else {
         const data = await api.uploadCargo([file]);
@@ -3269,11 +3293,8 @@ function DocumentsPage({ notify, user }) {
                         }
 
                         return (
-                          <button
-                            type="button"
+                          <div
                             key={item}
-                            disabled={busy === `${truck.id}-${slug}`}
-                            onClick={() => openUpload('truck', truck.id, slug)}
                             style={{
                               display: 'flex',
                               justifyContent: 'space-between',
@@ -3292,11 +3313,19 @@ function DocumentsPage({ notify, user }) {
                                       : '#f8fafc'
                             }}
                           >
-                            <span style={{ fontWeight: 700 }}>{item}</span>
-                            <StatusBadge tone={tone}>
-                              {busy === `${truck.id}-${slug}` ? 'Uploading...' : statusText}
-                            </StatusBadge>
-                          </button>
+                            <span style={{ fontWeight: 700, flex: 1 }}>{item}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <StatusBadge tone={tone}>
+                                {busy === `${truck.id}-${slug}` ? 'Uploading...' : statusText}
+                              </StatusBadge>
+                              {docStatus === 'approved' && (
+                                <span style={{ color: '#22c55e', fontSize: '14px' }}>✓</span>
+                              )}
+                              {docStatus === 'pending' && (
+                                <span style={{ color: '#f59e0b', fontSize: '14px' }}>⋯</span>
+                              )}
+                            </div>
+                          </div>
                         );
                       })}
                     </div>

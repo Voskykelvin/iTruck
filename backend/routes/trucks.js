@@ -221,6 +221,39 @@ router.delete('/:id', protect, archiveTruckSchema, validate, async (req, res, ne
   }
 });
 
+router.delete('/:id/photos/:photoUrl', protect, restrictTo('owner', 'admin'), async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+
+    if (!mongoReady()) {
+      const truck = memoryTrucks.find(
+        (item) =>
+          !item.archivedAt && String(item._id || item.id || item.plateNumber || item.plate) === String(req.params.id)
+      );
+      if (!truck || (req.user.role !== 'admin' && String(truck.owner) !== String(req.user._id))) {
+        return res.status(404).json({ message: 'Truck not found' });
+      }
+
+      truck.photos = (truck.photos || []).filter((photo) => photo !== req.params.photoUrl);
+      return res.json({ truck, mode: 'memory' });
+    }
+
+    const query = activeTruckFilter({ _id: req.params.id });
+    if (req.user.role !== 'admin') query.owner = req.user._id;
+
+    const truck = await Truck.findOneAndUpdate(
+      query,
+      { $pull: { photos: req.params.photoUrl } },
+      { new: true }
+    );
+    if (!truck) return res.status(404).json({ message: 'Truck not found' });
+
+    res.json({ truck });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch(
   '/:id/photos',
   protect,
