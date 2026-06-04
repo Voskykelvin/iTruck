@@ -2139,6 +2139,7 @@ function OwnerPage({ notify, user }) {
   const [bidTarget, setBidTarget] = useState(null);
   const [bidDraft, setBidDraft] = useState(() => bidDraftForLoad(null));
   const [bidBusy, setBidBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState('');
 
   useEffect(() => {
     api
@@ -3321,9 +3322,7 @@ function DocumentsPage({ notify, user }) {
                               {docStatus === 'approved' && (
                                 <span style={{ color: '#22c55e', fontSize: '14px' }}>✓</span>
                               )}
-                              {docStatus === 'pending' && (
-                                <span style={{ color: '#f59e0b', fontSize: '14px' }}>⋯</span>
-                              )}
+                              {docStatus === 'pending' && <span style={{ color: '#f59e0b', fontSize: '14px' }}>⋯</span>}
                             </div>
                           </div>
                         );

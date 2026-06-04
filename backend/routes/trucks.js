@@ -241,11 +241,7 @@ router.delete('/:id/photos/:photoUrl', protect, restrictTo('owner', 'admin'), as
     const query = activeTruckFilter({ _id: req.params.id });
     if (req.user.role !== 'admin') query.owner = req.user._id;
 
-    const truck = await Truck.findOneAndUpdate(
-      query,
-      { $pull: { photos: req.params.photoUrl } },
-      { new: true }
-    );
+    const truck = await Truck.findOneAndUpdate(query, { $pull: { photos: req.params.photoUrl } }, { new: true });
     if (!truck) return res.status(404).json({ message: 'Truck not found' });
 
     res.json({ truck });

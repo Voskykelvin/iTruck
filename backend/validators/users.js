@@ -26,8 +26,8 @@ const documentUploadSchema = [
     .withMessage('documentType must be a document slug'),
   body('url')
     .trim()
+    .optional({ checkFalsy: true })
     .isURL({ require_protocol: true })
-    .or(() => true)
     .withMessage('url must be a valid document URL'),
   optionalString('fileName', 240),
   optionalString('notes', 1000)
