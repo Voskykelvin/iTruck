@@ -101,7 +101,7 @@ function findBid(booking, bidId) {
   );
 }
 
-function acceptBidOnBooking(booking, bidId, ownerUserId) {
+function acceptBidOnBooking(booking, bidId, _ownerUserId) {
   if (booking.status !== 'bidding') {
     const err = new Error('Booking is not ready for bid acceptance');
     err.status = 409;

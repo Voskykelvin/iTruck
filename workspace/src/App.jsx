@@ -616,7 +616,7 @@ function App() {
     if (route.startsWith('/app/admin')) return <AdminPage {...props} />;
     if (route.startsWith('/app/profile')) return <ProfilePage {...props} signOut={signOut} />;
     return activeRole === 'owner' ? <OwnerPage {...props} /> : <ShipperPage {...props} />;
-  }, [activeRole, notify, route, user]);
+  }, [activeRole, notify, route, signOut, user]);
 
   const primaryAction =
     activeRole === 'owner'
@@ -864,7 +864,7 @@ function ShipperPage({ notify, user }) {
       setBidReview(review);
       notify(`Loaded ${review.bids.length} carrier bid${review.bids.length === 1 ? '' : 's'}`);
     } catch (err) {
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.NODE_ENV === 'development') {
         console.error('Failed to fetch booking for bid review:', err);
       }
       notify(err.message);
@@ -884,7 +884,7 @@ function ShipperPage({ notify, user }) {
       setShipments((current) => current.map((item) => (item.bookingId === updated.bookingId ? updated : item)));
       notify(`Awarded ${bid.ownerName}`);
     } catch (err) {
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.NODE_ENV === 'development') {
         console.error('Failed to award bid:', err);
       }
       notify(err.message);
@@ -926,7 +926,7 @@ function ShipperPage({ notify, user }) {
       });
       notify(`${definition.label} downloaded for ${target.id}`);
     } catch (err) {
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.NODE_ENV === 'development') {
         console.error(`Failed to download ${definition.label} document:`, err);
       }
       notify(err.message);
@@ -947,7 +947,7 @@ function ShipperPage({ notify, user }) {
       openDocumentWorkbench('Cargo photos', target);
       await downloadShipmentDocument(documentActions[0], target, 'Cargo photos');
     } catch (err) {
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.NODE_ENV === 'development') {
         console.error('Failed to open waybill and photos:', err);
       }
       notify('Error loading waybill and photos');
@@ -1396,7 +1396,7 @@ function BookingPage({ notify }) {
       notify('Booking request created');
       navigate('/app/shipper');
     } catch (err) {
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.NODE_ENV === 'development') {
         console.error('Booking submission failed:', err);
       }
       saveLocal('bookings', payload);
@@ -4743,7 +4743,9 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
                     onChange={(event) => setResetEmail(event.target.value)}
                   />
                 </label>
-                {resetStatus === 'reset-requested' ? <p className="muted-note">Check your inbox for the reset link.</p> : null}
+                {resetStatus === 'reset-requested' ? (
+                  <p className="muted-note">Check your inbox for the reset link.</p>
+                ) : null}
                 <div className="auth-actions">
                   <button className="primary auth-submit" type="submit" disabled={resetBusy}>
                     {resetBusy ? 'Sending...' : 'Send reset link'}
