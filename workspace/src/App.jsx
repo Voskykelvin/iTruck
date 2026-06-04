@@ -28,6 +28,7 @@ import { api, clearSession, currentUser, setSession } from './api.js';
 import ServiceWorkerUpdateToast from './components/ServiceWorkerUpdateToast.jsx';
 import SessionsManager from './components/SessionsManager.jsx';
 import { demoDocuments, demoFleet, demoLoads, demoShipments } from './data.js';
+import io from 'socket.io-client';
 
 const roleNavigation = {
   client: [
@@ -3178,6 +3179,7 @@ function DocumentsPage({ notify, user }) {
   const [busy, setBusy] = useState('');
   const pendingUploadRef = useRef(null);
   const fileInputRef = useRef(null);
+  const socketRef = useRef(null);
 
   useEffect(() => {
     api
@@ -3191,6 +3193,24 @@ function DocumentsPage({ notify, user }) {
         .then((data) => Array.isArray(data.trucks) && setFleet(data.trucks.map(normalizeTruck)))
         .catch(() => setFleet(workspaceFleet.slice(0, 2)));
     }
+  }, [role]);
+
+  useEffect(() => {
+    socketRef.current = io(window.location.origin);
+    socketRef.current.on('document:updated', (data) => {
+      // Refetch relevant data
+      if (role === 'owner') {
+        api.fleetTrucks().then((res) => {
+          if (Array.isArray(res.trucks)) setFleet(res.trucks.map(normalizeTruck));
+        });
+      }
+      api.listBookings().then((res) => {
+        if (Array.isArray(res.bookings)) setShipments(res.bookings.map(normalizeBookingShipment));
+      });
+    });
+    return () => {
+      socketRef.current.disconnect();
+    };
   }, [role]);
 
   async function downloadDoc(definition, shipment) {
@@ -3339,6 +3359,7 @@ function DocumentsPage({ notify, user }) {
                       {documentActions.map((definition) => (
                         <button
                           type="button"
+                          key={definition.label}
                           key={definition.label}
                           disabled={busy === `${shipment.bookingId}-${definition.type}`}
                           onClick={() =>

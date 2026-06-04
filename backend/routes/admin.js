@@ -221,8 +221,18 @@ router.patch('/users/:id/documents/:documentType', documentReviewSchema, validat
 
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
+
     user.documents = upsertDocument(user.documents || [], req.params.documentType, req.body);
     await user.save();
+
+    // Emit socket event to user about document update
+    const io = req.app.get('io');
+    if (io) {
+      io.emitToUser(user._id, 'document:updated', {
+        documentType: req.params.documentType,
+        status: req.body.status
+      });
+    }
 
     await recordAudit(req, 'user.document.reviewed', 'document', user._id, {
       documentType: req.params.documentType,
@@ -248,6 +258,15 @@ router.patch('/trucks/:id/documents/:documentType', documentReviewSchema, valida
     if (!truck) return res.status(404).json({ message: 'Truck not found' });
     truck.documents = upsertDocument(truck.documents || [], req.params.documentType, req.body);
     await truck.save();
+
+    // Emit socket event to user about document update
+    const io = req.app.get('io');
+    if (io) {
+      io.emitToUser(truck.owner, 'document:updated', {
+        documentType: req.params.documentType,
+        status: req.body.status
+      });
+    }
 
     await recordAudit(req, 'truck.document.reviewed', 'document', truck._id, {
       documentType: req.params.documentType,
