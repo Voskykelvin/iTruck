@@ -4532,6 +4532,7 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
   const [resetToken, setResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [resetBusy, setResetBusy] = useState(false);
+  const [resetStatus, setResetStatus] = useState('');
   const [uploadingDocument, setUploadingDocument] = useState('');
   const [pendingDocument, setPendingDocument] = useState('');
   const pendingDocumentRef = useRef('');
@@ -4553,6 +4554,7 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
 
     setAuthMode('reset');
     setResetToken(token);
+    setResetStatus('');
     setResetEmail(params.get('email') || user.email || email);
   }, [email, route, user.email]);
 
@@ -4603,9 +4605,12 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
     setResetBusy(true);
     try {
       const data = await api.requestPasswordReset({ email: resetEmail || email });
-      notify(data.message || 'If that email exists, password reset instructions have been sent.');
+      const message = data.message || 'If that email exists, password reset instructions have been sent.';
+      setResetStatus('reset-requested');
+      notify(message);
       setAuthMode('signin');
     } catch (err) {
+      setResetStatus('');
       notify(err.message);
     } finally {
       setResetBusy(false);
@@ -4616,12 +4621,15 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
     event.preventDefault();
     setResetBusy(true);
     try {
+      if (!resetToken) throw new Error('Missing reset token in URL');
       const data = await api.resetPassword({ email: resetEmail || email, token: resetToken, password: newPassword });
       setPassword('');
       setNewPassword('');
+      setResetStatus('');
       setAuthMode('signin');
       notify(data.message || 'Password updated. Sign in with your new password.');
     } catch (err) {
+      setResetStatus('');
       notify(err.message);
     } finally {
       setResetBusy(false);
@@ -4705,6 +4713,7 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
                     onChange={(event) => setResetEmail(event.target.value)}
                   />
                 </label>
+                {resetStatus === 'reset-requested' ? <p className="muted-note">Check your inbox for the reset link.</p> : null}
                 <div className="auth-actions">
                   <button className="primary auth-submit" type="submit" disabled={resetBusy}>
                     {resetBusy ? 'Sending...' : 'Send reset link'}
@@ -4725,6 +4734,7 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
                     onChange={(event) => setResetEmail(event.target.value)}
                   />
                 </label>
+                {resetToken ? null : <p className="muted-note">Reset token is missing or invalid.</p>}
                 <label className="field">
                   <span>New password</span>
                   <input
@@ -4735,7 +4745,7 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
                   />
                 </label>
                 <div className="auth-actions">
-                  <button className="primary auth-submit" type="submit" disabled={resetBusy}>
+                  <button className="primary auth-submit" type="submit" disabled={resetBusy || !resetToken}>
                     {resetBusy ? 'Updating...' : 'Update password'}
                   </button>
                   <button className="text-button" type="button" onClick={() => setAuthMode('signin')}>

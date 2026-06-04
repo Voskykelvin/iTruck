@@ -150,12 +150,29 @@ async function renderDocument(req, res, next, type, create) {
   }
 }
 
-router.post('/draft/:type', (req, res, next) => {
+router.post('/draft/:type', protect, async (req, res, next) => {
   try {
     const create = documentFactories[req.params.type];
     if (!create) return res.status(404).json({ message: 'Document type not found' });
 
-    streamPdf(res, `draft-${req.params.type}.pdf`, create(draftPayload(req.body)));
+    // Keep draft generation bounded
+    const safeBody = {
+      pickup: req.body?.pickup,
+      destination: req.body?.destination,
+      cargo: req.body?.cargo,
+      weight: req.body?.weight,
+      requirements: req.body?.requirements,
+      cargoValue: req.body?.cargoValue,
+      vehicleType: req.body?.vehicleType,
+      receiverName: req.body?.receiverName,
+      receiverPhone: req.body?.receiverPhone,
+      communicationPreference: req.body?.communicationPreference,
+      paymentMethod: req.body?.paymentMethod,
+      budget: req.body?.budget,
+      route: req.body?.route
+    };
+
+    streamPdf(res, `draft-${req.params.type}.pdf`, create(draftPayload(safeBody)));
   } catch (err) {
     next(err);
   }

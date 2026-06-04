@@ -101,7 +101,7 @@ function findBid(booking, bidId) {
   );
 }
 
-function acceptBidOnBooking(booking, bidId) {
+function acceptBidOnBooking(booking, bidId, ownerUserId) {
   if (booking.status !== 'bidding') {
     const err = new Error('Booking is not ready for bid acceptance');
     err.status = 409;
@@ -116,11 +116,13 @@ function acceptBidOnBooking(booking, bidId) {
   }
 
   booking.bids.forEach((item) => {
-    item.status = String(item._id || item.id || item.owner || item.truck) === String(bidId) ? 'accepted' : 'rejected';
+    const isThis = String(item._id || item.id) === String(bidId);
+    item.status = isThis ? 'accepted' : 'rejected';
   });
   bid.status = 'accepted';
   booking.owner = bid.owner;
   if (bid.truck) booking.truck = bid.truck;
+
   if (typeof booking.transitionTo === 'function') {
     booking.transitionTo('confirmed');
   } else {
@@ -349,7 +351,7 @@ router.patch(
         if (!booking) return res.status(404).json({ message: 'Booking not found' });
         if (!canAcceptBid(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
 
-        acceptBidOnBooking(booking, req.params.bidId);
+        acceptBidOnBooking(booking, req.params.bidId, req.user._id);
         emitBooking(req, booking._id, 'bid-accepted', booking);
         return res.json({ booking, mode: 'memory' });
       }
@@ -358,7 +360,7 @@ router.patch(
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
       if (!canAcceptBid(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
 
-      acceptBidOnBooking(booking, req.params.bidId);
+      acceptBidOnBooking(booking, req.params.bidId, req.user._id);
       await booking.save();
 
       emitBooking(req, booking._id, 'bid-accepted', booking);
