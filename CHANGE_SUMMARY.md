@@ -25,12 +25,6 @@ Previously, `/draft/:type` was unprotected and could be abused to generate PDFs 
 ### Why
 This reduces risk of embedded bid-shape/identity confusion by ensuring the accepted bid belongs to the expected owner identity.
 
-## Files Modified
-- `backend/routes/documents.js`
-- `backend/routes/bookings.js`
-
----
-
 ## 3) Login/signup & forgot-password UX polish
 - **File:** `workspace/src/App.jsx`
 - **Change:** improved the forgot/reset password screens:
@@ -44,12 +38,38 @@ This reduces risk of embedded bid-shape/identity confusion by ensuring the accep
 - **Note:** per request, no global color palette changes were made.
 - **App UX:** button/flow polish was kept to logic-level improvements (reset/forgot UX) without altering the existing CSS palette.
 
+---
+
+## 5) Code quality improvements
+- **Files:** `workspace/src/App.jsx`
+- **Changes:**
+  1. Removed unnecessary dependency from `page` useMemo hook (removed `signOut`)
+  2. Improved timer management for toast notifications using `useRef` hook
+  3. Added development-only error logging to key async functions:
+     - Bid review functions (`openBidReview`, `awardBid`)
+     - Document functions (`downloadShipmentDocument`, `openWaybillAndPhotos`)  
+     - Booking submission (`BookingPage.submit`)
+
+### Why
+These improvements enhance code quality, prevent unnecessary re-renders, fix potential memory leaks, and improve debugging experience in development.
+
+## Files Modified
+- `backend/routes/documents.js`
+- `backend/routes/bookings.js`
+- `workspace/src/App.jsx`
+
+---
+
 ## How to validate quickly
 1. Run backend tests:
-   - `npm test --prefix backend`
+    - `npm test --prefix backend`
 2. Run lint (optional):
-   - `npm run lint`
+    - `npm run lint`
 3. Manual wiring checks (recommended):
-   - Verify any UI buttons/pages that trigger document draft generation now require login.
-   - Verify bid acceptance flow still works for clients/admins across both demo (memory) and Mongo modes.
+    - Verify any UI buttons/pages that trigger document draft generation now require login.
+    - Verify bid acceptance flow still works for clients/admins across both demo (memory) and Mongo modes.
+4. Verify code quality improvements:
+    - Check that toast notifications properly clear after timeout
+    - Verify development error logging works in console when errors occur
+    - Confirm no unnecessary re-renders when signOut function is referenced
 

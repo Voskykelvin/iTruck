@@ -544,6 +544,7 @@ function App() {
   const [user, setUser] = useState(currentUser());
   const activeRole = roleForUser(user);
   const visibleNavItems = useMemo(() => navForUser(user), [user]);
+  const toastTimeoutRef = useRef(null);
 
   useEffect(() => {
     const syncRoute = () => setRoute(routeFromLocation());
@@ -553,8 +554,10 @@ function App() {
 
   const notify = useCallback((message) => {
     setToast(message);
-    window.clearTimeout(notify.timer);
-    notify.timer = window.setTimeout(() => setToast(''), 2800);
+    if (toastTimeoutRef.current) {
+      window.clearTimeout(toastTimeoutRef.current);
+    }
+    toastTimeoutRef.current = window.setTimeout(() => setToast(''), 2800);
   }, []);
 
   const signOut = useCallback(async () => {
@@ -585,6 +588,14 @@ function App() {
     }
   }, [activeRole, notify, route, user]);
 
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        window.clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const page = useMemo(() => {
     const props = { notify, route, user, setUser };
     if (!routeAllowedForUser(route, user)) {
@@ -605,7 +616,7 @@ function App() {
     if (route.startsWith('/app/admin')) return <AdminPage {...props} />;
     if (route.startsWith('/app/profile')) return <ProfilePage {...props} signOut={signOut} />;
     return activeRole === 'owner' ? <OwnerPage {...props} /> : <ShipperPage {...props} />;
-  }, [activeRole, notify, route, signOut, user]);
+  }, [activeRole, notify, route, user]);
 
   const primaryAction =
     activeRole === 'owner'
@@ -853,6 +864,9 @@ function ShipperPage({ notify, user }) {
       setBidReview(review);
       notify(`Loaded ${review.bids.length} carrier bid${review.bids.length === 1 ? '' : 's'}`);
     } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to fetch booking for bid review:', err);
+      }
       notify(err.message);
     } finally {
       setBusyAction('');
@@ -870,6 +884,9 @@ function ShipperPage({ notify, user }) {
       setShipments((current) => current.map((item) => (item.bookingId === updated.bookingId ? updated : item)));
       notify(`Awarded ${bid.ownerName}`);
     } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to award bid:', err);
+      }
       notify(err.message);
     } finally {
       setBusyAction('');
@@ -909,6 +926,9 @@ function ShipperPage({ notify, user }) {
       });
       notify(`${definition.label} downloaded for ${target.id}`);
     } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error(`Failed to download ${definition.label} document:`, err);
+      }
       notify(err.message);
     } finally {
       setBusyAction('');
@@ -923,8 +943,15 @@ function ShipperPage({ notify, user }) {
       return;
     }
 
-    openDocumentWorkbench('Cargo photos', target);
-    await downloadShipmentDocument(documentActions[0], target, 'Cargo photos');
+    try {
+      openDocumentWorkbench('Cargo photos', target);
+      await downloadShipmentDocument(documentActions[0], target, 'Cargo photos');
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to open waybill and photos:', err);
+      }
+      notify('Error loading waybill and photos');
+    }
   }
 
   function handleShipmentDocument(definition, preferred) {
@@ -1368,7 +1395,10 @@ function BookingPage({ notify }) {
       await api.createBooking(payload);
       notify('Booking request created');
       navigate('/app/shipper');
-    } catch (_err) {
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Booking submission failed:', err);
+      }
       saveLocal('bookings', payload);
       notify('Sign in to save this booking to your account');
     } finally {
