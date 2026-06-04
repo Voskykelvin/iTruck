@@ -3197,7 +3197,7 @@ function DocumentsPage({ notify, user }) {
 
   useEffect(() => {
     socketRef.current = io(window.location.origin);
-    socketRef.current.on('document:updated', (data) => {
+    socketRef.current.on('document:updated', (_data) => {
       // Refetch relevant data
       if (role === 'owner') {
         api.fleetTrucks().then((res) => {
@@ -3359,7 +3359,6 @@ function DocumentsPage({ notify, user }) {
                       {documentActions.map((definition) => (
                         <button
                           type="button"
-                          key={definition.label}
                           key={definition.label}
                           disabled={busy === `${shipment.bookingId}-${definition.type}`}
                           onClick={() =>
