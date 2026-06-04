@@ -99,4 +99,26 @@ router.patch('/documents/:documentType', documentUploadSchema, validate, async (
   }
 });
 
+router.delete('/documents/:documentType', protect, async (req, res, next) => {
+  try:
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) {
+      const documents = (req.user.documents || []).filter((doc) => doc.type !== req.params.documentType);
+      return res.json({
+        user: { ...req.user, documents },
+        mode: 'memory'
+      });
+    }
+
+    const user = await User.findById(req.user._id).select('-password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    user.documents = (user.documents || []).filter((doc) => doc.type !== req.params.documentType);
+    await user.save();
+    res.json({ user });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

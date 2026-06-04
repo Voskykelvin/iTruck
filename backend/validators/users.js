@@ -24,8 +24,13 @@ const documentUploadSchema = [
     .trim()
     .matches(/^[a-z0-9][a-z0-9-]{0,79}$/)
     .withMessage('documentType must be a document slug'),
-  body('url').trim().isURL({ require_protocol: true }).withMessage('url must be a valid document URL'),
-  optionalString('fileName', 240)
+  body('url')
+    .trim()
+    .isURL({ require_protocol: true })
+    .or(() => true)
+    .withMessage('url must be a valid document URL'),
+  optionalString('fileName', 240),
+  optionalString('notes', 1000)
 ];
 
 module.exports = { documentUploadSchema, updatePasswordSchema, updateProfileSchema };

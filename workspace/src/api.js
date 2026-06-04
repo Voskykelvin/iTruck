@@ -213,6 +213,19 @@ export const api = {
       body: JSON.stringify({ url, fileName: file.name })
     });
   },
+  removeTruckPhoto: (truckId, photoUrl) =>
+    request(`/trucks/${encodeURIComponent(truckId)}/photos/${encodeURIComponent(photoUrl)}`, {
+      method: 'DELETE'
+    }),
+  removeTruck: (truckId, reason = '') =>
+    request(`/trucks/${encodeURIComponent(truckId)}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason })
+    }),
+  removeUserDocument: (documentType) =>
+    request(`/users/documents/${encodeURIComponent(documentType)}`, {
+      method: 'DELETE'
+    }),
   adminStats: () => request('/admin/stats'),
   adminListUsers: () => request('/admin/users'),
   adminListTrucks: () => request('/admin/trucks'),
