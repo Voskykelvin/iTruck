@@ -100,7 +100,7 @@ router.patch('/documents/:documentType', documentUploadSchema, validate, async (
 });
 
 router.delete('/documents/:documentType', protect, async (req, res, next) => {
-  try:
+  try {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
       const documents = (req.user.documents || []).filter((doc) => doc.type !== req.params.documentType);
