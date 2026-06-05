@@ -15,14 +15,20 @@ import {
   Map,
   Menu,
   MessageSquare,
+  Moon,
   PackageCheck,
+  Phone,
   Plus,
   Search,
   Send,
   ShieldCheck,
+  Smartphone,
+  Star,
+  Sun,
   Truck,
   UserRound,
-  Wallet
+  Wallet,
+  X
 } from 'lucide-react';
 import { api, clearSession, currentUser, setSession } from './api.js';
 import ServiceWorkerUpdateToast from './components/ServiceWorkerUpdateToast.jsx';
@@ -538,7 +544,8 @@ function fallbackEstimate(payload) {
   };
 }
 
-function App() {
+// eslint-disable-next-line no-unused-vars
+function AppLegacy() {
   const [route, setRoute] = useState(routeFromLocation());
   const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState('');
@@ -1007,6 +1014,26 @@ function ShipperPage({ notify, user }) {
     }
   }
 
+  async function cancelBooking(item) {
+    if (!item?.bookingId) {
+      notify('Cannot cancel: booking not synced');
+      return;
+    }
+    if (!window.confirm(`Cancel shipment ${item.id}?`)) return;
+    setBusyAction(`cancel-${item.bookingId}`);
+    try {
+      await api.updateBookingStatus(item.bookingId, { status: 'cancelled' });
+      setShipments((current) =>
+        current.map((s) => (s.bookingId === item.bookingId ? { ...s, rawStatus: 'cancelled', status: 'Cancelled' } : s))
+      );
+      notify(`Shipment ${item.id} cancelled`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusyAction('');
+    }
+  }
+
   const bidQueueTarget = openRequests[0] || shipments.find((shipment) => shipment.rawStatus === 'bidding');
   const actionQueue = [
     {
@@ -1133,6 +1160,19 @@ function ShipperPage({ notify, user }) {
                       >
                         Open
                       </button>
+                      {!['delivered', 'cancelled'].includes(item.rawStatus) && item.bookingId ? (
+                        <button
+                          className="ghost"
+                          type="button"
+                          disabled={busyAction === `cancel-${item.bookingId}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            cancelBooking(item);
+                          }}
+                        >
+                          {busyAction === `cancel-${item.bookingId}` ? 'Cancelling...' : 'Cancel'}
+                        </button>
+                      ) : null}
                     </div>
                   </article>
                 ))
@@ -3291,62 +3331,74 @@ function DocumentsPage({ notify, user }) {
                     <StatusBadge tone={truck.verified ? 'success' : 'warn'}>{truck.documentStatus}</StatusBadge>
                     <h3>{truck.plate}</h3>
                     <p>{truck.name}</p>
-                    <div className="doc-list compact" style={{ display: 'grid', gap: '4px' }}>
+                    <div style={{ display: 'grid', gap: '6px', marginTop: '8px' }}>
                       {ownerVehicleDocuments.map((item) => {
                         const slug = slugDocumentType(item);
                         const existingDoc = (truck.documents || []).find((doc) => doc.type === slug);
                         const docStatus = existingDoc ? existingDoc.status : 'missing';
 
                         let tone = 'default';
-                        let statusText = 'Not Uploaded';
+                        let statusText = 'Upload';
                         if (docStatus === 'approved') {
                           tone = 'success';
-                          statusText = 'Verified';
+                          statusText = 'Verified ✓';
                         } else if (docStatus === 'pending') {
                           tone = 'warn';
-                          statusText = 'Pending Review';
+                          statusText = 'Under Review';
                         } else if (docStatus === 'rejected') {
                           tone = 'danger';
-                          statusText = 'Rejected';
+                          statusText = 'Rejected — Re-upload';
                         } else if (docStatus === 'expired') {
                           tone = 'danger';
-                          statusText = 'Expired';
+                          statusText = 'Expired — Re-upload';
                         }
 
+                        const isBusy = busy === `${truck.id}-${slug}`;
+
                         return (
-                          <div
+                          <button
                             key={item}
+                            type="button"
+                            disabled={isBusy || docStatus === 'approved'}
+                            onClick={() => openUpload('truck', truck.id, slug)}
                             style={{
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
                               width: '100%',
-                              padding: '8px 10px',
+                              padding: '10px 12px',
                               borderRadius: 'var(--radius)',
                               border: '1px solid var(--line)',
                               background:
                                 docStatus === 'approved'
-                                  ? 'rgba(132, 204, 22, 0.06)'
+                                  ? 'rgba(132, 204, 22, 0.07)'
                                   : docStatus === 'pending'
                                     ? 'rgba(245, 158, 11, 0.06)'
-                                    : docStatus === 'rejected'
+                                    : docStatus === 'rejected' || docStatus === 'expired'
                                       ? 'rgba(239, 68, 68, 0.05)'
-                                      : '#f8fafc'
+                                      : '#f8fafc',
+                              cursor: docStatus === 'approved' ? 'default' : 'pointer',
+                              transition: 'border-color 0.15s, background 0.15s'
                             }}
+                            title={docStatus === 'approved' ? `${item} already verified` : `Click to upload ${item}`}
                           >
-                            <span style={{ fontWeight: 700, flex: 1 }}>{item}</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <StatusBadge tone={tone}>
-                                {busy === `${truck.id}-${slug}` ? 'Uploading...' : statusText}
-                              </StatusBadge>
-                              {docStatus === 'approved' && (
-                                <span style={{ color: '#22c55e', fontSize: '14px' }}>✓</span>
-                              )}
-                              {docStatus === 'pending' && <span style={{ color: '#f59e0b', fontSize: '14px' }}>⋯</span>}
-                            </div>
-                          </div>
+                            <span style={{ fontWeight: 700, flex: 1, textAlign: 'left' }}>{item}</span>
+                            <StatusBadge tone={tone}>{isBusy ? 'Uploading…' : statusText}</StatusBadge>
+                          </button>
                         );
                       })}
+                      <button
+                        type="button"
+                        className="premium-upload-zone"
+                        style={{ marginTop: '6px', padding: '14px' }}
+                        disabled={busy.startsWith(truck.id)}
+                        onClick={() => openUpload('truck', truck.id, 'vehicle-photos')}
+                      >
+                        <Image size={20} />
+                        <span style={{ fontSize: '13px' }}>
+                          {busy === `${truck.id}-vehicle-photos` ? 'Uploading…' : 'Upload Vehicle Photos'}
+                        </span>
+                      </button>
                     </div>
                   </article>
                 ))
@@ -4650,6 +4702,38 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
     return () => window.clearTimeout(timer);
   }, [notify, route, selectPendingDocument, user.email]);
 
+  // Registration state
+  const [regFirstName, setRegFirstName] = useState('');
+  const [regLastName, setRegLastName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regRole, setRegRole] = useState('client');
+  const [regBusy, setRegBusy] = useState(false);
+
+  async function register(event) {
+    event.preventDefault();
+    if (!regEmail.trim() || !regPassword.trim()) {
+      notify('Email and password are required');
+      return;
+    }
+    setRegBusy(true);
+    try {
+      const data = await api.register(regRole, {
+        email: regEmail,
+        password: regPassword,
+        firstName: regFirstName,
+        lastName: regLastName
+      });
+      setSession(data);
+      setUser(data.user);
+      notify(`Account created — welcome to iTruck`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setRegBusy(false);
+    }
+  }
+
   async function login(event) {
     event.preventDefault();
     setBusy(true);
@@ -4833,6 +4917,60 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
                   </button>
                 </div>
               </form>
+            ) : authMode === 'signup' ? (
+              <form className="auth-form" onSubmit={register}>
+                <label className="field">
+                  <span>First name</span>
+                  <input
+                    type="text"
+                    value={regFirstName}
+                    autoComplete="given-name"
+                    onChange={(event) => setRegFirstName(event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Last name</span>
+                  <input
+                    type="text"
+                    value={regLastName}
+                    autoComplete="family-name"
+                    onChange={(event) => setRegLastName(event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    value={regEmail}
+                    autoComplete="email"
+                    onChange={(event) => setRegEmail(event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Password</span>
+                  <input
+                    type="password"
+                    value={regPassword}
+                    autoComplete="new-password"
+                    onChange={(event) => setRegPassword(event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Role</span>
+                  <select value={regRole} onChange={(event) => setRegRole(event.target.value)}>
+                    <option value="client">Shipper</option>
+                    <option value="owner">Fleet Owner</option>
+                  </select>
+                </label>
+                <div className="auth-actions">
+                  <button className="primary auth-submit" type="submit" disabled={regBusy}>
+                    {regBusy ? 'Creating...' : 'Create account'}
+                  </button>
+                  <button className="text-button" type="button" onClick={() => setAuthMode('signin')}>
+                    Back to sign in
+                  </button>
+                </div>
+              </form>
             ) : (
               <form className="auth-form" onSubmit={login}>
                 <label className="field">
@@ -4870,6 +5008,9 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
                   >
                     Forgot password?
                   </button>
+                  <button className="text-button" type="button" onClick={() => setAuthMode('signup')}>
+                    Create account
+                  </button>
                 </div>
               </form>
             )}
@@ -4892,17 +5033,59 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
               {roleName(activeUserRole)} - {user.country || 'Local workspace'}
             </span>
           </div>
-          <div className="doc-list compact">
-            {verificationItems.map((item) => (
-              <button
-                type="button"
-                key={item}
-                disabled={Boolean(uploadingDocument)}
-                onClick={() => openVerificationUpload(item)}
-              >
-                {uploadingDocument === item ? 'Uploading...' : item}
-              </button>
-            ))}
+          <div style={{ display: 'grid', gap: '6px', margin: '6px 0' }}>
+            {verificationItems.map((item) => {
+              const slug = slugDocumentType(item);
+              const existingDoc = (user.documents || []).find((doc) => doc.type === slug);
+              const docStatus = existingDoc ? existingDoc.status : 'missing';
+              let tone = 'default';
+              let statusText = 'Upload';
+              if (docStatus === 'approved') {
+                tone = 'success';
+                statusText = 'Verified ✓';
+              } else if (docStatus === 'pending') {
+                tone = 'warn';
+                statusText = 'Under Review';
+              } else if (docStatus === 'rejected') {
+                tone = 'danger';
+                statusText = 'Rejected — Re-upload';
+              } else if (docStatus === 'expired') {
+                tone = 'danger';
+                statusText = 'Expired — Re-upload';
+              }
+              const isBusy = uploadingDocument === item;
+              return (
+                <button
+                  type="button"
+                  key={item}
+                  disabled={Boolean(uploadingDocument) || docStatus === 'approved'}
+                  onClick={() => openVerificationUpload(item)}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius)',
+                    border: '1px solid var(--line)',
+                    background:
+                      docStatus === 'approved'
+                        ? 'rgba(132,204,22,0.07)'
+                        : docStatus === 'pending'
+                          ? 'rgba(245,158,11,0.06)'
+                          : docStatus === 'rejected' || docStatus === 'expired'
+                            ? 'rgba(239,68,68,0.05)'
+                            : '#f8fafc',
+                    cursor: docStatus === 'approved' ? 'default' : 'pointer',
+                    transition: 'border-color 0.15s'
+                  }}
+                  title={docStatus === 'approved' ? `${item} already verified` : `Click to upload ${item}`}
+                >
+                  <span style={{ fontWeight: 700, flex: 1, textAlign: 'left' }}>{item}</span>
+                  <StatusBadge tone={tone}>{isBusy ? 'Uploading…' : statusText}</StatusBadge>
+                </button>
+              );
+            })}
           </div>
           <p className="muted-note">{documentUploadLimitText}. Admin reviews uploaded files from the console.</p>
         </Panel>
@@ -4913,6 +5096,1051 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
         </Panel>
       ) : null}
     </section>
+  );
+}
+
+/* ============================================================
+   NOTIFICATION BELL
+   ============================================================ */
+function NotificationBell({ notifications, onMarkAllRead, onNavigate }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  useEffect(() => {
+    function handle(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, []);
+
+  function relativeTime(iso) {
+    const diff = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    return `${Math.floor(h / 24)}d ago`;
+  }
+
+  return (
+    <div className="notif-bell-wrap" ref={ref}>
+      <button className="notif-bell-btn" type="button" onClick={() => setOpen((o) => !o)} aria-label="Notifications">
+        <Bell size={18} />
+        {unreadCount > 0 && <span className="notif-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+      </button>
+      {open && (
+        <div className="notif-dropdown">
+          <div className="notif-header">
+            <strong>Notifications</strong>
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  onMarkAllRead();
+                  setOpen(false);
+                }}
+              >
+                Mark all read
+              </button>
+            )}
+          </div>
+          <div className="notif-list">
+            {notifications.length === 0 ? (
+              <div className="notif-empty">No notifications yet</div>
+            ) : (
+              notifications.slice(0, 10).map((n) => (
+                <button
+                  key={n.id}
+                  className={`notif-item ${n.read ? '' : 'unread'}`}
+                  type="button"
+                  onClick={() => {
+                    if (n.link) onNavigate(n.link);
+                    setOpen(false);
+                  }}
+                >
+                  <span className={`notif-dot ${n.read ? 'read' : ''}`} />
+                  <span>
+                    <span className="notif-item-title">{n.title}</span>
+                    <span className="notif-item-time">{relativeTime(n.createdAt)}</span>
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   DARK MODE TOGGLE
+   ============================================================ */
+function DarkModeToggle({ dark, onToggle }) {
+  return (
+    <button
+      className="dark-toggle"
+      type="button"
+      onClick={onToggle}
+      aria-label="Toggle dark mode"
+      title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+    >
+      {dark ? <Sun size={18} /> : <Moon size={18} />}
+    </button>
+  );
+}
+
+/* ============================================================
+   GLOBAL SEARCH (CMD+K)
+   ============================================================ */
+function GlobalSearch({ shipments = [], trucks = [], onClose, onNavigate }) {
+  const [q, setQ] = useState('');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const query = q.toLowerCase().trim();
+
+  const shipmentResults = query
+    ? shipments.filter((s) => [s.id, s.route, s.cargo, s.status].join(' ').toLowerCase().includes(query)).slice(0, 5)
+    : [];
+
+  const truckResults = query
+    ? trucks.filter((t) => [t.name, t.plate, t.type, t.owner].join(' ').toLowerCase().includes(query)).slice(0, 5)
+    : [];
+
+  const hasResults = shipmentResults.length + truckResults.length > 0;
+
+  return (
+    <div
+      className="global-search-overlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="global-search-box">
+        <div className="global-search-input-row">
+          <Search size={18} />
+          <input
+            ref={inputRef}
+            className="global-search-input"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search bookings, trucks, messages..."
+            onKeyDown={(e) => e.key === 'Escape' && onClose()}
+          />
+          <button className="global-search-esc" type="button" onClick={onClose}>
+            ESC
+          </button>
+        </div>
+        <div className="global-search-results">
+          {!query && <div className="global-search-empty">Type to search bookings, trucks, and messages</div>}
+          {query && !hasResults && <div className="global-search-empty">No results for &ldquo;{q}&rdquo;</div>}
+          {shipmentResults.length > 0 && (
+            <div className="global-search-section">
+              <div className="global-search-section-label">Bookings</div>
+              {shipmentResults.map((s) => (
+                <button
+                  key={s.id}
+                  className="global-search-result"
+                  type="button"
+                  onClick={() => {
+                    onNavigate(`/app/tracking?shipment=${s.id}`);
+                    onClose();
+                  }}
+                >
+                  <Map size={16} />
+                  <span>
+                    <span className="global-search-result-title">{s.id}</span>
+                    <span className="global-search-result-sub">
+                      {s.route} · {s.status}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {truckResults.length > 0 && (
+            <div className="global-search-section">
+              <div className="global-search-section-label">Trucks</div>
+              {truckResults.map((t) => (
+                <button
+                  key={t.id}
+                  className="global-search-result"
+                  type="button"
+                  onClick={() => {
+                    onNavigate(`/app/marketplace?truck=${encodeURIComponent(t.id || t.plate)}`);
+                    onClose();
+                  }}
+                >
+                  <Truck size={16} />
+                  <span>
+                    <span className="global-search-result-title">
+                      {t.plate} – {t.name}
+                    </span>
+                    <span className="global-search-result-sub">
+                      {t.type} · {t.availability}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="global-search-hint">
+          <span>
+            <kbd>↵</kbd> to open
+          </span>
+          <span>
+            <kbd>ESC</kbd> to close
+          </span>
+          <span>
+            <kbd>⌘K</kbd> to reopen
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   REPORT ISSUE MODAL
+   ============================================================ */
+// eslint-disable-next-line no-unused-vars
+function ReportIssueModal({ shipment, onClose, onSubmit, busy }) {
+  const [issueType, setIssueType] = useState('delay');
+  const [description, setDescription] = useState('');
+  const [severity, setSeverity] = useState('medium');
+  const [photoCount, setPhotoCount] = useState(0);
+  const fileRef = useRef(null);
+
+  const issueTypes = ['delay', 'damage', 'wrong cargo', 'driver behavior', 'route deviation', 'other'];
+
+  function handleFileChange(e) {
+    setPhotoCount((c) => c + (e.target.files?.length || 0));
+    e.target.value = '';
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!description.trim()) return;
+    onSubmit({ issueType, description, severity, photoCount });
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-card">
+        <div className="modal-card-head">
+          <h3>Report Issue</h3>
+          <button type="button" onClick={onClose} aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+        <form className="modal-card-body" onSubmit={handleSubmit}>
+          <div>
+            <p className="eyebrow" style={{ marginBottom: 8 }}>
+              Issue type
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {issueTypes.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`severity-btn ${issueType === t ? 'active' : ''}`}
+                  style={{ minWidth: 90 }}
+                  onClick={() => setIssueType(t)}
+                >
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="eyebrow" style={{ marginBottom: 8 }}>
+              Severity
+            </p>
+            <div className="severity-grid">
+              {[
+                ['low', 'Low'],
+                ['medium', 'Medium'],
+                ['high', 'High']
+              ].map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  className={`severity-btn ${val} ${severity === val ? 'active' : ''}`}
+                  onClick={() => setSeverity(val)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <label className="field">
+            <span>Description</span>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={`Describe the ${issueType} issue in detail...`}
+              rows={4}
+              required
+            />
+          </label>
+          <div>
+            <p className="eyebrow" style={{ marginBottom: 8 }}>
+              Photos (optional)
+            </p>
+            <div className="photo-upload-strip">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                onChange={handleFileChange}
+              />
+              <button type="button" className="ghost icon-label" onClick={() => fileRef.current?.click()}>
+                <Image size={16} />
+                <span>Add photos</span>
+              </button>
+              {photoCount > 0 && (
+                <span className="attached-count">
+                  {photoCount} photo{photoCount === 1 ? '' : 's'} attached
+                </span>
+              )}
+            </div>
+          </div>
+          {shipment && (
+            <div className="facts-grid" style={{ marginBottom: 0 }}>
+              <span>Shipment</span>
+              <strong>{shipment.id}</strong>
+              <span>Route</span>
+              <strong>{shipment.route}</strong>
+            </div>
+          )}
+          <div className="button-row">
+            <button className="primary" type="submit" disabled={busy || !description.trim()}>
+              {busy ? 'Submitting...' : 'Submit Report'}
+            </button>
+            <button className="ghost" type="button" onClick={onClose}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   WALLET TOP-UP MODAL
+   ============================================================ */
+// eslint-disable-next-line no-unused-vars
+function WalletTopupModal({ balance, onClose, onTopup, busy, transactions = [] }) {
+  const [method, setMethod] = useState('mpesa');
+  const [amount, setAmount] = useState(50);
+  const [phone, setPhone] = useState('');
+  const presets = [10, 25, 50, 100, 250, 500];
+
+  const methods = [
+    { key: 'mpesa', label: 'M-Pesa', icon: Smartphone },
+    { key: 'card', label: 'Card', icon: CreditCard },
+    { key: 'bank', label: 'Bank', icon: Wallet },
+    { key: 'mtn', label: 'MTN MoMo', icon: Phone }
+  ];
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    onTopup({ method, amount: Number(amount), phone });
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-card">
+        <div className="modal-card-head">
+          <h3>Top Up Wallet</h3>
+          <button type="button" onClick={onClose} aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+        <form className="modal-card-body" onSubmit={handleSubmit}>
+          <div className="wallet-card" style={{ marginBottom: 4 }}>
+            <span>Current balance</span>
+            <strong>{money(balance)}</strong>
+            <small>Funds are held in escrow until delivery confirmation.</small>
+          </div>
+          <div>
+            <p className="eyebrow" style={{ marginBottom: 8 }}>
+              Payment method
+            </p>
+            <div className="topup-methods">
+              {methods.map(({ key, label, icon: Icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`topup-method-btn ${method === key ? 'active' : ''}`}
+                  onClick={() => setMethod(key)}
+                >
+                  <Icon size={22} />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="eyebrow" style={{ marginBottom: 8 }}>
+              Amount (USD)
+            </p>
+            <div className="topup-amount-chips">
+              {presets.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className={`topup-chip ${amount === p ? 'active' : ''}`}
+                  onClick={() => setAmount(p)}
+                >
+                  ${p}
+                </button>
+              ))}
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <Input label="Custom amount" type="number" value={amount} onChange={(v) => setAmount(Number(v))} />
+            </div>
+          </div>
+          {(method === 'mpesa' || method === 'mtn') && (
+            <Input label="Phone number (with country code)" value={phone} onChange={setPhone} />
+          )}
+          {transactions.length > 0 && (
+            <div>
+              <p className="eyebrow" style={{ marginBottom: 8 }}>
+                Recent transactions
+              </p>
+              <div className="tx-history">
+                {transactions.slice(0, 6).map((tx, i) => (
+                  <div className="tx-row" key={tx.id || i}>
+                    <div>
+                      <strong>{tx.description || tx.method || 'Transaction'}</strong>
+                      <span>{tx.createdAt ? new Date(tx.createdAt).toLocaleDateString() : ''}</span>
+                    </div>
+                    <span className={`tx-amount ${tx.type === 'debit' ? 'debit' : ''}`}>
+                      {tx.type === 'debit' ? '-' : '+'}
+                      {money(tx.amount || 0)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="button-row">
+            <button className="primary icon-label" type="submit" disabled={busy || !amount}>
+              <Wallet size={18} />
+              <span>{busy ? 'Processing...' : `Top up ${money(amount)}`}</span>
+            </button>
+            <button className="ghost" type="button" onClick={onClose}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   SHIPMENT STATUS TIMELINE
+   ============================================================ */
+const TIMELINE_STEPS = [
+  { key: 'pending', label: 'Booked' },
+  { key: 'bidding', label: 'Bidding' },
+  { key: 'confirmed', label: 'Confirmed' },
+  { key: 'in_transit', label: 'In Transit' },
+  { key: 'delivered', label: 'Delivered' }
+];
+
+// eslint-disable-next-line no-unused-vars
+function ShipmentTimeline({ rawStatus, tracking = [] }) {
+  const currentIndex = TIMELINE_STEPS.findIndex((s) => s.key === rawStatus);
+
+  return (
+    <div className="shipment-timeline">
+      {TIMELINE_STEPS.map((step, i) => {
+        const isDone = i < currentIndex;
+        const isActive = i === currentIndex;
+        const trackEntry = tracking.find((t) => t.status === step.key);
+        const stateClass = isDone ? 'done' : isActive ? 'active' : 'upcoming';
+
+        return (
+          <div key={step.key} className={`timeline-step ${stateClass}`}>
+            <div className="timeline-track">
+              <div className="timeline-node">{isDone ? '✓' : i + 1}</div>
+            </div>
+            <div className="timeline-body">
+              <span className="timeline-label">{step.label}</span>
+              {trackEntry?.city && <span className="timeline-meta">{trackEntry.city}</span>}
+              {trackEntry?.createdAt && (
+                <span className="timeline-meta">
+                  {new Date(trackEntry.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                </span>
+              )}
+              {isActive && !trackEntry && <span className="timeline-meta">In progress</span>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ============================================================
+   BID COMPARISON TABLE
+   ============================================================ */
+// eslint-disable-next-line no-unused-vars
+function BidComparisonTable({ bids = [], onAward, busyId }) {
+  const [sortBy, setSortBy] = useState('price');
+
+  const sorted = [...bids].sort((a, b) => {
+    if (sortBy === 'price') return a.amount - b.amount;
+    if (sortBy === 'rating') return (b.rating || 0) - (a.rating || 0);
+    if (sortBy === 'time') return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+    return 0;
+  });
+
+  const bestId = sorted[0]?.id;
+
+  return (
+    <div>
+      <div className="bid-sort-btns">
+        {[
+          ['price', 'By Price'],
+          ['rating', 'By Rating'],
+          ['time', 'Response Time']
+        ].map(([k, l]) => (
+          <button
+            key={k}
+            type="button"
+            className={`bid-sort-btn ${sortBy === k ? 'active' : ''}`}
+            onClick={() => setSortBy(k)}
+          >
+            {l}
+          </button>
+        ))}
+      </div>
+      <div className="bid-comparison">
+        <table>
+          <thead>
+            <tr>
+              <th>Carrier</th>
+              <th>Truck</th>
+              <th>Price</th>
+              <th>Rating</th>
+              <th>Note</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((bid) => (
+              <tr key={bid.id} className={bid.id === bestId && sortBy === 'price' ? 'best-bid' : ''}>
+                <td>{bid.ownerName}</td>
+                <td>{bid.truckName}</td>
+                <td>
+                  <span className="bid-amount-cell">{money(bid.amount)}</span>
+                </td>
+                <td>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Star size={12} style={{ color: 'var(--amber)' }} />
+                    {bid.rating ? bid.rating.toFixed(1) : 'New'}
+                  </span>
+                </td>
+                <td style={{ maxWidth: 180, fontSize: 12, color: 'var(--muted)' }}>{bid.message}</td>
+                <td>
+                  <StatusBadge tone={bid.status === 'accepted' ? 'success' : 'default'}>
+                    {statusLabel(bid.status)}
+                  </StatusBadge>
+                </td>
+                <td>
+                  {bid.status !== 'accepted' && (
+                    <button
+                      className="primary"
+                      type="button"
+                      style={{ minHeight: 34, padding: '0 12px', fontSize: 12 }}
+                      disabled={busyId === bid.id}
+                      onClick={() => onAward(bid)}
+                    >
+                      {busyId === bid.id ? '...' : 'Award'}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {bids.length === 0 && (
+              <tr>
+                <td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>
+                  No carrier bids yet
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   ONBOARDING PROGRESS BANNER
+   ============================================================ */
+const ONBOARDING_STEPS_OWNER = [
+  { key: 'profile', label: 'Complete profile' },
+  { key: 'docs', label: 'Upload docs' },
+  { key: 'vehicle', label: 'Add vehicle' },
+  { key: 'live', label: 'Go live' }
+];
+
+const ONBOARDING_STEPS_CLIENT = [
+  { key: 'profile', label: 'Complete profile' },
+  { key: 'docs', label: 'Upload docs' },
+  { key: 'booking', label: 'First booking' },
+  { key: 'live', label: 'Live tracking' }
+];
+
+function computeOnboardingProgress(user, role, fleet = [], shipments = []) {
+  const steps = role === 'owner' ? ONBOARDING_STEPS_OWNER : ONBOARDING_STEPS_CLIENT;
+  const docs = user?.documents || [];
+  const hasProfile = Boolean(user?.firstName && user?.email);
+  const hasDocs = docs.some((d) => d.status === 'approved' || d.status === 'pending');
+  const hasVehicle = fleet.length > 0;
+  const hasBooking = shipments.length > 0;
+
+  const completed = {
+    profile: hasProfile,
+    docs: hasDocs,
+    vehicle: hasVehicle,
+    booking: hasBooking,
+    live: role === 'owner' ? hasVehicle && hasDocs : hasBooking && hasDocs
+  };
+
+  const doneCount = steps.filter((s) => completed[s.key]).length;
+  return { steps, completed, doneCount, total: steps.length, pct: Math.round((doneCount / steps.length) * 100) };
+}
+
+function OnboardingBanner({ user, role, fleet = [], shipments = [] }) {
+  const { steps, completed, doneCount, total, pct } = computeOnboardingProgress(user, role, fleet, shipments);
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem('itruck_onboarding_dismissed') === '1');
+
+  if (pct === 100 || dismissed) return null;
+
+  const nextStep = steps.find((s) => !completed[s.key]);
+
+  return (
+    <div className="onboarding-banner">
+      <div className="onboarding-banner-head">
+        <strong>Complete your profile — {pct}% done</strong>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span>
+            {doneCount}/{total} steps
+          </span>
+          <button
+            type="button"
+            style={{ background: 'transparent', color: 'var(--muted)', fontSize: 18, lineHeight: 1, padding: 0 }}
+            onClick={() => {
+              setDismissed(true);
+              localStorage.setItem('itruck_onboarding_dismissed', '1');
+            }}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+      <div className="onboarding-steps">
+        {steps.map((step) => (
+          <span
+            key={step.key}
+            className={`onboarding-step ${completed[step.key] ? 'done' : step.key === nextStep?.key ? 'active' : ''}`}
+          >
+            <span className="onboarding-step-dot" />
+            {step.label}
+          </span>
+        ))}
+      </div>
+      <div className="onboarding-progress-bar">
+        <div className="onboarding-progress-fill" style={{ width: `${pct}%` }} />
+      </div>
+      {nextStep && (
+        <button
+          className="ghost"
+          type="button"
+          style={{ justifySelf: 'start', minHeight: 36, padding: '0 12px', fontSize: 13 }}
+          onClick={() => navigate(role === 'owner' ? '/app/onboarding' : '/app/profile')}
+        >
+          Next: {nextStep.label} →
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   DOCUMENT EXPIRY BANNER (Owner)
+   ============================================================ */
+function DocumentExpiryBanner({ user }) {
+  const docs = user?.documents || [];
+  const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+  const expiring = docs.filter((doc) => {
+    if (doc.status === 'expired') return true;
+    if (doc.expiresAt) {
+      return new Date(doc.expiresAt).getTime() - Date.now() < THIRTY_DAYS;
+    }
+    return false;
+  });
+
+  if (!expiring.length) return null;
+
+  return (
+    <div className="expiry-banner">
+      <div className="expiry-banner-head">
+        <AlertTriangle size={18} />
+        <strong>
+          {expiring.length} document{expiring.length === 1 ? '' : 's'} expiring or expired
+        </strong>
+      </div>
+      <div className="expiry-items">
+        {expiring.map((doc) => (
+          <span key={doc.type} className="expiry-chip">
+            <AlertTriangle size={10} />
+            {doc.type.replace(/-/g, ' ')} {doc.status === 'expired' ? '(expired)' : '(expiring soon)'}
+          </span>
+        ))}
+      </div>
+      <button
+        className="ghost"
+        type="button"
+        style={{ justifySelf: 'start', minHeight: 34, padding: '0 12px', fontSize: 13 }}
+        onClick={() => navigate('/app/onboarding')}
+      >
+        Renew documents →
+      </button>
+    </div>
+  );
+}
+
+/* ============================================================
+   PROFILE COMPLETENESS SCORE
+   ============================================================ */
+function ProfileCompletenessScore({ user }) {
+  const fields = [
+    user?.firstName,
+    user?.lastName,
+    user?.email,
+    user?.phone,
+    user?.country,
+    (user?.documents || []).some((d) => d.status === 'approved')
+  ];
+  const done = fields.filter(Boolean).length;
+  const pct = Math.round((done / fields.length) * 100);
+  const r = 20;
+  const circ = 2 * Math.PI * r;
+  const dash = circ * (pct / 100);
+
+  if (pct === 100) return null;
+
+  const missing = [];
+  if (!user?.phone) missing.push('phone number');
+  if (!user?.country) missing.push('country');
+  if (!(user?.documents || []).some((d) => d.status === 'approved')) missing.push('verified document');
+
+  return (
+    <div className="profile-score-wrap">
+      <div className="profile-score-ring">
+        <svg width="48" height="48" viewBox="0 0 48 48">
+          <circle className="track" cx="24" cy="24" r={r} />
+          <circle className="fill" cx="24" cy="24" r={r} strokeDasharray={`${dash} ${circ}`} strokeDashoffset="0" />
+        </svg>
+        <span className="profile-score-pct">{pct}%</span>
+      </div>
+      <div className="profile-score-info">
+        <strong>Profile {pct}% complete</strong>
+        <span>Add {missing.slice(0, 2).join(', ')} to boost trust score</span>
+      </div>
+      <button
+        className="ghost"
+        type="button"
+        style={{ marginLeft: 'auto', minHeight: 34, padding: '0 12px', fontSize: 13 }}
+        onClick={() => navigate('/app/profile')}
+      >
+        Complete →
+      </button>
+    </div>
+  );
+}
+
+/* ============================================================
+   UPGRADED APP SHELL (with all new features wired in)
+   ============================================================ */
+function AppShell() {
+  const [route, setRoute] = useState(routeFromLocation());
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [toast, setToast] = useState('');
+  const [user, setUser] = useState(currentUser());
+  const activeRole = roleForUser(user);
+  const visibleNavItems = useMemo(() => navForUser(user), [user]);
+  const toastTimeoutRef = useRef(null);
+
+  // Dark mode
+  const [dark, setDark] = useState(() => {
+    const stored = localStorage.getItem('itruck_dark');
+    if (stored !== null) return stored === '1';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : '');
+    localStorage.setItem('itruck_dark', dark ? '1' : '0');
+  }, [dark]);
+
+  // Notifications
+  const [notifications, setNotifications] = useState(() => {
+    const seed = [
+      {
+        id: 'n1',
+        title: 'New carrier bid on ITK-001',
+        read: false,
+        createdAt: new Date(Date.now() - 5 * 60000).toISOString(),
+        link: '/app/bids'
+      },
+      {
+        id: 'n2',
+        title: 'Document "Insurance" approved',
+        read: false,
+        createdAt: new Date(Date.now() - 30 * 60000).toISOString(),
+        link: '/app/documents'
+      },
+      {
+        id: 'n3',
+        title: 'Shipment ITK-002 picked up',
+        read: true,
+        createdAt: new Date(Date.now() - 2 * 3600000).toISOString(),
+        link: '/app/tracking'
+      }
+    ];
+    return seed;
+  });
+
+  function markAllRead() {
+    setNotifications((ns) => ns.map((n) => ({ ...n, read: true })));
+  }
+
+  // Global search
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchShipments, setSearchShipments] = useState(workspaceShipments);
+  const [searchTrucks, setSearchTrucks] = useState(workspaceFleet);
+
+  useEffect(() => {
+    api
+      .listBookings()
+      .then((d) => Array.isArray(d.bookings) && setSearchShipments(d.bookings.map(normalizeBookingShipment)))
+      .catch(() => {});
+    api
+      .listTrucks()
+      .then((d) => Array.isArray(d.trucks) && setSearchTrucks(d.trucks.map(normalizeTruck)))
+      .catch(() => {});
+  }, []);
+
+  // Cmd+K listener
+  useEffect(() => {
+    function handler(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen((o) => !o);
+      }
+      if (e.key === 'Escape') setSearchOpen(false);
+    }
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  useEffect(() => {
+    const syncRoute = () => setRoute(routeFromLocation());
+    window.addEventListener('popstate', syncRoute);
+    return () => window.removeEventListener('popstate', syncRoute);
+  }, []);
+
+  const notify = useCallback((message) => {
+    setToast(message);
+    if (toastTimeoutRef.current) window.clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = window.setTimeout(() => setToast(''), 2800);
+  }, []);
+
+  const signOut = useCallback(async () => {
+    try {
+      await api.logout();
+    } catch (_) {
+      clearSession();
+    }
+    setUser({});
+    notify('Signed out');
+  }, [notify]);
+
+  useEffect(() => {
+    if (!routeAllowedForUser(route, user)) {
+      const destination = dashboardPathForRole(activeRole);
+      notify(`${pageTitle(route)} is not part of ${roleName(activeRole)} mode`);
+      navigate(destination);
+    }
+  }, [activeRole, notify, route, user]);
+
+  useEffect(
+    () => () => {
+      if (toastTimeoutRef.current) window.clearTimeout(toastTimeoutRef.current);
+    },
+    []
+  );
+
+  const page = useMemo(() => {
+    const props = { notify, route, user, setUser };
+    if (!routeAllowedForUser(route, user)) {
+      if (activeRole === 'admin') return <AdminPage {...props} />;
+      if (activeRole === 'owner') return <OwnerPage {...props} />;
+      return <ShipperPage {...props} />;
+    }
+    if (route.startsWith('/app/onboarding')) return <OnboardingPage {...props} />;
+    if (route.startsWith('/app/bids')) return <BidsPage {...props} />;
+    if (route.startsWith('/app/documents')) return <DocumentsPage {...props} />;
+    if (route.startsWith('/app/payments')) return <PaymentsPage {...props} />;
+    if (route.startsWith('/app/messages')) return <MessagesPage {...props} />;
+    if (route.startsWith('/app/book')) return <BookingPage {...props} />;
+    if (route.startsWith('/app/marketplace')) return <MarketplacePage {...props} />;
+    if (route.startsWith('/app/tracking')) return <TrackingPage {...props} />;
+    if (route.startsWith('/app/owner') || route.startsWith('/app/vehicles')) return <OwnerPage {...props} />;
+    if (route.startsWith('/app/admin')) return <AdminPage {...props} />;
+    if (route.startsWith('/app/profile')) return <ProfilePage {...props} signOut={signOut} />;
+    return activeRole === 'owner' ? <OwnerPage {...props} /> : <ShipperPage {...props} />;
+  }, [activeRole, notify, route, signOut, user]);
+
+  const primaryAction =
+    activeRole === 'owner'
+      ? { label: 'Find Work', path: '/app/bids', icon: Search }
+      : activeRole === 'admin'
+        ? { label: 'Admin Queue', path: '/app/admin', icon: BarChart3 }
+        : { label: 'New Load', path: '/app/book', icon: Plus };
+  const PrimaryActionIcon = primaryAction.icon;
+
+  return (
+    <div className="app-shell">
+      <aside className={`app-sidebar ${menuOpen ? 'open' : ''}`}>
+        <a className="brand" href="/">
+          <span>iT</span> iTruck
+        </a>
+        <nav>
+          {visibleNavItems.map((item) => {
+            const Icon = item.icon;
+            const active = route.startsWith(item.path);
+            return (
+              <button
+                key={item.path}
+                className={active ? 'active' : ''}
+                type="button"
+                onClick={() => {
+                  navigate(item.path);
+                  setMenuOpen(false);
+                }}
+              >
+                <Icon size={18} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </aside>
+
+      <main className="app-main">
+        <header className="app-topbar">
+          <button className="icon-button" type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu">
+            <Menu size={20} />
+          </button>
+          <div>
+            <p className="eyebrow">Operational Workspace</p>
+            <h1>{pageTitle(route)}</h1>
+          </div>
+          <div className="topbar-actions topbar-icon-group">
+            <button className="ghost icon-label" type="button" onClick={() => setSearchOpen(true)} title="Search (⌘K)">
+              <Search size={18} />
+              <span>Search</span>
+            </button>
+            <DarkModeToggle dark={dark} onToggle={() => setDark((d) => !d)} />
+            <NotificationBell notifications={notifications} onMarkAllRead={markAllRead} onNavigate={navigate} />
+            <button className="primary icon-label" type="button" onClick={() => navigate(primaryAction.path)}>
+              <PrimaryActionIcon size={18} />
+              <span>{primaryAction.label}</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Onboarding banner */}
+        {user?.email && activeRole !== 'admin' && (
+          <OnboardingBanner
+            user={user}
+            role={activeRole}
+            fleet={searchTrucks.filter((t) => t.verified)}
+            shipments={searchShipments}
+          />
+        )}
+
+        {/* Document expiry banner for owners */}
+        {user?.email && activeRole === 'owner' && <DocumentExpiryBanner user={user} />}
+
+        {/* Profile completeness score on profile page */}
+        {route.startsWith('/app/profile') && user?.email && <ProfileCompletenessScore user={user} />}
+
+        {page}
+      </main>
+
+      <nav className="mobile-bottom-nav" aria-label="Primary mobile navigation">
+        {visibleNavItems.map((item) => {
+          const Icon = item.icon;
+          const active = route.startsWith(item.path);
+          return (
+            <button
+              key={item.path}
+              className={active ? 'active' : ''}
+              type="button"
+              onClick={() => {
+                navigate(item.path);
+                setMenuOpen(false);
+              }}
+            >
+              <Icon size={18} />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+
+      <button
+        className={`menu-scrim ${menuOpen ? 'show' : ''}`}
+        type="button"
+        aria-label="Close menu"
+        onClick={() => setMenuOpen(false)}
+      />
+
+      {searchOpen && (
+        <GlobalSearch
+          shipments={searchShipments}
+          trucks={searchTrucks}
+          onClose={() => setSearchOpen(false)}
+          onNavigate={navigate}
+        />
+      )}
+
+      {toast ? <div className="toast">{toast}</div> : null}
+      <ServiceWorkerUpdateToast />
+    </div>
   );
 }
 
@@ -4978,4 +6206,4 @@ function Select({ label, value, onChange, options, emptyLabel }) {
   );
 }
 
-export default App;
+export default AppShell;
