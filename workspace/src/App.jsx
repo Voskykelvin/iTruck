@@ -445,7 +445,8 @@ function normalizeBookingShipment(booking) {
     payment: booking.paymentMethod || 'Payment pending',
     paymentStatus: booking.paymentStatus || 'unpaid',
     documents: booking.estimate?.requiredDocuments || demoDocuments.slice(0, 3),
-    bids: Array.isArray(booking.bids) ? booking.bids.map(normalizeBid) : []
+    bids: Array.isArray(booking.bids) ? booking.bids.map(normalizeBid) : [],
+    tracking
   };
 }
 
@@ -542,181 +543,6 @@ function fallbackEstimate(payload) {
     quoteProtection:
       'Estimate includes visible platform, insurance, escrow, and selected service fees before carrier bids.'
   };
-}
-
-// eslint-disable-next-line no-unused-vars
-function AppLegacy() {
-  const [route, setRoute] = useState(routeFromLocation());
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [toast, setToast] = useState('');
-  const [user, setUser] = useState(currentUser());
-  const activeRole = roleForUser(user);
-  const visibleNavItems = useMemo(() => navForUser(user), [user]);
-  const toastTimeoutRef = useRef(null);
-
-  useEffect(() => {
-    const syncRoute = () => setRoute(routeFromLocation());
-    window.addEventListener('popstate', syncRoute);
-    return () => window.removeEventListener('popstate', syncRoute);
-  }, []);
-
-  const notify = useCallback((message) => {
-    setToast(message);
-    if (toastTimeoutRef.current) {
-      window.clearTimeout(toastTimeoutRef.current);
-    }
-    toastTimeoutRef.current = window.setTimeout(() => setToast(''), 2800);
-  }, []);
-
-  const signOut = useCallback(async () => {
-    try {
-      await api.logout();
-    } catch (_err) {
-      clearSession();
-    }
-    setUser({});
-    notify('Signed out');
-  }, [notify]);
-
-  const checkAlerts = useCallback(async () => {
-    try {
-      const data = await api.notificationCount();
-      const count = Number(data.count || 0);
-      notify(count ? `${count} unread alert${count === 1 ? '' : 's'}` : 'No unread alerts');
-    } catch (err) {
-      notify(err.message || 'Sign in to view alerts');
-    }
-  }, [notify]);
-
-  useEffect(() => {
-    if (!routeAllowedForUser(route, user)) {
-      const destination = dashboardPathForRole(activeRole);
-      notify(`${pageTitle(route)} is not part of ${roleName(activeRole)} mode`);
-      navigate(destination);
-    }
-  }, [activeRole, notify, route, user]);
-
-  useEffect(() => {
-    return () => {
-      if (toastTimeoutRef.current) {
-        window.clearTimeout(toastTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const page = useMemo(() => {
-    const props = { notify, route, user, setUser };
-    if (!routeAllowedForUser(route, user)) {
-      if (activeRole === 'admin') return <AdminPage {...props} />;
-      if (activeRole === 'owner') return <OwnerPage {...props} />;
-      return <ShipperPage {...props} />;
-    }
-
-    if (route.startsWith('/app/onboarding')) return <OnboardingPage {...props} />;
-    if (route.startsWith('/app/bids')) return <BidsPage {...props} />;
-    if (route.startsWith('/app/documents')) return <DocumentsPage {...props} />;
-    if (route.startsWith('/app/payments')) return <PaymentsPage {...props} />;
-    if (route.startsWith('/app/messages')) return <MessagesPage {...props} />;
-    if (route.startsWith('/app/book')) return <BookingPage {...props} />;
-    if (route.startsWith('/app/marketplace')) return <MarketplacePage {...props} />;
-    if (route.startsWith('/app/tracking')) return <TrackingPage {...props} />;
-    if (route.startsWith('/app/owner') || route.startsWith('/app/vehicles')) return <OwnerPage {...props} />;
-    if (route.startsWith('/app/admin')) return <AdminPage {...props} />;
-    if (route.startsWith('/app/profile')) return <ProfilePage {...props} signOut={signOut} />;
-    return activeRole === 'owner' ? <OwnerPage {...props} /> : <ShipperPage {...props} />;
-  }, [activeRole, notify, route, signOut, user]);
-
-  const primaryAction =
-    activeRole === 'owner'
-      ? { label: 'Find Work', path: '/app/bids', icon: Search }
-      : activeRole === 'admin'
-        ? { label: 'Admin Queue', path: '/app/admin', icon: BarChart3 }
-        : { label: 'New Load', path: '/app/book', icon: Plus };
-  const PrimaryActionIcon = primaryAction.icon;
-
-  return (
-    <div className="app-shell">
-      <aside className={`app-sidebar ${menuOpen ? 'open' : ''}`}>
-        <a className="brand" href="/">
-          <span>iT</span> iTruck
-        </a>
-        <nav>
-          {visibleNavItems.map((item) => {
-            const Icon = item.icon;
-            const active = route.startsWith(item.path);
-            return (
-              <button
-                key={item.path}
-                className={active ? 'active' : ''}
-                type="button"
-                onClick={() => {
-                  navigate(item.path);
-                  setMenuOpen(false);
-                }}
-              >
-                <Icon size={18} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-      </aside>
-
-      <main className="app-main">
-        <header className="app-topbar">
-          <button className="icon-button" type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu">
-            <Menu size={20} />
-          </button>
-          <div>
-            <p className="eyebrow">Operational Workspace</p>
-            <h1>{pageTitle(route)}</h1>
-          </div>
-          <div className="topbar-actions">
-            <button className="ghost icon-label" type="button" onClick={checkAlerts}>
-              <Bell size={18} />
-              <span>Alerts</span>
-            </button>
-            <button className="primary icon-label" type="button" onClick={() => navigate(primaryAction.path)}>
-              <PrimaryActionIcon size={18} />
-              <span>{primaryAction.label}</span>
-            </button>
-          </div>
-        </header>
-
-        {page}
-      </main>
-
-      <nav className="mobile-bottom-nav" aria-label="Primary mobile navigation">
-        {visibleNavItems.map((item) => {
-          const Icon = item.icon;
-          const active = route.startsWith(item.path);
-          return (
-            <button
-              key={item.path}
-              className={active ? 'active' : ''}
-              type="button"
-              onClick={() => {
-                navigate(item.path);
-                setMenuOpen(false);
-              }}
-            >
-              <Icon size={18} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
-      <button
-        className={`menu-scrim ${menuOpen ? 'show' : ''}`}
-        type="button"
-        aria-label="Close menu"
-        onClick={() => setMenuOpen(false)}
-      />
-      {toast ? <div className="toast">{toast}</div> : null}
-      <ServiceWorkerUpdateToast />
-    </div>
-  );
 }
 
 function pageTitle(route) {
@@ -1215,36 +1041,15 @@ function ShipperPage({ notify, user }) {
                 <span>Status</span>
                 <strong>{bidReview.status || 'Reviewing'}</strong>
               </div>
-              <div className="cards-grid">
-                {busyAction === 'bid-review' ? (
-                  <EmptyState title="Loading carrier bids" detail="Reading the live booking record from the API." />
-                ) : bidReview.bids?.length ? (
-                  bidReview.bids.map((bid) => (
-                    <article className="quote-card" key={bid.id}>
-                      <StatusBadge tone={bid.status === 'accepted' ? 'success' : 'default'}>
-                        {statusLabel(bid.status)}
-                      </StatusBadge>
-                      <h3>{bid.ownerName}</h3>
-                      <p>{bid.truckName}</p>
-                      <strong>{money(bid.amount)}</strong>
-                      <small>{bid.message}</small>
-                      <button
-                        className="primary"
-                        type="button"
-                        disabled={busyAction === `award-${bid.id}` || bid.status === 'accepted'}
-                        onClick={() => awardBid(bid)}
-                      >
-                        {bid.status === 'accepted' ? 'Awarded' : 'Award Bid'}
-                      </button>
-                    </article>
-                  ))
-                ) : (
-                  <EmptyState
-                    title="No carrier bids yet"
-                    detail="Submitted owner bids will appear here with award controls."
-                  />
-                )}
-              </div>
+              {busyAction === 'bid-review' ? (
+                <EmptyState title="Loading carrier bids" detail="Reading the live booking record from the API." />
+              ) : (
+                <BidComparisonTable
+                  bids={bidReview.bids || []}
+                  onAward={awardBid}
+                  busyId={busyAction.startsWith('award-') ? busyAction.replace('award-', '') : ''}
+                />
+              )}
               <div className="button-row">
                 <button className="secondary" type="button" onClick={() => navigate('/app/marketplace')}>
                   Open Marketplace
@@ -1856,6 +1661,8 @@ function TrackingPage({ notify, route, user }) {
   const [messages, setMessages] = useState([]);
   const [draftMessage, setDraftMessage] = useState('');
   const [ratingBusy, setRatingBusy] = useState(false);
+  const [issueModalOpen, setIssueModalOpen] = useState(false);
+  const [issueBusy, setIssueBusy] = useState(false);
   const chatInputRef = useRef(null);
 
   const trackingParams = useMemo(() => new URLSearchParams(route.split('?')[1] || ''), [route]);
@@ -1963,27 +1770,34 @@ function TrackingPage({ notify, route, user }) {
     }
   }
 
-  async function reportIssue() {
+  async function reportIssue(issue = {}) {
     if (!shipment) return;
 
+    setIssueBusy(true);
     try {
       await api.reportIssue({
         booking: shipment.bookingId,
         bookingId: shipment.bookingId,
         shipmentId: shipment.id,
-        message: `Issue reported for ${shipment.route}`,
-        severity: 'normal',
+        message: issue.description || `Issue reported for ${shipment.route}`,
+        issueType: issue.issueType || 'other',
+        severity: issue.severity || 'normal',
+        photoCount: Number(issue.photoCount || 0),
         status: 'submitted'
       });
+      setIssueModalOpen(false);
       notify('Issue report sent to operations');
     } catch (err) {
       saveLocal('issue_reports', {
         bookingId: shipment.bookingId,
         shipmentId: shipment.id,
         route: shipment.route,
+        ...issue,
         status: 'local'
       });
       notify(err.message || 'Issue report queued for operations');
+    } finally {
+      setIssueBusy(false);
     }
   }
 
@@ -2037,6 +1851,15 @@ function TrackingPage({ notify, route, user }) {
 
   const mapUrl = `https://www.google.com/maps?output=embed&saddr=${encodeURIComponent(shipment.origin)}&daddr=${encodeURIComponent(shipment.destination)}&dirflg=d`;
   const ratingTitle = activeRole === 'owner' ? 'Rate Shipper' : 'Rate Carrier';
+  const timelineStatus =
+    shipment.rawStatus ||
+    (shipment.progress >= 100
+      ? 'delivered'
+      : shipment.progress >= 64
+        ? 'in_transit'
+        : shipment.progress >= 38
+          ? 'confirmed'
+          : 'bidding');
 
   return (
     <section className="tracking-layout">
@@ -2097,6 +1920,7 @@ function TrackingPage({ notify, route, user }) {
           <div className="progress">
             <span style={{ width: `${shipment.progress}%` }} />
           </div>
+          <ShipmentTimeline rawStatus={timelineStatus} tracking={shipment.tracking || []} />
           <div className="doc-list compact">
             {shipment.documents.map((item) => (
               <span key={item}>{item}</span>
@@ -2113,7 +1937,7 @@ function TrackingPage({ notify, route, user }) {
             >
               Contact Driver
             </button>
-            <button className="ghost" type="button" onClick={reportIssue}>
+            <button className="ghost" type="button" onClick={() => setIssueModalOpen(true)}>
               Report Issue
             </button>
           </div>
@@ -2159,6 +1983,14 @@ function TrackingPage({ notify, route, user }) {
           </form>
         </Panel>
       </aside>
+      {issueModalOpen ? (
+        <ReportIssueModal
+          shipment={shipment}
+          busy={issueBusy}
+          onClose={() => setIssueModalOpen(false)}
+          onSubmit={reportIssue}
+        />
+      ) : null}
     </section>
   );
 }
@@ -3457,6 +3289,9 @@ function PaymentsPage({ notify, user }) {
   const [walletBalance, setWalletBalance] = useState(0);
   const [shipments, setShipments] = useState([]);
   const [withdrawBusy, setWithdrawBusy] = useState(false);
+  const [topupOpen, setTopupOpen] = useState(false);
+  const [topupBusy, setTopupBusy] = useState(false);
+  const [walletTransactions, setWalletTransactions] = useState([]);
   const [withdrawDraft, setWithdrawDraft] = useState({
     amount: 100,
     method: 'mpesa',
@@ -3493,6 +3328,42 @@ function PaymentsPage({ notify, user }) {
     }
   }
 
+  async function topupWallet({ amount, method }) {
+    const value = Number(amount || 0);
+    if (value <= 0) {
+      notify('Enter a top-up amount');
+      return;
+    }
+
+    setTopupBusy(true);
+    try {
+      let transaction = {
+        id: `topup-${Date.now()}`,
+        type: 'topup',
+        amount: value,
+        status: role === 'admin' ? 'credited' : 'queued',
+        createdAt: new Date().toISOString(),
+        method
+      };
+
+      if (role === 'admin') {
+        transaction = await api.creditWallet({
+          amount: value,
+          description: `${method} wallet top-up`
+        });
+      }
+
+      setWalletBalance((current) => Number(current || 0) + value);
+      setWalletTransactions((current) => [transaction, ...current].slice(0, 8));
+      setTopupOpen(false);
+      notify(role === 'admin' ? 'Wallet credited' : 'Top-up request queued');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setTopupBusy(false);
+    }
+  }
+
   return (
     <section className="workspace-layout">
       <div className="stack">
@@ -3502,6 +3373,16 @@ function PaymentsPage({ notify, user }) {
           <MetricCard icon={PackageCheck} label="Shipments" value={shipments.length} detail="Billing records" />
           <MetricCard icon={FileText} label="Invoices" value={shipments.length} detail="Document service" />
         </section>
+        <Panel title="Wallet Top-Up" eyebrow="Funding">
+          <div className="result-bar">
+            <span>Available balance</span>
+            <strong>{money(walletBalance)}</strong>
+          </div>
+          <button className="primary full icon-label" type="button" onClick={() => setTopupOpen(true)}>
+            <CreditCard size={18} />
+            <span>Top Up Wallet</span>
+          </button>
+        </Panel>
         <Panel title={role === 'owner' ? 'Withdraw Earnings' : 'Shipment Invoices'} eyebrow="Payments">
           {role === 'owner' ? (
             <form className="payout-form" onSubmit={requestWithdrawal}>
@@ -3548,6 +3429,15 @@ function PaymentsPage({ notify, user }) {
           )}
         </Panel>
       </div>
+      {topupOpen ? (
+        <WalletTopupModal
+          balance={walletBalance}
+          busy={topupBusy}
+          transactions={walletTransactions}
+          onClose={() => setTopupOpen(false)}
+          onTopup={topupWallet}
+        />
+      ) : null}
     </section>
   );
 }
@@ -5311,7 +5201,6 @@ function GlobalSearch({ shipments = [], trucks = [], onClose, onNavigate }) {
 /* ============================================================
    REPORT ISSUE MODAL
    ============================================================ */
-// eslint-disable-next-line no-unused-vars
 function ReportIssueModal({ shipment, onClose, onSubmit, busy }) {
   const [issueType, setIssueType] = useState('delay');
   const [description, setDescription] = useState('');
@@ -5440,7 +5329,6 @@ function ReportIssueModal({ shipment, onClose, onSubmit, busy }) {
 /* ============================================================
    WALLET TOP-UP MODAL
    ============================================================ */
-// eslint-disable-next-line no-unused-vars
 function WalletTopupModal({ balance, onClose, onTopup, busy, transactions = [] }) {
   const [method, setMethod] = useState('mpesa');
   const [amount, setAmount] = useState(50);
@@ -5562,7 +5450,6 @@ const TIMELINE_STEPS = [
   { key: 'delivered', label: 'Delivered' }
 ];
 
-// eslint-disable-next-line no-unused-vars
 function ShipmentTimeline({ rawStatus, tracking = [] }) {
   const currentIndex = TIMELINE_STEPS.findIndex((s) => s.key === rawStatus);
 
@@ -5599,7 +5486,6 @@ function ShipmentTimeline({ rawStatus, tracking = [] }) {
 /* ============================================================
    BID COMPARISON TABLE
    ============================================================ */
-// eslint-disable-next-line no-unused-vars
 function BidComparisonTable({ bids = [], onAward, busyId }) {
   const [sortBy, setSortBy] = useState('price');
 

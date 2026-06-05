@@ -78,6 +78,10 @@ This file summarizes the security hardening, workflow fixes, and latest iTruck w
 - Added wallet top-up modal UI and transaction styling.
 - Added shipment status timeline.
 - Added bid comparison table with price/rating/time sorting.
+- Wired issue reporting into live tracking with structured issue type, severity, description, and photo count.
+- Wired shipment timeline into live tracking using normalized tracking events.
+- Wired bid comparison into shipper bid review with reusable award controls.
+- Wired wallet top-up into payments with admin wallet credit support and queued non-admin top-up state.
 - Added new styles for modals, notifications, search, timeline, onboarding, document alerts, profile score, wallet top-up, and bid comparison.
 
 ---
@@ -104,6 +108,7 @@ This file summarizes the security hardening, workflow fixes, and latest iTruck w
 - `workspace/tailwind.config.js`
 - `workspace/vite.config.js`
 - `workspace/src/App.jsx`
+- `workspace/src/api.js`
 - `workspace/src/styles.css`
 - `frontend/app/index.html`
 - `frontend/app/assets/*`
@@ -134,9 +139,17 @@ Build output:
 
 - `frontend/app/index.html`
 - `frontend/app/assets/index-BGSZQZZl.css`
-- `frontend/app/assets/index-D0-p9MoH.js`
+- `frontend/app/assets/index-C8Gzgb68.js`
 
 Note: PowerShell blocked `npm` through `npm.ps1` on this machine, so `npm.cmd` was used.
+
+### Lint
+
+```bash
+npm.cmd run lint
+```
+
+Result: passed on June 6, 2026.
 
 ---
 

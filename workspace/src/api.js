@@ -162,6 +162,12 @@ export const api = {
   rateTruck: (id, payload) =>
     request(`/trucks/${encodeURIComponent(id)}/ratings`, { method: 'POST', body: JSON.stringify(payload) }),
   wallet: () => request('/payments/wallet'),
+  creditWallet: (payload) =>
+    request('/payments/wallet/credit', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('wallet-credit') },
+      body: JSON.stringify(payload)
+    }),
   releasePayment: (bookingId) =>
     request(`/payments/bookings/${encodeURIComponent(bookingId)}/release`, {
       method: 'POST',
