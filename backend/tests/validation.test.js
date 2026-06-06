@@ -225,7 +225,9 @@ test('mobile money escrow initiation validates input and supports memory fallbac
     .send({ phone: '+254711000000' });
 
   expect(invalid.status).toBe(422);
-  expect(invalid.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ message: 'method is required' })]));
+  expect(invalid.body.errors).toEqual(
+    expect.arrayContaining([expect.objectContaining({ message: 'method is required' })])
+  );
 
   const queued = await request(app)
     .post('/api/payments/bookings/ITK-2044/mobile-money')

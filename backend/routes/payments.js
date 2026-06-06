@@ -25,11 +25,7 @@ function webhookSecret(req, ...keys) {
   if (!expected) return true;
 
   const provided =
-    req.get('x-itruck-webhook-secret') ||
-    req.get('x-webhook-secret') ||
-    req.query.token ||
-    req.query.secret ||
-    '';
+    req.get('x-itruck-webhook-secret') || req.get('x-webhook-secret') || req.query.token || req.query.secret || '';
   return provided === expected;
 }
 

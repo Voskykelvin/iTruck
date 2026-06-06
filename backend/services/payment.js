@@ -55,7 +55,10 @@ function providerCallbackUrl(provider) {
 }
 
 function mpesaTimestamp(date = new Date()) {
-  return date.toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+  return date
+    .toISOString()
+    .replace(/[^0-9]/g, '')
+    .slice(0, 14);
 }
 
 function normalizeMpesaPhone(phone) {
@@ -83,7 +86,9 @@ function maskPhone(phone) {
 }
 
 function normalizeMobileMoneyMethod(method) {
-  const value = String(method || '').trim().toLowerCase();
+  const value = String(method || '')
+    .trim()
+    .toLowerCase();
   if (value === 'mpesa' || value === 'm-pesa') return 'mpesa';
   if (['mtn', 'momo', 'mtn-momo', 'mtn_momo'].includes(value)) return 'mtn';
   throw appError('Choose either M-Pesa or MTN MoMo', 400);
@@ -1084,23 +1089,22 @@ class MobileMoneyPaymentService {
         merchantRequestId: providerResult.merchantRequestId,
         providerResponse: providerResult.response
       };
-      const updatedTransaction =
-        (await Transaction.findOneAndUpdate(
-          { _id: transaction._id },
-          {
-            $set: {
-              reference: finalReference,
-              providerEventId: providerResult.providerReference,
-              metadata
-            }
-          },
-          { new: true }
-        )) || {
-          ...transaction,
-          reference: finalReference,
-          providerEventId: providerResult.providerReference,
-          metadata
-        };
+      const updatedTransaction = (await Transaction.findOneAndUpdate(
+        { _id: transaction._id },
+        {
+          $set: {
+            reference: finalReference,
+            providerEventId: providerResult.providerReference,
+            metadata
+          }
+        },
+        { new: true }
+      )) || {
+        ...transaction,
+        reference: finalReference,
+        providerEventId: providerResult.providerReference,
+        metadata
+      };
 
       const updatedBooking =
         (await Booking.findOneAndUpdate(
@@ -1258,7 +1262,9 @@ class PaymentReconciliationService {
     }
 
     const providerPayload =
-      payload.status || payload.financialTransactionId ? payload : await new MTNMoMoService().requestToPayStatus(providerReference);
+      payload.status || payload.financialTransactionId
+        ? payload
+        : await new MTNMoMoService().requestToPayStatus(providerReference);
     const status = String(providerPayload.status || 'PENDING').toUpperCase();
     if (status === 'PENDING') {
       const metadata = {
