@@ -7,6 +7,7 @@ const AuditLog = require('../models/AuditLog');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
+const { recordReviewedDocument } = require('../services/documentRecords');
 const {
   documentReviewSchema,
   notifySchema,
@@ -237,6 +238,15 @@ router.patch('/users/:id/documents/:documentType', documentReviewSchema, validat
       normalizeProfileDocumentType(type, user.role)
     );
     await user.save();
+    await recordReviewedDocument({
+      targetType: 'user',
+      targetId: user._id,
+      type: documentType,
+      userId: user._id,
+      reviewedBy: req.user._id,
+      patch: { ...req.body, reviewedAt: new Date() },
+      metadata: { role: user.role }
+    });
 
     // Emit socket event to user about document update
     const io = req.app.get('io');
@@ -273,6 +283,15 @@ router.patch('/trucks/:id/documents/:documentType', documentReviewSchema, valida
     const documentType = normalizeTruckDocumentType(req.params.documentType);
     truck.documents = upsertDocument(truck.documents || [], documentType, req.body, normalizeTruckDocumentType);
     await truck.save();
+    await recordReviewedDocument({
+      targetType: 'truck',
+      targetId: truck._id,
+      type: documentType,
+      userId: truck.owner,
+      reviewedBy: req.user._id,
+      truckId: truck._id,
+      patch: { ...req.body, reviewedAt: new Date() }
+    });
 
     // Emit socket event to user about document update
     const io = req.app.get('io');
@@ -310,6 +329,20 @@ router.patch('/bookings/:id/documents/:documentType', documentReviewSchema, vali
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
     booking.documents = upsertDocument(booking.documents || [], documentType, req.body, normalizeBookingDocumentType);
     await booking.save();
+    await recordReviewedDocument({
+      targetType: 'booking',
+      targetId: booking._id,
+      type: documentType,
+      userId: booking.client || req.user._id,
+      reviewedBy: req.user._id,
+      bookingId: booking._id,
+      patch: { ...req.body, reviewedAt: new Date() },
+      metadata: {
+        client: booking.client,
+        owner: booking.owner,
+        truck: booking.truck
+      }
+    });
 
     const io = req.app.get('io');
     if (io?.emitToBooking) {

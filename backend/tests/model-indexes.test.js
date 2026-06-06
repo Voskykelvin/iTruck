@@ -8,6 +8,7 @@ const Booking = require('../models/Booking');
 const RefreshToken = require('../models/RefreshToken');
 const Truck = require('../models/Truck');
 const Idempotency = require('../models/Idempotency');
+const Document = require('../models/Document');
 
 function hasIndex(Model, keys, options = {}) {
   return Model.schema
@@ -80,6 +81,33 @@ test('idempotency records expire and enforce one key per payment attempt', () =>
   );
 });
 
+test('document records index every upload and generated booking document', () => {
+  expect(hasIndex(Document, { targetType: 1, target: 1, type: 1 }, { unique: true })).toBe(true);
+  expect(hasIndex(Document, { user: 1, status: 1, updatedAt: -1 })).toBe(true);
+  expect(hasIndex(Document, { booking: 1, type: 1 })).toBe(true);
+  expect(hasIndex(Document, { truck: 1, type: 1 })).toBe(true);
+  expect(hasIndex(Document, { source: 1, updatedAt: -1 })).toBe(true);
+});
+
+test('document records accept all normalized site document slugs', () => {
+  const user = oid();
+  const target = oid();
+  const slugs = ['shipper-kyc', 'business-registration', 'tax-certificate', 'waybill', 'cargo-photos'];
+
+  slugs.forEach((type) => {
+    const record = new Document({
+      user,
+      target,
+      targetType: 'booking',
+      targetModel: 'Booking',
+      type,
+      title: type
+    });
+
+    expect(record.validateSync()).toBeUndefined();
+  });
+});
+
 test('new models enforce their required fields without a database connection', () => {
   expect(new Wallet({ balance: 10 }).validateSync().errors.user).toBeDefined();
   expect(
@@ -89,6 +117,16 @@ test('new models enforce their required fields without a database connection', (
   expect(new BookingMessage({ user: oid(), text: 'Driver is at pickup' }).validateSync()).toBeUndefined();
   expect(
     new IssueReport({ user: oid(), severity: 'high', message: 'Delayed at border' }).validateSync()
+  ).toBeUndefined();
+  expect(
+    new Document({
+      user: oid(),
+      target: oid(),
+      targetType: 'user',
+      targetModel: 'User',
+      type: 'tax-certificate',
+      title: 'Tax certificate'
+    }).validateSync()
   ).toBeUndefined();
 });
 
@@ -101,4 +139,15 @@ test('new models reject invalid enum values', () => {
     new BookingMessage({ user: oid(), text: 'Hello', status: 'archived' }).validateSync().errors.status
   ).toBeDefined();
   expect(new IssueReport({ user: oid(), severity: 'critical' }).validateSync().errors.severity).toBeDefined();
+  expect(
+    new Document({
+      user: oid(),
+      target: oid(),
+      targetType: 'truck',
+      targetModel: 'Truck',
+      type: 'insurance',
+      title: 'Insurance',
+      status: 'lost'
+    }).validateSync().errors.status
+  ).toBeDefined();
 });

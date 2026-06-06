@@ -2,10 +2,12 @@ const express = require('express');
 const { protect } = require('../middleware/auth');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const Booking = require('../models/Booking');
+const Document = require('../models/Document');
 const docs = require('../services/documents');
+const { recordGeneratedDocument, syncEmbeddedDocumentRecords } = require('../services/documentRecords');
 const cloudinary = require('../services/cloudinary');
 const validate = require('../middleware/validate');
-const { bookingDocumentSchema } = require('../validators/documents');
+const { bookingDocumentSchema, documentListSchema } = require('../validators/documents');
 const { normalizeBookingDocumentType } = require('../utils/documentTypes');
 
 const router = express.Router();
@@ -120,7 +122,7 @@ function cacheable(record) {
   return ['delivered', 'cancelled'].includes(record?.status);
 }
 
-async function cachedDocumentUrl(record, type, create, payload) {
+async function cachedDocumentUrl(req, record, type, create, payload) {
   if (!cacheable(record)) return null;
   const documentType = normalizeBookingDocumentType(type);
 
@@ -143,6 +145,21 @@ async function cachedDocumentUrl(record, type, create, payload) {
   if (document) Object.assign(document, update);
   else record.documents.push(update);
   await record.save();
+  await recordGeneratedDocument({
+    targetType: 'booking',
+    targetId: record._id,
+    type: documentType,
+    userId: req.user._id,
+    uploadedBy: req.user._id,
+    bookingId: record._id,
+    patch: update,
+    metadata: {
+      cached: true,
+      client: record.client,
+      owner: record.owner,
+      truck: record.truck
+    }
+  });
   return url;
 }
 
@@ -151,14 +168,56 @@ async function renderDocument(req, res, next, type, create) {
     const loaded = await loadBooking(req, res);
     if (!loaded) return;
 
-    const cachedUrl = await cachedDocumentUrl(loaded.record, type, create, loaded.payload);
+    const documentType = normalizeBookingDocumentType(type);
+    const cachedUrl = await cachedDocumentUrl(req, loaded.record, type, create, loaded.payload);
     if (cachedUrl) return res.redirect(302, cachedUrl);
+
+    if (loaded.record) {
+      await recordGeneratedDocument({
+        targetType: 'booking',
+        targetId: loaded.record._id,
+        type: documentType,
+        userId: req.user._id,
+        uploadedBy: req.user._id,
+        bookingId: loaded.record._id,
+        patch: { generatedAt: new Date() },
+        metadata: {
+          cached: false,
+          client: loaded.record.client,
+          owner: loaded.record.owner,
+          truck: loaded.record.truck
+        }
+      });
+    }
 
     streamPdf(res, `${req.params.bookingId}-${type}.pdf`, create(loaded.payload));
   } catch (err) {
     next(err);
   }
 }
+
+router.get('/', documentListSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.json({ documents: [], mode: 'memory' });
+
+    const sync = await syncEmbeddedDocumentRecords(req.user);
+    const filter = {};
+    if (req.user.role !== 'admin') filter.$or = [{ user: req.user._id }, { uploadedBy: req.user._id }];
+    if (req.query.targetType) filter.targetType = req.query.targetType;
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.source) filter.source = req.query.source;
+
+    const documents = await Document.find(filter)
+      .populate('user uploadedBy reviewedBy', 'firstName lastName email role')
+      .sort('-updatedAt')
+      .limit(req.query.limit || 50);
+
+    res.json({ documents, sync });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.post('/draft/:type', protect, async (req, res, next) => {
   try {

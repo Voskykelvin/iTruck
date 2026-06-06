@@ -267,6 +267,66 @@ function normalizeBookingDocumentType(value) {
   return aliases[slug] || slug;
 }
 
+function recordIdentity(record) {
+  return String(record?._id || record?.id || record?.bookingId || '');
+}
+
+function documentTargetIdentity(doc) {
+  if (doc?.target && typeof doc.target === 'object') return recordIdentity(doc.target);
+  return String(doc?.target || doc?.targetId || doc?.booking || doc?.truck || '');
+}
+
+function normalizeIndexedDocumentType(targetType, type, record) {
+  if (targetType === 'user') return normalizeProfileDocumentType(type, record?.role);
+  if (targetType === 'truck') return normalizeTruckDocumentType(type);
+  return normalizeBookingDocumentType(type);
+}
+
+function mergeDocumentLists(baseDocuments = [], indexedDocuments = [], targetType, record) {
+  const byType = new globalThis.Map();
+  const addDocument = (doc) => {
+    const type = normalizeIndexedDocumentType(targetType, doc.type, record);
+    if (!type) return;
+    byType.set(type, {
+      ...doc,
+      type,
+      url: doc.url || doc.urls?.[0],
+      fileName: doc.fileName || doc.fileNames?.[0],
+      notes: doc.notes || doc.reviewNotes
+    });
+  };
+
+  baseDocuments.forEach(addDocument);
+  indexedDocuments.forEach(addDocument);
+  return Array.from(byType.values());
+}
+
+function mergeDocumentIndex(records = [], indexedDocuments = [], targetType) {
+  const grouped = indexedDocuments
+    .filter((doc) => doc.targetType === targetType)
+    .reduce((map, doc) => {
+      const key = documentTargetIdentity(doc);
+      if (!key) return map;
+      map.set(key, [...(map.get(key) || []), doc]);
+      return map;
+    }, new globalThis.Map());
+
+  return records.map((record) => {
+    const key = recordIdentity(record);
+    const indexed = grouped.get(key) || [];
+    if (!indexed.length) return record;
+    return {
+      ...record,
+      documents: mergeDocumentLists(
+        Array.isArray(record.documents) ? record.documents : [],
+        indexed,
+        targetType,
+        record
+      )
+    };
+  });
+}
+
 function profileDocumentsForRole(role) {
   if (role === 'owner') return ownerProfileDocuments;
   if (role === 'admin') return [];
@@ -632,6 +692,101 @@ function MetricCard({ icon: Icon, label, value, detail }) {
 
 function StatusBadge({ children, tone = 'default' }) {
   return <span className={`badge ${tone}`}>{children}</span>;
+}
+
+function documentStatusMeta(status = 'missing', labels = {}) {
+  const text = {
+    approved: labels.approved || 'Verified',
+    pending: labels.pending || 'Under Review',
+    rejected: labels.rejected || 'Rejected - Re-upload',
+    expired: labels.expired || 'Expired - Re-upload',
+    missing: labels.missing || 'Upload'
+  };
+
+  if (status === 'approved') return { tone: 'success', text: text.approved };
+  if (status === 'pending') return { tone: 'warn', text: text.pending };
+  if (status === 'rejected') return { tone: 'danger', text: text.rejected };
+  if (status === 'expired') return { tone: 'danger', text: text.expired };
+  return { tone: 'default', text: text.missing };
+}
+
+function documentSlotBackground(status = 'missing') {
+  if (status === 'approved') return 'rgba(132, 204, 22, 0.07)';
+  if (status === 'pending') return 'rgba(245, 158, 11, 0.06)';
+  if (status === 'rejected' || status === 'expired') return 'rgba(239, 68, 68, 0.05)';
+  return '#f8fafc';
+}
+
+function DocumentSlotButton({
+  label,
+  status = 'missing',
+  busy = false,
+  busyText = 'Uploading...',
+  disabled = false,
+  onClick,
+  labels,
+  style,
+  title
+}) {
+  const meta = documentStatusMeta(status, labels);
+  const isDisabled = disabled || busy;
+
+  return (
+    <button
+      type="button"
+      disabled={isDisabled}
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        padding: '10px 12px',
+        borderRadius: 'var(--radius)',
+        border: '1px solid var(--line)',
+        background: documentSlotBackground(status),
+        cursor: isDisabled ? 'default' : 'pointer',
+        transition: 'border-color 0.15s, background 0.15s',
+        ...style
+      }}
+      title={title}
+    >
+      <span style={{ fontWeight: 700, flex: 1, textAlign: 'left' }}>{label}</span>
+      <StatusBadge tone={meta.tone}>{busy ? busyText : meta.text}</StatusBadge>
+    </button>
+  );
+}
+
+function usePollingEffect(active, callback, intervalMs = 30000) {
+  useEffect(() => {
+    if (!active) return undefined;
+    let cancelled = false;
+    const run = () => {
+      if (!cancelled) callback();
+    };
+    const interval = window.setInterval(run, intervalMs);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [active, callback, intervalMs]);
+}
+
+function useCurrentUserPolling(active, setUser, intervalMs = 30000) {
+  const refreshUser = useCallback(async () => {
+    if (!active) return;
+    try {
+      const data = await api.profile();
+      if (data.user) {
+        setSession({ user: data.user });
+        setUser(data.user);
+      }
+    } catch (_err) {
+      // Polling is a fallback; visible upload actions still report errors directly.
+    }
+  }, [active, setUser]);
+
+  usePollingEffect(active, refreshUser, intervalMs);
 }
 
 function ChatBubble({ message }) {
@@ -2531,13 +2686,23 @@ function OnboardingPage({ notify, user, setUser }) {
   const profileDocInputRef = useRef(null);
   const vehiclePhotoInputRef = useRef(null);
 
-  useEffect(() => {
+  useCurrentUserPolling(Boolean(user.email), setUser, 30000);
+
+  const loadFleet = useCallback(async () => {
     if (role !== 'owner') return;
-    api
-      .fleetTrucks()
-      .then((data) => Array.isArray(data.trucks) && setFleet(data.trucks.map(normalizeTruck)))
-      .catch(() => setFleet(workspaceFleet.slice(0, 2)));
+    try {
+      const data = await api.fleetTrucks();
+      if (Array.isArray(data.trucks)) setFleet(data.trucks.map(normalizeTruck));
+    } catch (_err) {
+      setFleet(workspaceFleet.slice(0, 2));
+    }
   }, [role]);
+
+  useEffect(() => {
+    loadFleet();
+  }, [loadFleet]);
+
+  usePollingEffect(role === 'owner', loadFleet, 30000);
 
   const profileDocs = profileDocumentsForRole(role);
 
@@ -2673,50 +2838,22 @@ function OnboardingPage({ notify, user, setUser }) {
               const existingDoc = findProfileDocument(user.documents || [], item, role);
               const docStatus = existingDoc ? existingDoc.status : 'missing';
 
-              let tone = 'default';
-              let statusText = 'Not Uploaded';
-              if (docStatus === 'approved') {
-                tone = 'success';
-                statusText = 'Verified';
-              } else if (docStatus === 'pending') {
-                tone = 'warn';
-                statusText = 'Pending Review';
-              } else if (docStatus === 'rejected') {
-                tone = 'danger';
-                statusText = 'Rejected';
-              } else if (docStatus === 'expired') {
-                tone = 'danger';
-                statusText = 'Expired';
-              }
-
               return (
-                <button
-                  type="button"
+                <DocumentSlotButton
                   key={item}
-                  disabled={uploading === slug}
-                  onClick={() => openProfileDoc(item)}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    width: '100%',
-                    padding: '10px 12px',
-                    margin: '4px 0',
-                    borderRadius: 'var(--radius)',
-                    border: '1px solid var(--line)',
-                    background:
-                      docStatus === 'approved'
-                        ? 'rgba(132, 204, 22, 0.06)'
-                        : docStatus === 'pending'
-                          ? 'rgba(245, 158, 11, 0.06)'
-                          : docStatus === 'rejected'
-                            ? 'rgba(239, 68, 68, 0.05)'
-                            : '#f8fafc'
+                  label={item}
+                  status={docStatus}
+                  busy={uploading === slug}
+                  labels={{
+                    approved: 'Verified',
+                    pending: 'Pending Review',
+                    rejected: 'Rejected',
+                    expired: 'Expired',
+                    missing: 'Not Uploaded'
                   }}
-                >
-                  <span style={{ fontWeight: 700 }}>{item}</span>
-                  <StatusBadge tone={tone}>{uploading === slug ? 'Uploading...' : statusText}</StatusBadge>
-                </button>
+                  onClick={() => openProfileDoc(item)}
+                  style={{ margin: '4px 0' }}
+                />
               );
             })}
           </div>
@@ -3123,38 +3260,53 @@ function DocumentsPage({ notify, user }) {
   const pendingUploadRef = useRef(null);
   const fileInputRef = useRef(null);
   const socketRef = useRef(null);
+  const bookingIdsRef = useRef([]);
 
-  useEffect(() => {
-    api
-      .listBookings()
-      .then((data) => Array.isArray(data.bookings) && setShipments(data.bookings.map(normalizeBookingShipment)))
-      .catch(() => setShipments(workspaceShipments));
+  const refreshDocuments = useCallback(async () => {
+    try {
+      const data = await api.listBookings();
+      if (Array.isArray(data.bookings)) setShipments(data.bookings.map(normalizeBookingShipment));
+    } catch (_err) {
+      setShipments(workspaceShipments);
+    }
 
     if (role === 'owner') {
-      api
-        .fleetTrucks()
-        .then((data) => Array.isArray(data.trucks) && setFleet(data.trucks.map(normalizeTruck)))
-        .catch(() => setFleet(workspaceFleet.slice(0, 2)));
+      try {
+        const data = await api.fleetTrucks();
+        if (Array.isArray(data.trucks)) setFleet(data.trucks.map(normalizeTruck));
+      } catch (_err) {
+        setFleet(workspaceFleet.slice(0, 2));
+      }
     }
   }, [role]);
 
   useEffect(() => {
-    socketRef.current = io(window.location.origin);
-    socketRef.current.on('document:updated', (_data) => {
-      // Refetch relevant data
-      if (role === 'owner') {
-        api.fleetTrucks().then((res) => {
-          if (Array.isArray(res.trucks)) setFleet(res.trucks.map(normalizeTruck));
-        });
-      }
-      api.listBookings().then((res) => {
-        if (Array.isArray(res.bookings)) setShipments(res.bookings.map(normalizeBookingShipment));
-      });
+    refreshDocuments();
+  }, [refreshDocuments]);
+
+  usePollingEffect(Boolean(user.email), refreshDocuments, 30000);
+
+  useEffect(() => {
+    const socket = io(window.location.origin, {
+      auth: { token: localStorage.getItem('itruck_token') || '' }
+    });
+    socketRef.current = socket;
+    socket.on('document:updated', refreshDocuments);
+    socket.on('document-updated', refreshDocuments);
+    socket.on('connect', () => {
+      bookingIdsRef.current.forEach((bookingId) => socket.emit('join-booking', bookingId));
     });
     return () => {
-      socketRef.current.disconnect();
+      socket.disconnect();
+      socketRef.current = null;
     };
-  }, [role]);
+  }, [refreshDocuments]);
+
+  useEffect(() => {
+    const bookingIds = shipments.map((shipment) => shipment.bookingId).filter(Boolean);
+    bookingIdsRef.current = bookingIds;
+    bookingIds.forEach((bookingId) => socketRef.current?.emit('join-booking', bookingId));
+  }, [shipments]);
 
   async function downloadDoc(definition, shipment) {
     if (!shipment?.bookingId) {
@@ -3242,55 +3394,25 @@ function DocumentsPage({ notify, user }) {
                         const slug = normalizeTruckDocumentType(item);
                         const existingDoc = findTruckDocument(truck.documents || [], item);
                         const docStatus = existingDoc ? existingDoc.status : 'missing';
-
-                        let tone = 'default';
-                        let statusText = 'Upload';
-                        if (docStatus === 'approved') {
-                          tone = 'success';
-                          statusText = 'Verified ✓';
-                        } else if (docStatus === 'pending') {
-                          tone = 'warn';
-                          statusText = 'Under Review';
-                        } else if (docStatus === 'rejected') {
-                          tone = 'danger';
-                          statusText = 'Rejected — Re-upload';
-                        } else if (docStatus === 'expired') {
-                          tone = 'danger';
-                          statusText = 'Expired — Re-upload';
-                        }
-
                         const isBusy = busy === `${truck.id}-${slug}`;
 
                         return (
-                          <button
+                          <DocumentSlotButton
                             key={item}
-                            type="button"
-                            disabled={isBusy || docStatus === 'approved'}
-                            onClick={() => openUpload('truck', truck.id, slug)}
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: 'var(--radius)',
-                              border: '1px solid var(--line)',
-                              background:
-                                docStatus === 'approved'
-                                  ? 'rgba(132, 204, 22, 0.07)'
-                                  : docStatus === 'pending'
-                                    ? 'rgba(245, 158, 11, 0.06)'
-                                    : docStatus === 'rejected' || docStatus === 'expired'
-                                      ? 'rgba(239, 68, 68, 0.05)'
-                                      : '#f8fafc',
-                              cursor: docStatus === 'approved' ? 'default' : 'pointer',
-                              transition: 'border-color 0.15s, background 0.15s'
+                            label={item}
+                            status={docStatus}
+                            busy={isBusy}
+                            disabled={docStatus === 'approved'}
+                            labels={{
+                              approved: 'Verified',
+                              pending: 'Under Review',
+                              rejected: 'Rejected - Re-upload',
+                              expired: 'Expired - Re-upload',
+                              missing: 'Upload'
                             }}
+                            onClick={() => openUpload('truck', truck.id, slug)}
                             title={docStatus === 'approved' ? `${item} already verified` : `Click to upload ${item}`}
-                          >
-                            <span style={{ fontWeight: 700, flex: 1, textAlign: 'left' }}>{item}</span>
-                            <StatusBadge tone={tone}>{isBusy ? 'Uploading…' : statusText}</StatusBadge>
-                          </button>
+                          />
                         );
                       })}
                       <button
@@ -3620,6 +3742,7 @@ function AdminPage({ notify }) {
     users: [],
     trucks: [],
     bookings: [],
+    documents: [],
     payments: [],
     logs: []
   });
@@ -3628,12 +3751,13 @@ function AdminPage({ notify }) {
   const [reviewNotes, setReviewNotes] = useState({});
 
   const loadAdminData = useCallback(async () => {
-    const [statsResult, usersResult, trucksResult, bookingsResult, paymentsResult, logsResult] =
+    const [statsResult, usersResult, trucksResult, bookingsResult, documentsResult, paymentsResult, logsResult] =
       await Promise.allSettled([
         api.adminStats(),
         api.adminListUsers(),
         api.adminListTrucks(),
         api.adminListBookings(),
+        api.listDocuments({ limit: 100 }),
         api.adminListPayments(),
         api.adminAuditLogs()
       ]);
@@ -3641,10 +3765,16 @@ function AdminPage({ notify }) {
     if (statsResult.status === 'fulfilled') setStats(statsResult.value);
     else setStats(null);
 
+    const indexedDocuments = documentsResult.status === 'fulfilled' ? documentsResult.value.documents || [] : [];
+    const users = usersResult.status === 'fulfilled' ? usersResult.value.users || [] : [];
+    const trucks = trucksResult.status === 'fulfilled' ? trucksResult.value.trucks || [] : [];
+    const bookings = bookingsResult.status === 'fulfilled' ? bookingsResult.value.bookings || [] : [];
+
     setAdminData({
-      users: usersResult.status === 'fulfilled' ? usersResult.value.users || [] : [],
-      trucks: trucksResult.status === 'fulfilled' ? trucksResult.value.trucks || [] : [],
-      bookings: bookingsResult.status === 'fulfilled' ? bookingsResult.value.bookings || [] : [],
+      users: mergeDocumentIndex(users, indexedDocuments, 'user'),
+      trucks: mergeDocumentIndex(trucks, indexedDocuments, 'truck'),
+      bookings: mergeDocumentIndex(bookings, indexedDocuments, 'booking'),
+      documents: indexedDocuments,
       payments: paymentsResult.status === 'fulfilled' ? paymentsResult.value.transactions || [] : [],
       logs: logsResult.status === 'fulfilled' ? logsResult.value.logs || [] : []
     });
@@ -3653,6 +3783,8 @@ function AdminPage({ notify }) {
   useEffect(() => {
     loadAdminData();
   }, [loadAdminData]);
+
+  usePollingEffect(true, loadAdminData, 30000);
 
   function recordId(record) {
     return String(record?._id || record?.id || record?.bookingId || '');
@@ -4698,6 +4830,8 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
   const activeUserRole = roleForUser(user);
   const verificationItems = profileDocumentsForRole(activeUserRole);
 
+  useCurrentUserPolling(signedIn, setUser, 30000);
+
   const selectPendingDocument = useCallback((item) => {
     pendingDocumentRef.current = item;
     setPendingDocument(item);
@@ -5063,52 +5197,24 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
             {verificationItems.map((item) => {
               const existingDoc = findProfileDocument(user.documents || [], item, activeUserRole);
               const docStatus = existingDoc ? existingDoc.status : 'missing';
-              let tone = 'default';
-              let statusText = 'Upload';
-              if (docStatus === 'approved') {
-                tone = 'success';
-                statusText = 'Verified ✓';
-              } else if (docStatus === 'pending') {
-                tone = 'warn';
-                statusText = 'Under Review';
-              } else if (docStatus === 'rejected') {
-                tone = 'danger';
-                statusText = 'Rejected — Re-upload';
-              } else if (docStatus === 'expired') {
-                tone = 'danger';
-                statusText = 'Expired — Re-upload';
-              }
               const isBusy = uploadingDocument === item;
               return (
-                <button
-                  type="button"
+                <DocumentSlotButton
                   key={item}
+                  label={item}
+                  status={docStatus}
+                  busy={isBusy}
                   disabled={Boolean(uploadingDocument) || docStatus === 'approved'}
-                  onClick={() => openVerificationUpload(item)}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 'var(--radius)',
-                    border: '1px solid var(--line)',
-                    background:
-                      docStatus === 'approved'
-                        ? 'rgba(132,204,22,0.07)'
-                        : docStatus === 'pending'
-                          ? 'rgba(245,158,11,0.06)'
-                          : docStatus === 'rejected' || docStatus === 'expired'
-                            ? 'rgba(239,68,68,0.05)'
-                            : '#f8fafc',
-                    cursor: docStatus === 'approved' ? 'default' : 'pointer',
-                    transition: 'border-color 0.15s'
+                  labels={{
+                    approved: 'Verified',
+                    pending: 'Under Review',
+                    rejected: 'Rejected - Re-upload',
+                    expired: 'Expired - Re-upload',
+                    missing: 'Upload'
                   }}
+                  onClick={() => openVerificationUpload(item)}
                   title={docStatus === 'approved' ? `${item} already verified` : `Click to upload ${item}`}
-                >
-                  <span style={{ fontWeight: 700, flex: 1, textAlign: 'left' }}>{item}</span>
-                  <StatusBadge tone={tone}>{isBusy ? 'Uploading…' : statusText}</StatusBadge>
-                </button>
+                />
               );
             })}
           </div>
