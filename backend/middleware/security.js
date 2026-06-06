@@ -36,12 +36,7 @@ const authLimiter = rateLimit({
 
 function handleCastError(err) {
   const raw = err.value;
-  const value =
-    raw === null || raw === undefined
-      ? raw
-      : typeof raw === 'object'
-        ? JSON.stringify(raw)
-        : raw;
+  const value = raw === null || raw === undefined ? raw : typeof raw === 'object' ? JSON.stringify(raw) : raw;
   return AppError.badRequest(`Invalid ${err.path}: ${value}`);
 }
 
