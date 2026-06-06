@@ -4,6 +4,7 @@ const Truck = require('../models/Truck');
 const User = require('../models/User');
 const matching = require('../services/matching');
 const { recordUploadedDocument } = require('../services/documentRecords');
+const notifications = require('../services/notifications');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
@@ -357,6 +358,17 @@ router.post('/:id/bids', restrictTo('owner', 'admin'), submitBidSchema, validate
     if (booking.status === 'pending') booking.transitionTo('bidding');
     await booking.save();
 
+    await notifications.deliver(
+      booking.client,
+      'bid.created',
+      {
+        title: `New carrier bid on ${booking._id}`,
+        message: `${req.user._id} placed a bid for ${booking.pickup || 'pickup'} to ${booking.destination || 'delivery'}.`,
+        link: '/app/bids',
+        bookingId: booking._id
+      },
+      req.app.get('io')
+    );
     emitBooking(req, booking._id, 'bid-created', booking);
     res.json({ booking });
   } catch (err) {
@@ -389,6 +401,17 @@ router.patch(
       acceptBidOnBooking(booking, req.params.bidId, req.user._id);
       await booking.save();
 
+      await notifications.deliver(
+        booking.owner,
+        'bid.accepted',
+        {
+          title: `Bid accepted on ${booking._id}`,
+          message: `Your bid was accepted for ${booking.pickup || 'pickup'} to ${booking.destination || 'delivery'}.`,
+          link: '/app/bids',
+          bookingId: booking._id
+        },
+        req.app.get('io')
+      );
       emitBooking(req, booking._id, 'bid-accepted', booking);
       res.json({ booking });
     } catch (err) {
@@ -425,6 +448,17 @@ router.patch(
       booking.deliveredAt = new Date();
       await booking.save();
 
+      await notifications.notifyBookingParties(
+        booking,
+        'shipment.delivered',
+        {
+          title: `${booking._id} delivered`,
+          message: `${booking.pickup || 'Pickup'} to ${booking.destination || 'delivery'} was confirmed delivered.`,
+          link: '/app/tracking',
+          bookingId: booking._id
+        },
+        req.app.get('io')
+      );
       emitBooking(req, booking._id, 'delivery-confirmed', booking);
       res.json({ booking });
     } catch (err) {
@@ -519,6 +553,18 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
     if (req.body.location) booking.tracking.push(req.body.location);
     await booking.save();
 
+    await notifications.notifyBookingParties(
+      booking,
+      'shipment.status',
+      {
+        title: `${booking._id} ${booking.status.replaceAll('_', ' ')}`,
+        message: `${booking.pickup || 'Pickup'} to ${booking.destination || 'delivery'} status changed.`,
+        link: '/app/tracking',
+        bookingId: booking._id,
+        status: booking.status
+      },
+      req.app.get('io')
+    );
     emitBooking(req, booking._id, 'status-update', booking);
     res.json({ booking });
   } catch (err) {

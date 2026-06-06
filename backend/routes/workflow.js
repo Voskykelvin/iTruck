@@ -7,6 +7,7 @@ const Booking = require('../models/Booking');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
+const notifications = require('../services/notifications');
 const {
   createLoadRequestSchema,
   createMessageSchema,
@@ -133,6 +134,20 @@ async function submitBid(req, res, next) {
     booking.bids.push(bid);
     if (booking.status === 'pending') booking.transitionTo('bidding');
     await booking.save();
+
+    await notifications.deliver(
+      booking.client,
+      'bid.created',
+      {
+        title: `New carrier bid on ${booking._id}`,
+        message: `${req.user._id} placed a bid for ${booking.pickup || 'pickup'} to ${booking.destination || 'delivery'}.`,
+        link: '/app/bids',
+        bookingId: booking._id
+      },
+      req.app.get('io')
+    );
+    const io = req.app.get('io');
+    if (io?.emitToBooking) io.emitToBooking(booking._id, 'bid-created', booking);
 
     const item = {
       type: 'bid',

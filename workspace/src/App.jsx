@@ -529,6 +529,40 @@ function statusLabel(status = 'pending') {
   return status.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function titleFromSlug(value = 'Document') {
+  return String(value || 'Document')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function notificationId(prefix = 'note') {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function notificationLinkForType(type, data = {}) {
+  if (data.link) return data.link;
+  if (type?.startsWith('bid')) return '/app/bids';
+  if (type?.startsWith('document')) return '/app/documents';
+  if (type?.startsWith('profile')) return '/app/profile';
+  if (type?.startsWith('truck')) return '/app/vehicles';
+  if (type?.startsWith('booking') || type?.startsWith('shipment')) return '/app/tracking';
+  return '/app/shipper';
+}
+
+function normalizeNotificationRecord(record = {}) {
+  const data = record.data || {};
+  const type = record.type || data.type || 'workspace:update';
+  return {
+    id: String(record._id || record.id || notificationId(type)),
+    title: record.title || data.title || titleFromSlug(type),
+    message: record.message || data.message || '',
+    read: Boolean(record.read),
+    createdAt: record.createdAt || data.createdAt || new Date().toISOString(),
+    link: notificationLinkForType(type, data),
+    type
+  };
+}
+
 function progressForStatus(status = 'pending') {
   if (status === 'delivered') return 100;
   if (status === 'in_transit') return 64;
@@ -5012,168 +5046,170 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
               <p>Access your iTruck workspace with your account credentials.</p>
             </div>
 
-            {authMode !== 'reset' ? (
-              <>
-                <button className="auth-provider-button" type="button" onClick={startGoogleSignIn}>
-                  <span className="google-mark">G</span>
-                  Continue with Google
-                </button>
-                <div className="auth-divider">
-                  <span>or</span>
-                </div>
-              </>
-            ) : null}
+            <div className="auth-controls">
+              {authMode !== 'reset' ? (
+                <>
+                  <button className="auth-provider-button" type="button" onClick={startGoogleSignIn}>
+                    <span className="google-mark">G</span>
+                    Continue with Google
+                  </button>
+                  <div className="auth-divider">
+                    <span>or</span>
+                  </div>
+                </>
+              ) : null}
 
-            {authMode === 'forgot' ? (
-              <form className="auth-form" onSubmit={requestPasswordReset}>
-                <label className="field">
-                  <span>Email</span>
-                  <input
-                    type="email"
-                    value={resetEmail}
-                    autoComplete="email"
-                    onChange={(event) => setResetEmail(event.target.value)}
-                  />
-                </label>
-                {resetStatus === 'reset-requested' ? (
-                  <p className="muted-note">Check your inbox for the reset link.</p>
-                ) : null}
-                <div className="auth-actions">
-                  <button className="primary auth-submit" type="submit" disabled={resetBusy}>
-                    {resetBusy ? 'Sending...' : 'Send reset link'}
-                  </button>
-                  <button className="text-button" type="button" onClick={() => setAuthMode('signin')}>
-                    Back to sign in
-                  </button>
-                </div>
-              </form>
-            ) : authMode === 'reset' ? (
-              <form className="auth-form" onSubmit={resetPassword}>
-                <label className="field">
-                  <span>Email</span>
-                  <input
-                    type="email"
-                    value={resetEmail}
-                    autoComplete="email"
-                    onChange={(event) => setResetEmail(event.target.value)}
-                  />
-                </label>
-                {resetToken ? null : <p className="muted-note">Reset token is missing or invalid.</p>}
-                <label className="field">
-                  <span>New password</span>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    autoComplete="new-password"
-                    onChange={(event) => setNewPassword(event.target.value)}
-                  />
-                </label>
-                <div className="auth-actions">
-                  <button className="primary auth-submit" type="submit" disabled={resetBusy || !resetToken}>
-                    {resetBusy ? 'Updating...' : 'Update password'}
-                  </button>
-                  <button className="text-button" type="button" onClick={() => setAuthMode('signin')}>
-                    Back to sign in
-                  </button>
-                </div>
-              </form>
-            ) : authMode === 'signup' ? (
-              <form className="auth-form" onSubmit={register}>
-                <label className="field">
-                  <span>First name</span>
-                  <input
-                    type="text"
-                    value={regFirstName}
-                    autoComplete="given-name"
-                    onChange={(event) => setRegFirstName(event.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>Last name</span>
-                  <input
-                    type="text"
-                    value={regLastName}
-                    autoComplete="family-name"
-                    onChange={(event) => setRegLastName(event.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>Email</span>
-                  <input
-                    type="email"
-                    value={regEmail}
-                    autoComplete="email"
-                    onChange={(event) => setRegEmail(event.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>Password</span>
-                  <input
-                    type="password"
-                    value={regPassword}
-                    autoComplete="new-password"
-                    onChange={(event) => setRegPassword(event.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>Role</span>
-                  <select value={regRole} onChange={(event) => setRegRole(event.target.value)}>
-                    <option value="client">Shipper</option>
-                    <option value="owner">Fleet Owner</option>
-                  </select>
-                </label>
-                <div className="auth-actions">
-                  <button className="primary auth-submit" type="submit" disabled={regBusy}>
-                    {regBusy ? 'Creating...' : 'Create account'}
-                  </button>
-                  <button className="text-button" type="button" onClick={() => setAuthMode('signin')}>
-                    Back to sign in
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <form className="auth-form" onSubmit={login}>
-                <label className="field">
-                  <span>Email</span>
-                  <input
-                    type="email"
-                    value={email}
-                    autoComplete="email"
-                    onChange={(event) => {
-                      setEmail(event.target.value);
-                      setResetEmail(event.target.value);
-                    }}
-                  />
-                </label>
-                <label className="field">
-                  <span>Password</span>
-                  <input
-                    type="password"
-                    value={password}
-                    autoComplete="current-password"
-                    onChange={(event) => setPassword(event.target.value)}
-                  />
-                </label>
-                <div className="auth-actions">
-                  <button className="primary auth-submit" type="submit" disabled={busy}>
-                    {busy ? 'Signing in...' : 'Sign in'}
-                  </button>
-                  <button
-                    className="text-button"
-                    type="button"
-                    onClick={() => {
-                      setResetEmail(email);
-                      setAuthMode('forgot');
-                    }}
-                  >
-                    Forgot password?
-                  </button>
-                  <button className="text-button" type="button" onClick={() => setAuthMode('signup')}>
-                    Create account
-                  </button>
-                </div>
-              </form>
-            )}
+              {authMode === 'forgot' ? (
+                <form className="auth-form" onSubmit={requestPasswordReset}>
+                  <label className="field">
+                    <span>Email</span>
+                    <input
+                      type="email"
+                      value={resetEmail}
+                      autoComplete="email"
+                      onChange={(event) => setResetEmail(event.target.value)}
+                    />
+                  </label>
+                  {resetStatus === 'reset-requested' ? (
+                    <p className="muted-note">Check your inbox for the reset link.</p>
+                  ) : null}
+                  <div className="auth-actions">
+                    <button className="primary auth-submit" type="submit" disabled={resetBusy}>
+                      {resetBusy ? 'Sending...' : 'Send reset link'}
+                    </button>
+                    <button className="text-button" type="button" onClick={() => setAuthMode('signin')}>
+                      Back to sign in
+                    </button>
+                  </div>
+                </form>
+              ) : authMode === 'reset' ? (
+                <form className="auth-form" onSubmit={resetPassword}>
+                  <label className="field">
+                    <span>Email</span>
+                    <input
+                      type="email"
+                      value={resetEmail}
+                      autoComplete="email"
+                      onChange={(event) => setResetEmail(event.target.value)}
+                    />
+                  </label>
+                  {resetToken ? null : <p className="muted-note">Reset token is missing or invalid.</p>}
+                  <label className="field">
+                    <span>New password</span>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      autoComplete="new-password"
+                      onChange={(event) => setNewPassword(event.target.value)}
+                    />
+                  </label>
+                  <div className="auth-actions">
+                    <button className="primary auth-submit" type="submit" disabled={resetBusy || !resetToken}>
+                      {resetBusy ? 'Updating...' : 'Update password'}
+                    </button>
+                    <button className="text-button" type="button" onClick={() => setAuthMode('signin')}>
+                      Back to sign in
+                    </button>
+                  </div>
+                </form>
+              ) : authMode === 'signup' ? (
+                <form className="auth-form" onSubmit={register}>
+                  <label className="field">
+                    <span>First name</span>
+                    <input
+                      type="text"
+                      value={regFirstName}
+                      autoComplete="given-name"
+                      onChange={(event) => setRegFirstName(event.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Last name</span>
+                    <input
+                      type="text"
+                      value={regLastName}
+                      autoComplete="family-name"
+                      onChange={(event) => setRegLastName(event.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Email</span>
+                    <input
+                      type="email"
+                      value={regEmail}
+                      autoComplete="email"
+                      onChange={(event) => setRegEmail(event.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Password</span>
+                    <input
+                      type="password"
+                      value={regPassword}
+                      autoComplete="new-password"
+                      onChange={(event) => setRegPassword(event.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Role</span>
+                    <select value={regRole} onChange={(event) => setRegRole(event.target.value)}>
+                      <option value="client">Shipper</option>
+                      <option value="owner">Fleet Owner</option>
+                    </select>
+                  </label>
+                  <div className="auth-actions">
+                    <button className="primary auth-submit" type="submit" disabled={regBusy}>
+                      {regBusy ? 'Creating...' : 'Create account'}
+                    </button>
+                    <button className="text-button" type="button" onClick={() => setAuthMode('signin')}>
+                      Back to sign in
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form className="auth-form" onSubmit={login}>
+                  <label className="field">
+                    <span>Email</span>
+                    <input
+                      type="email"
+                      value={email}
+                      autoComplete="email"
+                      onChange={(event) => {
+                        setEmail(event.target.value);
+                        setResetEmail(event.target.value);
+                      }}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Password</span>
+                    <input
+                      type="password"
+                      value={password}
+                      autoComplete="current-password"
+                      onChange={(event) => setPassword(event.target.value)}
+                    />
+                  </label>
+                  <div className="auth-actions">
+                    <button className="primary auth-submit" type="submit" disabled={busy}>
+                      {busy ? 'Signing in...' : 'Sign in'}
+                    </button>
+                    <button
+                      className="text-button"
+                      type="button"
+                      onClick={() => {
+                        setResetEmail(email);
+                        setAuthMode('forgot');
+                      }}
+                    >
+                      Forgot password?
+                    </button>
+                    <button className="text-button" type="button" onClick={() => setAuthMode('signup')}>
+                      Create account
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
           </div>
         )}
       </Panel>
@@ -6015,8 +6051,10 @@ function AppShell() {
   const [toast, setToast] = useState('');
   const [user, setUser] = useState(currentUser());
   const activeRole = roleForUser(user);
-  const visibleNavItems = useMemo(() => navForUser(user), [user]);
+  const signedIn = Boolean(user?.email);
+  const visibleNavItems = useMemo(() => (signedIn ? navForUser(user) : []), [signedIn, user]);
   const toastTimeoutRef = useRef(null);
+  const socketRef = useRef(null);
 
   // Dark mode
   const [dark, setDark] = useState(() => {
@@ -6055,11 +6093,45 @@ function AppShell() {
         link: '/app/tracking'
       }
     ];
-    return seed;
+    return DEMO_MODE ? seed : [];
   });
 
+  const addNotification = useCallback((record) => {
+    const note = normalizeNotificationRecord({ ...record, read: record?.read ?? false });
+    setNotifications((current) => {
+      if (current.some((item) => item.id === note.id)) {
+        return current.map((item) => (item.id === note.id ? { ...item, ...note } : item));
+      }
+      return [note, ...current].slice(0, 30);
+    });
+  }, []);
+
+  const loadNotifications = useCallback(async () => {
+    if (!signedIn) {
+      setNotifications([]);
+      return;
+    }
+
+    try {
+      const data = await api.listNotifications({ limit: 30 });
+      if (Array.isArray(data.notifications)) {
+        setNotifications(data.notifications.map(normalizeNotificationRecord));
+      }
+    } catch (_err) {
+      // Socket events and visible toasts still cover live updates if the index is unavailable.
+    }
+  }, [signedIn]);
+
+  useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications]);
+
   function markAllRead() {
+    const persistedIds = notifications.map((note) => note.id).filter((id) => /^[a-f0-9]{24}$/i.test(String(id)));
     setNotifications((ns) => ns.map((n) => ({ ...n, read: true })));
+    persistedIds.forEach((id) => {
+      api.markNotificationRead(id).catch(() => {});
+    });
   }
 
   // Global search
@@ -6077,6 +6149,98 @@ function AppShell() {
       .then((d) => Array.isArray(d.trucks) && setSearchTrucks(d.trucks.map(normalizeTruck)))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!signedIn) return undefined;
+
+    const socket = io(window.location.origin, {
+      auth: { token: localStorage.getItem('itruck_token') || '' },
+      transports: ['websocket', 'polling']
+    });
+    socketRef.current = socket;
+
+    const addDocumentNotification = (payload = {}) =>
+      !payload.silent &&
+      addNotification({
+        id: payload.id || notificationId('document'),
+        type: 'document.updated',
+        title: payload.title || `${titleFromSlug(payload.documentType)} ${statusLabel(payload.status || 'updated')}`,
+        message: payload.message || 'Document review status changed.',
+        link: payload.link || '/app/documents',
+        createdAt: payload.createdAt
+      });
+
+    socket.on('notification:new', addNotification);
+    socket.on('document:updated', addDocumentNotification);
+    socket.on('document-updated', addDocumentNotification);
+    socket.on('profile:verified', (payload = {}) =>
+      addNotification({
+        id: notificationId('profile'),
+        type: 'profile.verified',
+        title: payload.title || (payload.isVerified ? 'Profile verified' : 'Profile held for review'),
+        message: payload.message || 'Your profile review status changed.',
+        link: '/app/profile'
+      })
+    );
+    socket.on('truck:verified', (payload = {}) =>
+      addNotification({
+        id: notificationId('truck'),
+        type: 'truck.verified',
+        title: payload.title || (payload.isVerified ? 'Vehicle verified' : 'Vehicle held for review'),
+        message: payload.message || payload.plateNumber || 'Vehicle review status changed.',
+        link: '/app/vehicles'
+      })
+    );
+    socket.on('bid-created', (booking = {}) =>
+      addNotification({
+        id: notificationId('bid'),
+        type: 'bid.created',
+        title: `New carrier bid on ${bookingRef(booking)}`,
+        message: bookingRoute(booking),
+        link: '/app/bids'
+      })
+    );
+    socket.on('bid-accepted', (booking = {}) =>
+      addNotification({
+        id: notificationId('bid'),
+        type: 'bid.accepted',
+        title: `Bid accepted on ${bookingRef(booking)}`,
+        message: bookingRoute(booking),
+        link: '/app/bids'
+      })
+    );
+    socket.on('status-update', (booking = {}) =>
+      addNotification({
+        id: notificationId('status'),
+        type: 'shipment.status',
+        title: `${bookingRef(booking)} ${statusLabel(booking.status || 'updated')}`,
+        message: bookingRoute(booking),
+        link: '/app/tracking'
+      })
+    );
+    socket.on('delivery-confirmed', (booking = {}) =>
+      addNotification({
+        id: notificationId('delivery'),
+        type: 'shipment.delivered',
+        title: `${bookingRef(booking)} delivered`,
+        message: bookingRoute(booking),
+        link: '/app/tracking'
+      })
+    );
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [addNotification, signedIn]);
+
+  useEffect(() => {
+    if (!signedIn || !socketRef.current) return;
+    searchShipments
+      .map((shipment) => shipment.bookingId || shipment.id)
+      .filter(Boolean)
+      .forEach((bookingId) => socketRef.current?.emit('join-booking', bookingId));
+  }, [searchShipments, signedIn]);
 
   // Cmd+K listener
   useEffect(() => {
@@ -6110,16 +6274,22 @@ function AppShell() {
       clearSession();
     }
     setUser({});
+    navigate('/app/profile');
     notify('Signed out');
   }, [notify]);
 
   useEffect(() => {
+    if (!signedIn && !route.startsWith('/app/profile')) {
+      navigate('/app/profile');
+      return;
+    }
+
     if (!routeAllowedForUser(route, user)) {
       const destination = dashboardPathForRole(activeRole);
       notify(`${pageTitle(route)} is not part of ${roleName(activeRole)} mode`);
       navigate(destination);
     }
-  }, [activeRole, notify, route, user]);
+  }, [activeRole, notify, route, signedIn, user]);
 
   useEffect(
     () => () => {
@@ -6158,41 +6328,49 @@ function AppShell() {
   const PrimaryActionIcon = primaryAction.icon;
 
   return (
-    <div className="app-shell">
-      <aside className={`app-sidebar ${menuOpen ? 'open' : ''}`}>
-        <a className="brand" href="/">
-          <span>iT</span> iTruck
-        </a>
-        <nav>
-          {visibleNavItems.map((item) => {
-            const Icon = item.icon;
-            const active = route.startsWith(item.path);
-            return (
-              <button
-                key={item.path}
-                className={active ? 'active' : ''}
-                type="button"
-                onClick={() => {
-                  navigate(item.path);
-                  setMenuOpen(false);
-                }}
-              >
-                <Icon size={18} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-      </aside>
+    <div className={`app-shell ${signedIn ? '' : 'signed-out'}`}>
+      {signedIn ? (
+        <aside className={`app-sidebar ${menuOpen ? 'open' : ''}`}>
+          <a className="brand" href="/">
+            <span>iT</span> iTruck
+          </a>
+          <nav>
+            {visibleNavItems.map((item) => {
+              const Icon = item.icon;
+              const active = route.startsWith(item.path);
+              return (
+                <button
+                  key={item.path}
+                  className={active ? 'active' : ''}
+                  type="button"
+                  onClick={() => {
+                    navigate(item.path);
+                    setMenuOpen(false);
+                  }}
+                >
+                  <Icon size={18} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
+      ) : null}
 
       <main className="app-main">
-        <header className="app-topbar">
-          <button className="icon-button" type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu">
-            <Menu size={20} />
-          </button>
-          <div>
-            <p className="eyebrow">Operational Workspace</p>
-            <h1>{pageTitle(route)}</h1>
+        <header className={`app-topbar ${signedIn ? '' : 'guest-topbar'}`}>
+          {signedIn ? (
+            <button className="icon-button" type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu">
+              <Menu size={20} />
+            </button>
+          ) : (
+            <a className="brand guest-brand" href="/">
+              <span>iT</span> iTruck
+            </a>
+          )}
+          <div className={signedIn ? '' : 'guest-topbar-copy'}>
+            <p className="eyebrow">{signedIn ? 'Operational Workspace' : 'Secure Access'}</p>
+            <h1>{signedIn ? pageTitle(route) : 'iTruck Workspace'}</h1>
           </div>
           <div className="topbar-actions topbar-icon-group">
             <button className="ghost icon-label" type="button" onClick={() => setSearchOpen(true)} title="Search (⌘K)">
