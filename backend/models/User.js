@@ -2,6 +2,15 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
+const userDocumentSchema = new mongoose.Schema({
+  type: String,
+  url: String,
+  fileName: String,
+  status: { type: String, enum: ['pending', 'approved', 'rejected', 'expired'], default: 'pending' },
+  notes: String,
+  reviewedAt: Date
+});
+
 const userSchema = new mongoose.Schema(
   {
     firstName: { type: String, required: true, trim: true },
@@ -20,16 +29,7 @@ const userSchema = new mongoose.Schema(
     rating: { type: Number, default: 0, min: 0, max: 5 },
     ratingCount: { type: Number, default: 0, min: 0 },
     totalTrips: { type: Number, default: 0 },
-    documents: [
-      {
-        type: String,
-        url: String,
-        fileName: String,
-        status: { type: String, enum: ['pending', 'approved', 'rejected', 'expired'], default: 'pending' },
-        notes: String,
-        reviewedAt: Date
-      }
-    ],
+    documents: [userDocumentSchema],
     pushSubscription: Object,
     lastLogin: Date,
     passwordResetToken: String,

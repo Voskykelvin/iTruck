@@ -2,6 +2,15 @@ const mongoose = require('mongoose');
 
 const TRUCK_TYPES = ['Matatu', 'Pickup', 'Lorry', 'Large Truck', 'Trailer', 'Bus', 'Specialised'];
 
+const truckDocumentSchema = new mongoose.Schema({
+  type: String,
+  url: String,
+  fileName: String,
+  status: { type: String, enum: ['pending', 'approved', 'rejected', 'expired'], default: 'pending' },
+  notes: String,
+  reviewedAt: Date
+});
+
 const truckSchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -27,16 +36,7 @@ const truckSchema = new mongoose.Schema(
     isVerified: { type: Boolean, default: false },
     isAvailable: { type: Boolean, default: true },
     location: { lat: Number, lng: Number, city: String },
-    documents: [
-      {
-        type: String,
-        url: String,
-        fileName: String,
-        status: { type: String, enum: ['pending', 'approved', 'rejected', 'expired'], default: 'pending' },
-        notes: String,
-        reviewedAt: Date
-      }
-    ],
+    documents: [truckDocumentSchema],
     archivedAt: Date,
     archivedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     archiveReason: { type: String, trim: true, maxlength: 240 }

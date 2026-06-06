@@ -7,6 +7,7 @@ const IssueReport = require('../models/IssueReport');
 const Booking = require('../models/Booking');
 const RefreshToken = require('../models/RefreshToken');
 const Truck = require('../models/Truck');
+const User = require('../models/User');
 const Idempotency = require('../models/Idempotency');
 const Document = require('../models/Document');
 
@@ -106,6 +107,38 @@ test('document records accept all normalized site document slugs', () => {
 
     expect(record.validateSync()).toBeUndefined();
   });
+});
+
+test('profile and truck embedded documents accept uploaded document records', () => {
+  const uploadedDocument = {
+    type: 'driver-id',
+    url: 'https://res.cloudinary.com/itruck/image/upload/driver-id.pdf',
+    fileName: 'driver-id.pdf',
+    status: 'pending',
+    notes: ''
+  };
+
+  expect(
+    new User({
+      firstName: 'Amina',
+      lastName: 'Owner',
+      email: 'amina.owner@example.com',
+      phone: '+254711000000',
+      password: 'password123',
+      role: 'owner',
+      country: 'Kenya',
+      documents: [uploadedDocument]
+    }).validateSync()
+  ).toBeUndefined();
+
+  expect(
+    new Truck({
+      owner: oid(),
+      type: 'Lorry',
+      plateNumber: 'KDA 100A',
+      documents: [{ ...uploadedDocument, type: 'insurance' }]
+    }).validateSync()
+  ).toBeUndefined();
 });
 
 test('new models enforce their required fields without a database connection', () => {
