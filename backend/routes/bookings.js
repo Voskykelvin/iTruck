@@ -3,6 +3,7 @@ const Booking = require('../models/Booking');
 const Truck = require('../models/Truck');
 const User = require('../models/User');
 const matching = require('../services/matching');
+const { recordUploadedDocument } = require('../services/documentRecords');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
@@ -546,6 +547,20 @@ router.patch('/:id/documents/:documentType', bookingDocumentUploadSchema, valida
 
     booking.documents = upsertBookingDocument(booking.documents || [], documentType, req.body);
     await booking.save();
+    await recordUploadedDocument({
+      targetType: 'booking',
+      targetId: booking._id,
+      type: documentType,
+      userId: req.user._id,
+      uploadedBy: req.user._id,
+      bookingId: booking._id,
+      patch: req.body,
+      metadata: {
+        client: booking.client,
+        owner: booking.owner,
+        truck: booking.truck
+      }
+    });
     emitBooking(req, booking._id, 'document-updated', booking);
     res.json({ booking });
   } catch (err) {

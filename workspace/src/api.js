@@ -150,6 +150,15 @@ function documentFilename(type, bookingId) {
   return `${bookingId}-${type}.pdf`;
 }
 
+function queryString(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') query.set(key, value);
+  });
+  const text = query.toString();
+  return text ? `?${text}` : '';
+}
+
 function filesBody(field, files) {
   const body = new FormData();
   Array.from(files || []).forEach((file) => body.append(field, file));
@@ -192,6 +201,7 @@ function assertUploadFile(file, allowedTypes, label) {
 export const api = {
   request,
   health: () => request('/health'),
+  profile: () => request('/users/profile'),
   estimate: (payload) => request('/marketplace/estimate', { method: 'POST', body: JSON.stringify(payload) }),
   listTrucks: () => request('/trucks'),
   fleetTrucks: () => request('/trucks/fleet'),
@@ -235,6 +245,7 @@ export const api = {
   listNotifications: (limit = 20) => request(`/notifications?limit=${encodeURIComponent(limit)}`),
   notificationCount: () => request('/notifications/count'),
   markNotificationRead: (id) => request(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' }),
+  listDocuments: (params = {}) => request(`/documents${queryString(params)}`),
   downloadDocument: (type, bookingId) =>
     downloadFile(
       `/documents/${encodeURIComponent(type)}/${encodeURIComponent(bookingId)}`,

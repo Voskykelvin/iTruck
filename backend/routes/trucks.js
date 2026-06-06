@@ -5,6 +5,7 @@ const Booking = require('../models/Booking');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
+const { recordUploadedDocument } = require('../services/documentRecords');
 const {
   archiveTruckSchema,
   createTruckSchema,
@@ -323,6 +324,15 @@ router.patch(
 
       truck.documents = upsertDocument(truck.documents || [], req.params.documentType, req.body);
       await truck.save();
+      await recordUploadedDocument({
+        targetType: 'truck',
+        targetId: truck._id,
+        type: normalizeTruckDocumentType(req.params.documentType),
+        userId: truck.owner,
+        uploadedBy: req.user._id,
+        truckId: truck._id,
+        patch: req.body
+      });
       res.json({ truck });
     } catch (err) {
       next(err);

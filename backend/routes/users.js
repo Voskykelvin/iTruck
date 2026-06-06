@@ -4,6 +4,7 @@ const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const { documentUploadSchema, updatePasswordSchema, updateProfileSchema } = require('../validators/users');
+const { recordUploadedDocument } = require('../services/documentRecords');
 const { normalizeProfileDocumentType } = require('../utils/documentTypes');
 
 const router = express.Router();
@@ -96,6 +97,15 @@ router.patch('/documents/:documentType', documentUploadSchema, validate, async (
 
     user.documents = upsertDocument(user.documents || [], documentType, req.body, user.role);
     await user.save();
+    await recordUploadedDocument({
+      targetType: 'user',
+      targetId: user._id,
+      type: documentType,
+      userId: user._id,
+      uploadedBy: req.user._id,
+      patch: req.body,
+      metadata: { role: user.role }
+    });
     res.json({ user });
   } catch (err) {
     next(err);

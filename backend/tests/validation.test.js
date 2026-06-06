@@ -135,6 +135,18 @@ test('draft document route renders quote review documents as pdfs', async () => 
   expect(res.headers['content-type']).toContain('application/pdf');
 });
 
+test('document index route is mounted and validates filters', async () => {
+  const res = await request(app)
+    .get('/api/documents?targetType=booking&status=pending&source=uploaded&limit=5')
+    .set('Authorization', authHeader());
+
+  expect(res.status).toBe(200);
+  expect(res.body.documents).toEqual([]);
+
+  const invalid = await request(app).get('/api/documents?status=maybe').set('Authorization', authHeader());
+  expect(invalid.status).toBe(422);
+});
+
 test('receiver confirmation document route is available for synced bookings', async () => {
   const res = await request(app)
     .get('/api/documents/receiver-confirmation/ITK-2044')
