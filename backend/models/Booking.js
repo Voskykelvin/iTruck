@@ -97,11 +97,28 @@ const bookingSchema = new mongoose.Schema(
       {
         type: {
           type: String,
-          enum: ['waybill', 'pod', 'invoice', 'customs', 'receiver-confirmation', 'packing-list'],
+          enum: [
+            'waybill',
+            'pod',
+            'invoice',
+            'customs',
+            'receiver-confirmation',
+            'packing-list',
+            'cargo-photos',
+            'material-safety-data-sheet',
+            'cargo-value-declaration',
+            'other'
+          ],
           required: true
         },
         url: { type: String, required: true },
+        urls: [String],
+        fileName: String,
+        fileNames: [String],
         publicId: String,
+        status: { type: String, enum: ['pending', 'approved', 'rejected', 'expired'], default: 'approved' },
+        notes: String,
+        reviewedAt: Date,
         generatedAt: { type: Date, default: Date.now }
       }
     ],

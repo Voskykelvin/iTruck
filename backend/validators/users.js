@@ -1,5 +1,6 @@
 const { body, param } = require('express-validator');
 const { optionalString } = require('./common');
+const { isDocumentUrl } = require('../utils/documentTypes');
 
 const updateProfileSchema = [
   optionalString('firstName', 80),
@@ -22,12 +23,12 @@ const updatePasswordSchema = [
 const documentUploadSchema = [
   param('documentType')
     .trim()
-    .matches(/^[a-z0-9][a-z0-9-]{0,79}$/)
+    .matches(/^[a-z0-9][a-z0-9_-]{0,79}$/)
     .withMessage('documentType must be a document slug'),
   body('url')
     .trim()
     .optional({ checkFalsy: true })
-    .isURL({ require_protocol: true })
+    .custom(isDocumentUrl)
     .withMessage('url must be a valid document URL'),
   optionalString('fileName', 240),
   optionalString('notes', 1000)

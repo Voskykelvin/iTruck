@@ -15,6 +15,11 @@ const {
   userVerificationSchema
 } = require('../validators/admin');
 const { demoUsers, demoTrucks } = require('../data/demo-users');
+const {
+  normalizeBookingDocumentType,
+  normalizeProfileDocumentType,
+  normalizeTruckDocumentType
+} = require('../utils/documentTypes');
 
 const router = express.Router();
 router.use(protect, restrictTo('admin'));
@@ -38,9 +43,11 @@ async function recordAudit(req, action, targetType, targetId, metadata = {}) {
   });
 }
 
-function upsertDocument(documents = [], type, patch) {
-  const existing = documents.find((item) => item.type === type);
+function upsertDocument(documents = [], type, patch, normalizeType = (value) => value) {
+  const documentType = normalizeType(type);
+  const existing = documents.find((item) => normalizeType(item.type) === documentType);
   if (existing) {
+    existing.type = documentType;
     existing.status = patch.status;
     if (patch.url) existing.url = patch.url;
     if (patch.notes) existing.notes = patch.notes;
@@ -49,7 +56,7 @@ function upsertDocument(documents = [], type, patch) {
   }
 
   documents.push({
-    type,
+    type: documentType,
     status: patch.status,
     url: patch.url,
     notes: patch.notes,
@@ -215,27 +222,33 @@ router.patch('/users/:id/documents/:documentType', documentReviewSchema, validat
     if (!mongoReady()) {
       const user = demoUsers.find((item) => item._id === req.params.id);
       if (!user) return res.status(404).json({ message: 'User not found' });
-      user.documents = upsertDocument(user.documents || [], req.params.documentType, req.body);
+      const documentType = normalizeProfileDocumentType(req.params.documentType, user.role);
+      user.documents = upsertDocument(user.documents || [], documentType, req.body, (type) =>
+        normalizeProfileDocumentType(type, user.role)
+      );
       return res.json({ user, mode: 'memory' });
     }
 
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
+    const documentType = normalizeProfileDocumentType(req.params.documentType, user.role);
 
-    user.documents = upsertDocument(user.documents || [], req.params.documentType, req.body);
+    user.documents = upsertDocument(user.documents || [], documentType, req.body, (type) =>
+      normalizeProfileDocumentType(type, user.role)
+    );
     await user.save();
 
     // Emit socket event to user about document update
     const io = req.app.get('io');
     if (io) {
       io.emitToUser(user._id, 'document:updated', {
-        documentType: req.params.documentType,
+        documentType,
         status: req.body.status
       });
     }
 
     await recordAudit(req, 'user.document.reviewed', 'document', user._id, {
-      documentType: req.params.documentType,
+      documentType,
       status: req.body.status
     });
     res.json({ user });
@@ -250,29 +263,67 @@ router.patch('/trucks/:id/documents/:documentType', documentReviewSchema, valida
     if (!mongoReady()) {
       const truck = demoTrucks.find((item) => item._id === req.params.id);
       if (!truck) return res.status(404).json({ message: 'Truck not found' });
-      truck.documents = upsertDocument(truck.documents || [], req.params.documentType, req.body);
+      const documentType = normalizeTruckDocumentType(req.params.documentType);
+      truck.documents = upsertDocument(truck.documents || [], documentType, req.body, normalizeTruckDocumentType);
       return res.json({ truck, mode: 'memory' });
     }
 
     const truck = await Truck.findById(req.params.id);
     if (!truck) return res.status(404).json({ message: 'Truck not found' });
-    truck.documents = upsertDocument(truck.documents || [], req.params.documentType, req.body);
+    const documentType = normalizeTruckDocumentType(req.params.documentType);
+    truck.documents = upsertDocument(truck.documents || [], documentType, req.body, normalizeTruckDocumentType);
     await truck.save();
 
     // Emit socket event to user about document update
     const io = req.app.get('io');
     if (io) {
       io.emitToUser(truck.owner, 'document:updated', {
-        documentType: req.params.documentType,
+        documentType,
         status: req.body.status
       });
     }
 
     await recordAudit(req, 'truck.document.reviewed', 'document', truck._id, {
-      documentType: req.params.documentType,
+      documentType,
       status: req.body.status
     });
     res.json({ truck });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/bookings/:id/documents/:documentType', documentReviewSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    const documentType = normalizeBookingDocumentType(req.params.documentType);
+
+    if (!mongoReady()) {
+      const booking = demoBookings.find((item) => (Array.isArray(item) ? item[0] : item._id) === req.params.id);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (Array.isArray(booking)) return res.status(404).json({ message: 'Booking document not found' });
+      booking.documents = upsertDocument(booking.documents || [], documentType, req.body, normalizeBookingDocumentType);
+      return res.json({ booking, mode: 'memory' });
+    }
+
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    booking.documents = upsertDocument(booking.documents || [], documentType, req.body, normalizeBookingDocumentType);
+    await booking.save();
+
+    const io = req.app.get('io');
+    if (io?.emitToBooking) {
+      io.emitToBooking(booking._id, 'document:updated', {
+        documentType,
+        status: req.body.status
+      });
+    }
+
+    await recordAudit(req, 'booking.document.reviewed', 'document', booking._id, {
+      documentType,
+      status: req.body.status
+    });
+    res.json({ booking });
   } catch (err) {
     next(err);
   }

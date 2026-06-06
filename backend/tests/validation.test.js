@@ -271,6 +271,60 @@ test('users can submit verification documents for admin review', async () => {
   );
 });
 
+test('shipper document aliases are normalized to current profile slots', async () => {
+  const baseAuth = authHeader({ id: 'demo-client-primary', role: 'client' });
+
+  const kyc = await request(app)
+    .patch('/api/users/documents/kyc')
+    .set('Authorization', baseAuth)
+    .send({ url: 'https://res.cloudinary.com/itruck/raw/upload/kyc.pdf', fileName: 'kyc.pdf' });
+  const businessRegistration = await request(app)
+    .patch('/api/users/documents/business_registration')
+    .set('Authorization', baseAuth)
+    .send({
+      url: 'https://res.cloudinary.com/itruck/raw/upload/business-registration.pdf',
+      fileName: 'business-registration.pdf'
+    });
+  const taxCertificate = await request(app)
+    .patch('/api/users/documents/tax_certificate')
+    .set('Authorization', baseAuth)
+    .send({
+      url: 'https://res.cloudinary.com/itruck/raw/upload/tax-certificate.pdf',
+      fileName: 'tax-certificate.pdf'
+    });
+
+  expect(kyc.status).toBe(200);
+  expect(businessRegistration.status).toBe(200);
+  expect(taxCertificate.status).toBe(200);
+  expect(kyc.body.user.documents).toEqual(
+    expect.arrayContaining([expect.objectContaining({ type: 'shipper-kyc', status: 'pending' })])
+  );
+  expect(businessRegistration.body.user.documents).toEqual(
+    expect.arrayContaining([expect.objectContaining({ type: 'business-registration', status: 'pending' })])
+  );
+  expect(taxCertificate.body.user.documents).toEqual(
+    expect.arrayContaining([expect.objectContaining({ type: 'tax-certificate', status: 'pending' })])
+  );
+});
+
+test('verification document uploads accept local upload fallback URLs', async () => {
+  const res = await request(app)
+    .patch('/api/users/documents/tax-certificate')
+    .set('Authorization', authHeader({ id: 'demo-client-primary', role: 'client' }))
+    .send({ url: '/api/uploads/local/local-tax-certificate', fileName: 'tax-certificate.pdf' });
+
+  expect(res.status).toBe(200);
+  expect(res.body.user.documents).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        type: 'tax-certificate',
+        url: '/api/uploads/local/local-tax-certificate',
+        status: 'pending'
+      })
+    ])
+  );
+});
+
 test('verification document uploads require document slugs', async () => {
   const res = await request(app)
     .patch('/api/users/documents/Owner KYC')
@@ -299,6 +353,30 @@ test('owners can attach truck documents for admin review', async () => {
   expect(res.status).toBe(200);
   expect(res.body.truck.documents).toEqual(
     expect.arrayContaining([expect.objectContaining({ type: 'insurance', status: 'pending' })])
+  );
+});
+
+test('booking document uploads are persisted for shipment review', async () => {
+  const res = await request(app)
+    .patch('/api/bookings/ITK-2044/documents/cargo_photos')
+    .set('Authorization', authHeader({ id: 'demo-client-primary', role: 'client' }))
+    .send({
+      url: '/api/uploads/local/cargo-photo-1',
+      urls: ['/api/uploads/local/cargo-photo-1', '/api/uploads/local/cargo-photo-2'],
+      fileName: 'cargo-photo-1.webp',
+      fileNames: ['cargo-photo-1.webp', 'cargo-photo-2.webp']
+    });
+
+  expect(res.status).toBe(200);
+  expect(res.body.booking.documents).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        type: 'cargo-photos',
+        url: '/api/uploads/local/cargo-photo-1',
+        urls: ['/api/uploads/local/cargo-photo-1', '/api/uploads/local/cargo-photo-2'],
+        status: 'pending'
+      })
+    ])
   );
 });
 

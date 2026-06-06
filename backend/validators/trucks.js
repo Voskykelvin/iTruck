@@ -8,6 +8,7 @@ const {
   pagination,
   requiredString
 } = require('./common');
+const { isDocumentUrl } = require('../utils/documentTypes');
 
 const TRUCK_TYPES = ['Matatu', 'Pickup', 'Lorry', 'Large Truck', 'Trailer', 'Bus', 'Specialised'];
 
@@ -72,12 +73,12 @@ const truckDocumentSchema = [
   ...truckIdSchema,
   param('documentType')
     .trim()
-    .matches(/^[a-z0-9][a-z0-9-]{0,79}$/)
+    .matches(/^[a-z0-9][a-z0-9_-]{0,79}$/)
     .withMessage('documentType must be a document slug'),
   body('url')
     .trim()
     .optional({ checkFalsy: true })
-    .isURL({ require_protocol: true })
+    .custom(isDocumentUrl)
     .withMessage('url must be a valid document URL'),
   optionalString('fileName', 240),
   optionalString('notes', 1000)

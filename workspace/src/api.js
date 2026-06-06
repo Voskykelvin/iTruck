@@ -16,6 +16,44 @@ function idempotencyKey(scope) {
   return `${scope}:${suffix}`;
 }
 
+function messageFromValue(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return value.map(messageFromValue).filter(Boolean).join(', ');
+
+  if (typeof value === 'object') {
+    if (value.message) return messageFromValue(value.message);
+    if (value.msg) return messageFromValue(value.msg);
+    if (value.error) return messageFromValue(value.error);
+
+    const field = value.field || value.path || value.param;
+    const detail = value.detail || value.reason || value.description;
+    if (field && detail) return `${field}: ${messageFromValue(detail)}`;
+    if (field && value.value) return `${field}: ${messageFromValue(value.value)}`;
+
+    return Object.entries(value)
+      .map(([key, nested]) => {
+        const message = messageFromValue(nested);
+        return message ? `${key}: ${message}` : '';
+      })
+      .filter(Boolean)
+      .join(', ');
+  }
+
+  return '';
+}
+
+function apiErrorMessage(data, fallback) {
+  if (typeof data === 'string') return data || fallback;
+  if (!data || typeof data !== 'object') return fallback;
+
+  const details = messageFromValue(data.errors || data.details);
+  const message = messageFromValue(data.message || data.error);
+  if (message && details) return `${message}: ${details}`;
+  return message || details || messageFromValue(data) || fallback;
+}
+
 async function tryRefresh() {
   try {
     const response = await fetch(`${API_BASE}/auth/refresh`, {
@@ -62,7 +100,7 @@ async function request(path, options = {}, retry = true) {
 
   const type = response.headers.get('content-type') || '';
   const data = type.includes('application/json') ? await response.json().catch(() => ({})) : await response.text();
-  if (!response.ok) throw new Error(data.message || data || 'Request failed');
+  if (!response.ok) throw new Error(apiErrorMessage(data, 'Request failed'));
   return data;
 }
 
@@ -93,7 +131,7 @@ async function downloadFile(path, filename, options = {}, retry = true) {
   if (!response.ok) {
     const type = response.headers.get('content-type') || '';
     const data = type.includes('application/json') ? await response.json().catch(() => ({})) : await response.text();
-    throw new Error(data.message || data || 'Download failed');
+    throw new Error(apiErrorMessage(data, 'Download failed'));
   }
 
   const blob = await response.blob();
@@ -123,13 +161,25 @@ async function uploadCargoFiles(files) {
 }
 
 async function uploadDocument(path, documentType, file) {
-  assertUploadFile(file, documentUploadTypes, 'Document');
-  const data = await uploadCargoFiles([file]);
+  return uploadDocuments(path, documentType, [file]);
+}
+
+async function uploadDocuments(path, documentType, files) {
+  const list = Array.from(files || []);
+  if (!list.length) throw new Error('Document file is required');
+  list.forEach((file) => assertUploadFile(file, documentUploadTypes, 'Document'));
+  const data = await uploadCargoFiles(list);
   const url = data.urls?.[0];
   if (!url) throw new Error('Document upload did not return a URL');
   return request(path, {
     method: 'PATCH',
-    body: JSON.stringify({ url, fileName: file.name, documentType })
+    body: JSON.stringify({
+      url,
+      urls: data.urls || [],
+      fileName: list[0]?.name,
+      fileNames: list.map((file) => file.name),
+      documentType
+    })
   });
 }
 
@@ -209,6 +259,12 @@ export const api = {
       documentType,
       file
     ),
+  uploadBookingDocument: (bookingId, documentType, files) =>
+    uploadDocuments(
+      `/bookings/${encodeURIComponent(bookingId)}/documents/${encodeURIComponent(documentType)}`,
+      documentType,
+      Array.isArray(files) ? files : [files]
+    ),
   uploadTruckPhoto: async (truckId, file) => {
     assertUploadFile(file, imageUploadTypes, 'Vehicle photo');
     const data = await uploadCargoFiles([file]);
@@ -260,6 +316,11 @@ export const api = {
     }),
   adminReviewTruckDocument: (truckId, documentType, payload) =>
     request(`/admin/trucks/${encodeURIComponent(truckId)}/documents/${encodeURIComponent(documentType)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
+  adminReviewBookingDocument: (bookingId, documentType, payload) =>
+    request(`/admin/bookings/${encodeURIComponent(bookingId)}/documents/${encodeURIComponent(documentType)}`, {
       method: 'PATCH',
       body: JSON.stringify(payload)
     }),
