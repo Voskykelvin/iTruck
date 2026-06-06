@@ -204,6 +204,7 @@ test('wallet routes use memory fallback when the demo database is offline', asyn
 
   expect(balance.status).toBe(200);
   expect(balance.body.balance).toBe(4200);
+  expect(Array.isArray(balance.body.transactions)).toBe(true);
   expect(balance.body.mode).toBe('memory');
 
   const withdrawal = await request(app)

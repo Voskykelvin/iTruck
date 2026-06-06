@@ -233,6 +233,12 @@ export const api = {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey('release') }
     }),
+  fundEscrow: (bookingId, payload = {}) =>
+    request(`/payments/bookings/${encodeURIComponent(bookingId)}/escrow`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('escrow') },
+      body: JSON.stringify(payload)
+    }),
   withdraw: (payload) =>
     request('/payments/withdraw', {
       method: 'POST',

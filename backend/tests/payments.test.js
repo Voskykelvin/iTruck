@@ -11,11 +11,15 @@ jest.mock('../models/Wallet', () => ({
 
 jest.mock('../models/Transaction', () => ({
   create: jest.fn((payload) => Promise.resolve({ _id: 'tx-test', ...payload })),
+  find: jest.fn(),
   findOne: jest.fn(),
   findOneAndUpdate: jest.fn()
 }));
 
 jest.mock('../models/Booking', () => ({
+  findById: jest.fn(),
+  findOneAndUpdate: jest.fn(),
+  updateOne: jest.fn(),
   findByIdAndUpdate: jest.fn()
 }));
 
@@ -41,8 +45,12 @@ beforeEach(() => {
   Wallet.findOneAndUpdate.mockReset();
   Wallet.updateOne.mockReset();
   Transaction.create.mockClear();
+  Transaction.find.mockReset();
   Transaction.findOne.mockReset();
   Transaction.findOneAndUpdate.mockReset();
+  Booking.findById.mockReset();
+  Booking.findOneAndUpdate.mockReset();
+  Booking.updateOne.mockReset();
   Booking.findByIdAndUpdate.mockReset();
   Idempotency.create.mockReset();
   Idempotency.findOne.mockReset();
@@ -124,6 +132,80 @@ test('wallet withdrawal atomically reserves funds and creates pending payout', a
       status: 'pending'
     })
   );
+});
+
+test('wallet transaction history is scoped to the current user', async () => {
+  const limit = jest.fn().mockResolvedValue([{ _id: 'tx-1' }]);
+  const sort = jest.fn(() => ({ limit }));
+  Transaction.find.mockReturnValue({ sort });
+
+  const wallet = new WalletService();
+  const transactions = await wallet.listTransactions('user-1', { limit: 8 });
+
+  expect(transactions).toEqual([{ _id: 'tx-1' }]);
+  expect(Transaction.find).toHaveBeenCalledWith({ user: 'user-1' });
+  expect(sort).toHaveBeenCalledWith('-createdAt');
+  expect(limit).toHaveBeenCalledWith(8);
+});
+
+test('wallet escrow funding debits the shipper and marks booking payment escrowed', async () => {
+  const booking = {
+    _id: 'booking-1',
+    client: 'client-1',
+    owner: 'owner-1',
+    status: 'confirmed',
+    paymentStatus: 'unpaid',
+    bids: [{ status: 'accepted', amount: 1260 }]
+  };
+  const reserved = {
+    ...booking,
+    paymentStatus: 'pending',
+    save: jest.fn()
+  };
+
+  Booking.findById.mockResolvedValue(booking);
+  Booking.findOneAndUpdate.mockResolvedValue(reserved);
+  Wallet.findOneAndUpdate
+    .mockResolvedValueOnce({ _id: 'wallet-1', balance: 2000 })
+    .mockResolvedValueOnce({ _id: 'wallet-1', balance: 740 });
+
+  const wallet = new WalletService();
+  const result = await wallet.fundBookingEscrow('booking-1', 'client-1');
+
+  expect(Booking.findOneAndUpdate).toHaveBeenCalledWith(
+    {
+      _id: 'booking-1',
+      $or: [{ paymentStatus: { $in: ['unpaid', 'pending', 'failed'] } }, { paymentStatus: { $exists: false } }]
+    },
+    expect.objectContaining({
+      $set: expect.objectContaining({
+        paymentStatus: 'pending',
+        paymentAmount: 1260,
+        paymentReference: 'wallet:booking-1'
+      })
+    }),
+    { new: true }
+  );
+  expect(Wallet.findOneAndUpdate).toHaveBeenNthCalledWith(
+    2,
+    { user: 'client-1', balance: { $gte: 1260 } },
+    { $inc: { balance: -1260, version: 1 } },
+    { new: true }
+  );
+  expect(Transaction.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      user: 'client-1',
+      booking: 'booking-1',
+      type: 'payment',
+      method: 'wallet',
+      amount: 1260,
+      reference: 'escrow:booking-1',
+      status: 'completed'
+    })
+  );
+  expect(reserved.save).toHaveBeenCalled();
+  expect(result.booking.paymentStatus).toBe('escrowed');
+  expect(result.alreadyFunded).toBe(false);
 });
 
 test('idempotency keys are deterministic and do not depend on wall-clock time', () => {
