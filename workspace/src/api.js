@@ -239,6 +239,12 @@ export const api = {
       headers: { 'Idempotency-Key': idempotencyKey('escrow') },
       body: JSON.stringify(payload)
     }),
+  initiateMobileMoneyEscrow: (bookingId, payload = {}) =>
+    request(`/payments/bookings/${encodeURIComponent(bookingId)}/mobile-money`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('mobile-escrow') },
+      body: JSON.stringify(payload)
+    }),
   withdraw: (payload) =>
     request('/payments/withdraw', {
       method: 'POST',

@@ -3544,6 +3544,8 @@ function PaymentsPage({ notify, user }) {
   const [paymentBusy, setPaymentBusy] = useState('');
   const [topupOpen, setTopupOpen] = useState(false);
   const [topupBusy, setTopupBusy] = useState(false);
+  const [mobileMoneyTarget, setMobileMoneyTarget] = useState(null);
+  const [mobileMoneyBusy, setMobileMoneyBusy] = useState(false);
   const [walletTransactions, setWalletTransactions] = useState([]);
   const [withdrawDraft, setWithdrawDraft] = useState({
     amount: 100,
@@ -3631,6 +3633,39 @@ function PaymentsPage({ notify, user }) {
       notify(err.message);
     } finally {
       setPaymentBusy('');
+    }
+  }
+
+  function openMobileMoneyEscrow(shipment) {
+    if (!canFundShipment(shipment)) {
+      notify('Accept a carrier bid before funding escrow');
+      return;
+    }
+    setMobileMoneyTarget(shipment);
+  }
+
+  async function initiateMobileMoneyEscrow({ method, phone }) {
+    if (!mobileMoneyTarget) return;
+    if (!phone.trim()) {
+      notify('Enter the mobile money phone number');
+      return;
+    }
+
+    setMobileMoneyBusy(true);
+    try {
+      const data = await api.initiateMobileMoneyEscrow(mobileMoneyTarget.bookingId, {
+        amount: mobileMoneyTarget.amount,
+        method,
+        phone
+      });
+      replaceShipment(data.booking);
+      recordTransaction(data.transaction);
+      setMobileMoneyTarget(null);
+      notify(data.message || 'Mobile money authorization sent');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setMobileMoneyBusy(false);
     }
   }
 
@@ -3725,22 +3760,32 @@ function PaymentsPage({ notify, user }) {
                     <div>
                       <strong>{money(shipment.amount)}</strong>
                       {role === 'client' ? (
-                        <button
-                          className={funded ? 'secondary' : 'primary'}
-                          type="button"
-                          disabled={!canFund || lowBalance || isBusy}
-                          onClick={() => fundShipmentEscrow(shipment)}
-                        >
-                          {isBusy
-                            ? 'Funding...'
-                            : funded
-                              ? 'Escrowed'
-                              : !canFund
-                                ? 'Not Ready'
-                                : lowBalance
-                                  ? 'Low Balance'
-                                  : 'Fund Escrow'}
-                        </button>
+                        <>
+                          <button
+                            className={funded ? 'secondary' : 'primary'}
+                            type="button"
+                            disabled={!canFund || lowBalance || isBusy}
+                            onClick={() => fundShipmentEscrow(shipment)}
+                          >
+                            {isBusy
+                              ? 'Funding...'
+                              : funded
+                                ? 'Escrowed'
+                                : !canFund
+                                  ? 'Not Ready'
+                                  : lowBalance
+                                    ? 'Low Balance'
+                                    : 'Wallet'}
+                          </button>
+                          <button
+                            className="secondary"
+                            type="button"
+                            disabled={!canFund || funded}
+                            onClick={() => openMobileMoneyEscrow(shipment)}
+                          >
+                            Mobile
+                          </button>
+                        </>
                       ) : (
                         <StatusBadge tone={paymentTone(shipment.paymentStatus)}>
                           {funded ? 'Protected' : 'Awaiting shipper'}
@@ -3808,6 +3853,14 @@ function PaymentsPage({ notify, user }) {
           transactions={walletTransactions}
           onClose={() => setTopupOpen(false)}
           onTopup={topupWallet}
+        />
+      ) : null}
+      {mobileMoneyTarget ? (
+        <MobileMoneyEscrowModal
+          shipment={mobileMoneyTarget}
+          busy={mobileMoneyBusy}
+          onClose={() => setMobileMoneyTarget(null)}
+          onSubmit={initiateMobileMoneyEscrow}
         />
       ) : null}
     </section>
@@ -5748,6 +5801,73 @@ function ReportIssueModal({ shipment, onClose, onSubmit, busy }) {
 /* ============================================================
    WALLET TOP-UP MODAL
    ============================================================ */
+function MobileMoneyEscrowModal({ shipment, busy, onClose, onSubmit }) {
+  const preferredMethod = String(shipment?.payment || '').toLowerCase().includes('mtn') ? 'mtn' : 'mpesa';
+  const [method, setMethod] = useState(preferredMethod);
+  const [phone, setPhone] = useState('');
+  const methods = [
+    { key: 'mpesa', label: 'M-Pesa', icon: Smartphone },
+    { key: 'mtn', label: 'MTN MoMo', icon: Phone }
+  ];
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    onSubmit({ method, phone });
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-card">
+        <div className="modal-card-head">
+          <h3>Mobile Money Escrow</h3>
+          <button type="button" onClick={onClose} aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+        <form className="modal-card-body" onSubmit={handleSubmit}>
+          <div className="wallet-card" style={{ marginBottom: 4 }}>
+            <span>{shipment?.id || 'Shipment'}</span>
+            <strong>{money(shipment?.amount || 0)}</strong>
+            <small>{shipment?.route || 'Booking escrow'}</small>
+          </div>
+          <div>
+            <p className="eyebrow" style={{ marginBottom: 8 }}>
+              Provider
+            </p>
+            <div className="topup-methods">
+              {methods.map(({ key, label, icon: Icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`topup-method-btn ${method === key ? 'active' : ''}`}
+                  onClick={() => setMethod(key)}
+                >
+                  <Icon size={22} />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Input
+            label={method === 'mpesa' ? 'M-Pesa phone' : 'MTN MoMo phone'}
+            value={phone}
+            onChange={setPhone}
+          />
+          <div className="button-row">
+            <button className="primary icon-label" type="submit" disabled={busy || !phone.trim()}>
+              <Smartphone size={18} />
+              <span>{busy ? 'Sending...' : 'Send Authorization'}</span>
+            </button>
+            <button className="ghost" type="button" onClick={onClose}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function WalletTopupModal({ balance, onClose, onTopup, busy, transactions = [] }) {
   const [method, setMethod] = useState('mpesa');
   const [amount, setAmount] = useState(50);

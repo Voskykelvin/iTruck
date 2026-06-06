@@ -111,7 +111,7 @@ function goLiveIntegrationStatus() {
     'MTN_MOMO_API_USER',
     'MTN_MOMO_API_KEY',
     'MTN_MOMO_CALLBACK_URL'
-  ]);
+  ]) || hasAllEnv(['MOMO_SUBSCRIBER_KEY', 'MOMO_USER_ID', 'MOMO_API_KEY', 'MOMO_CALLBACK_URL']);
   const smsReady =
     Boolean(process.env.SMS_PROVIDER_MODULE) || hasAllEnv(['AFRICASTALKING_API_KEY', 'AFRICASTALKING_USERNAME']);
   const emailReady =

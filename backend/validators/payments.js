@@ -1,5 +1,5 @@
 const { body } = require('express-validator');
-const { liveMongoIdParam, optionalString, positiveAmount } = require('./common');
+const { liveMongoIdBody, liveMongoIdParam, optionalString, positiveAmount } = require('./common');
 
 const idempotencyKeyBody = optionalString('idempotencyKey', 128);
 
@@ -26,4 +26,60 @@ const withdrawalSchema = [
 
 const releasePaymentSchema = [liveMongoIdParam('bookingId'), idempotencyKeyBody];
 
-module.exports = { amountSchema, fundEscrowSchema, releasePaymentSchema, withdrawalSchema };
+const mobileMoneyProvider = body('method')
+  .optional({ checkFalsy: true })
+  .isIn(['mpesa', 'm-pesa', 'mtn', 'momo', 'mtn-momo'])
+  .withMessage('Choose either M-Pesa or MTN MoMo');
+
+const mobileMoneyProviderAlias = body('provider')
+  .optional({ checkFalsy: true })
+  .isIn(['mpesa', 'm-pesa', 'mtn', 'momo', 'mtn-momo'])
+  .withMessage('Choose either M-Pesa or MTN MoMo');
+
+const mobileMoneyPhone = body('phone')
+  .trim()
+  .isLength({ min: 8, max: 24 })
+  .withMessage('A valid mobile money phone number is required');
+
+const initiateMobileMoneySchema = [
+  liveMongoIdParam('bookingId'),
+  body().custom((_, { req }) => {
+    if (req.body.method || req.body.provider) return true;
+    throw new Error('method is required');
+  }),
+  mobileMoneyProvider,
+  mobileMoneyProviderAlias,
+  mobileMoneyPhone,
+  body('amount')
+    .optional({ checkFalsy: true })
+    .isFloat({ min: 0.01 })
+    .withMessage('amount must be greater than zero')
+    .toFloat(),
+  idempotencyKeyBody
+];
+
+const initiateMobileMoneyBodySchema = [
+  liveMongoIdBody('bookingId', { required: true }),
+  body().custom((_, { req }) => {
+    if (req.body.method || req.body.provider) return true;
+    throw new Error('method is required');
+  }),
+  mobileMoneyProvider,
+  mobileMoneyProviderAlias,
+  mobileMoneyPhone,
+  body('amount')
+    .optional({ checkFalsy: true })
+    .isFloat({ min: 0.01 })
+    .withMessage('amount must be greater than zero')
+    .toFloat(),
+  idempotencyKeyBody
+];
+
+module.exports = {
+  amountSchema,
+  fundEscrowSchema,
+  initiateMobileMoneyBodySchema,
+  initiateMobileMoneySchema,
+  releasePaymentSchema,
+  withdrawalSchema
+};

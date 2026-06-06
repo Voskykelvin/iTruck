@@ -5,6 +5,7 @@ const Wallet = require('../models/Wallet');
 const Transaction = require('../models/Transaction');
 const Booking = require('../models/Booking');
 const Idempotency = require('../models/Idempotency');
+const logger = require('../config/logger');
 
 const IDEMPOTENCY_TTL_MINUTES = 60;
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_.:-]+$/;
@@ -13,6 +14,134 @@ function appError(message, status = 400) {
   const err = new Error(message);
   err.status = status;
   return err;
+}
+
+function envValue(...keys) {
+  return keys.map((key) => process.env[key]).find(Boolean);
+}
+
+function requireEnv(label, ...keys) {
+  const value = envValue(...keys);
+  if (!value) {
+    throw appError(`${label} is not configured`, 503);
+  }
+  return value;
+}
+
+function trimTrailingSlash(value) {
+  return String(value || '').replace(/\/+$/, '');
+}
+
+function providerBaseUrl(value, fallback) {
+  return trimTrailingSlash(value || fallback);
+}
+
+function publicBaseUrl() {
+  const value = envValue('PUBLIC_API_URL', 'API_BASE_URL', 'BASE_URL', 'APP_URL');
+  if (!value) {
+    throw appError('BASE_URL or provider callback URL must be configured', 503);
+  }
+  return trimTrailingSlash(value);
+}
+
+function providerCallbackUrl(provider) {
+  if (provider === 'mpesa') {
+    return envValue('MPESA_CALLBACK_URL') || `${publicBaseUrl()}/api/payments/webhooks/mpesa/stk`;
+  }
+  return (
+    envValue('MTN_MOMO_CALLBACK_URL', 'MOMO_CALLBACK_URL') ||
+    `${publicBaseUrl()}/api/payments/webhooks/mtn/request-to-pay`
+  );
+}
+
+function mpesaTimestamp(date = new Date()) {
+  return date.toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+}
+
+function normalizeMpesaPhone(phone) {
+  let cleaned = String(phone || '').replace(/\D/g, '');
+  if (cleaned.startsWith('0')) cleaned = `254${cleaned.slice(1)}`;
+  if (/^(7|1)\d{8}$/.test(cleaned)) cleaned = `254${cleaned}`;
+  if (!/^254(?:7|1)\d{8}$/.test(cleaned)) {
+    throw appError('Enter a valid Kenyan M-Pesa number', 400);
+  }
+  return cleaned;
+}
+
+function normalizeInternationalPhone(phone) {
+  const cleaned = String(phone || '').replace(/\D/g, '');
+  if (!/^\d{8,15}$/.test(cleaned)) {
+    throw appError('Enter a valid mobile money number with country code', 400);
+  }
+  return cleaned;
+}
+
+function maskPhone(phone) {
+  const cleaned = String(phone || '').replace(/\D/g, '');
+  if (cleaned.length <= 4) return cleaned;
+  return `${'*'.repeat(Math.max(cleaned.length - 4, 0))}${cleaned.slice(-4)}`;
+}
+
+function normalizeMobileMoneyMethod(method) {
+  const value = String(method || '').trim().toLowerCase();
+  if (value === 'mpesa' || value === 'm-pesa') return 'mpesa';
+  if (['mtn', 'momo', 'mtn-momo', 'mtn_momo'].includes(value)) return 'mtn';
+  throw appError('Choose either M-Pesa or MTN MoMo', 400);
+}
+
+function providerAmount(value) {
+  const amount = Math.round(parsePositiveAmount(value));
+  if (amount < 1) throw appError('Payment amount must be at least 1', 400);
+  return amount;
+}
+
+function mobileMoneyReference(method, providerReference) {
+  return `${method}:${providerReference}`;
+}
+
+function parseJsonResponse(text) {
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (_err) {
+    return { raw: text };
+  }
+}
+
+function providerErrorMessage(data, fallback) {
+  if (!data || typeof data !== 'object') return fallback;
+  return (
+    data.errorMessage ||
+    data.error_description ||
+    data.message ||
+    data.description ||
+    data.ResultDesc ||
+    data.raw ||
+    fallback
+  );
+}
+
+async function fetchJson(url, options = {}) {
+  const activeFetch = options.fetchImpl || global.fetch;
+  if (typeof activeFetch !== 'function') {
+    throw appError('HTTP fetch API is not available in this runtime', 500);
+  }
+
+  const response = await activeFetch(url, {
+    method: options.method || 'GET',
+    headers: options.headers || {},
+    body: options.body
+  });
+  const text = await response.text();
+  const data = parseJsonResponse(text);
+
+  if (!response.ok) {
+    const err = appError(providerErrorMessage(data, 'Payment provider request failed'), response.status || 502);
+    err.details = data;
+    throw err;
+  }
+
+  return data;
 }
 
 function canonicalize(value) {
@@ -256,6 +385,219 @@ function bookingPaymentStatus(transactionStatus) {
   if (transactionStatus === 'failed') return 'failed';
   if (transactionStatus === 'refunded') return 'refunded';
   return 'pending';
+}
+
+function metadataObject(metadata) {
+  if (!metadata) return {};
+  if (typeof metadata.toObject === 'function') return metadata.toObject();
+  return { ...metadata };
+}
+
+function mpesaCallbackMetadata(callbackMetadata = {}) {
+  return (callbackMetadata.Item || []).reduce((acc, item) => {
+    if (item?.Name) acc[item.Name] = item.Value;
+    return acc;
+  }, {});
+}
+
+async function saveTransaction(transaction, updates) {
+  Object.assign(transaction, updates);
+  if (typeof transaction.save === 'function') return transaction.save();
+  const filter = transaction?._id
+    ? { _id: transaction._id }
+    : { provider: transaction.provider, providerEventId: transaction.providerEventId };
+  return Transaction.findOneAndUpdate(filter, { $set: updates }, { new: true });
+}
+
+async function updateBookingFromTransaction(transaction, status, options = {}) {
+  if (!transaction?.booking) return null;
+  const amount = firstPositiveAmount([options.amount, transaction.amount]);
+  const updates = {
+    paymentStatus: bookingPaymentStatus(status),
+    paymentReference: transaction.reference || '',
+    paymentAmount: amount || transaction.amount
+  };
+
+  if (status === 'completed') updates.paidAt = new Date();
+  return Booking.findByIdAndUpdate(transaction.booking, { $set: updates }, { new: true });
+}
+
+class MpesaService {
+  constructor(options = {}) {
+    this.fetchImpl = options.fetchImpl;
+  }
+
+  baseUrl() {
+    return providerBaseUrl(process.env.MPESA_BASE_URL, 'https://sandbox.safaricom.co.ke');
+  }
+
+  async accessToken() {
+    const consumerKey = requireEnv('M-Pesa consumer key', 'MPESA_CONSUMER_KEY');
+    const consumerSecret = requireEnv('M-Pesa consumer secret', 'MPESA_CONSUMER_SECRET');
+    const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
+    const data = await fetchJson(`${this.baseUrl()}/oauth/v1/generate?grant_type=client_credentials`, {
+      fetchImpl: this.fetchImpl,
+      headers: { Authorization: `Basic ${auth}` }
+    });
+
+    if (!data.access_token) {
+      throw appError('M-Pesa token response did not include access_token', 502);
+    }
+    return data.access_token;
+  }
+
+  async initiateStkPush({ amount, phone, accountReference, description, callbackUrl }) {
+    const formattedPhone = normalizeMpesaPhone(phone);
+    const shortcode = requireEnv('M-Pesa shortcode', 'MPESA_SHORTCODE');
+    const passkey = requireEnv('M-Pesa passkey', 'MPESA_PASSKEY');
+    const token = await this.accessToken();
+    const timestamp = mpesaTimestamp();
+    const payload = {
+      BusinessShortCode: shortcode,
+      Password: Buffer.from(`${shortcode}${passkey}${timestamp}`).toString('base64'),
+      Timestamp: timestamp,
+      TransactionType: process.env.MPESA_TRANSACTION_TYPE || 'CustomerPayBillOnline',
+      Amount: providerAmount(amount),
+      PartyA: formattedPhone,
+      PartyB: shortcode,
+      PhoneNumber: formattedPhone,
+      CallBackURL: callbackUrl || providerCallbackUrl('mpesa'),
+      AccountReference: String(accountReference || 'ITRUCK').slice(0, 12),
+      TransactionDesc: String(description || 'iTruck escrow').slice(0, 60)
+    };
+
+    const data = await fetchJson(`${this.baseUrl()}/mpesa/stkpush/v1/processrequest`, {
+      fetchImpl: this.fetchImpl,
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!data.CheckoutRequestID) {
+      throw appError('M-Pesa STK response did not include CheckoutRequestID', 502);
+    }
+
+    return {
+      provider: 'mpesa',
+      providerReference: data.CheckoutRequestID,
+      merchantRequestId: data.MerchantRequestID,
+      message: data.CustomerMessage || data.ResponseDescription || 'M-Pesa STK push sent',
+      response: data
+    };
+  }
+}
+
+class MTNMoMoService {
+  constructor(options = {}) {
+    this.fetchImpl = options.fetchImpl;
+  }
+
+  baseUrl() {
+    return providerBaseUrl(envValue('MTN_MOMO_BASE_URL', 'MOMO_BASE_URL'), 'https://sandbox.momodeveloper.mtn.com');
+  }
+
+  subscriptionKey(product = 'collection') {
+    if (product === 'disbursement') {
+      return requireEnv(
+        'MTN MoMo disbursement subscription key',
+        'MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY',
+        'MOMO_DISB_SUBSCRIBER_KEY'
+      );
+    }
+    return requireEnv('MTN MoMo subscription key', 'MTN_MOMO_SUBSCRIPTION_KEY', 'MOMO_SUBSCRIBER_KEY');
+  }
+
+  async accessToken(product = 'collection') {
+    const apiUser =
+      product === 'disbursement'
+        ? requireEnv('MTN MoMo disbursement API user', 'MTN_MOMO_DISBURSEMENT_API_USER', 'MOMO_DISB_USER_ID')
+        : requireEnv('MTN MoMo API user', 'MTN_MOMO_API_USER', 'MOMO_USER_ID');
+    const apiKey =
+      product === 'disbursement'
+        ? requireEnv('MTN MoMo disbursement API key', 'MTN_MOMO_DISBURSEMENT_API_KEY', 'MOMO_DISB_API_KEY')
+        : requireEnv('MTN MoMo API key', 'MTN_MOMO_API_KEY', 'MOMO_API_KEY');
+    const auth = Buffer.from(`${apiUser}:${apiKey}`).toString('base64');
+    const data = await fetchJson(`${this.baseUrl()}/${product}/token/`, {
+      fetchImpl: this.fetchImpl,
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Ocp-Apim-Subscription-Key': this.subscriptionKey(product)
+      }
+    });
+
+    if (!data.access_token) {
+      throw appError('MTN MoMo token response did not include access_token', 502);
+    }
+    return data.access_token;
+  }
+
+  targetEnvironment() {
+    return envValue('MTN_MOMO_TARGET_ENV', 'MOMO_TARGET_ENV') || 'sandbox';
+  }
+
+  currency() {
+    return String(envValue('MTN_MOMO_CURRENCY', 'MOMO_CURRENCY') || 'EUR').toUpperCase();
+  }
+
+  callbackUrl(referenceId) {
+    const base = providerCallbackUrl('mtn');
+    if (base.includes(':referenceId')) return base.replace(':referenceId', encodeURIComponent(referenceId));
+    if (base.endsWith(`/${referenceId}`)) return base;
+    return `${trimTrailingSlash(base)}/${encodeURIComponent(referenceId)}`;
+  }
+
+  async requestToPay({ amount, phone, externalId, payerMessage, payeeNote, callbackUrl }) {
+    const referenceId = crypto.randomUUID();
+    const token = await this.accessToken('collection');
+    const payload = {
+      amount: String(providerAmount(amount)),
+      currency: this.currency(),
+      externalId: String(externalId),
+      payer: {
+        partyIdType: 'MSISDN',
+        partyId: normalizeInternationalPhone(phone)
+      },
+      payerMessage: String(payerMessage || 'iTruck booking payment').slice(0, 160),
+      payeeNote: String(payeeNote || 'iTruck escrow').slice(0, 160)
+    };
+
+    await fetchJson(`${this.baseUrl()}/collection/v1_0/requesttopay`, {
+      fetchImpl: this.fetchImpl,
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Reference-Id': referenceId,
+        'X-Target-Environment': this.targetEnvironment(),
+        'X-Callback-Url': callbackUrl || this.callbackUrl(referenceId),
+        'Ocp-Apim-Subscription-Key': this.subscriptionKey('collection'),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    return {
+      provider: 'mtn',
+      providerReference: referenceId,
+      message: 'MTN MoMo request to pay sent',
+      response: {}
+    };
+  }
+
+  async requestToPayStatus(referenceId) {
+    const token = await this.accessToken('collection');
+    return fetchJson(`${this.baseUrl()}/collection/v1_0/requesttopay/${encodeURIComponent(referenceId)}`, {
+      fetchImpl: this.fetchImpl,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Target-Environment': this.targetEnvironment(),
+        'Ocp-Apim-Subscription-Key': this.subscriptionKey('collection')
+      }
+    });
+  }
 }
 
 class WalletService {
@@ -610,6 +952,192 @@ class WalletService {
   }
 }
 
+class MobileMoneyPaymentService {
+  constructor(options = {}) {
+    this.mpesa = options.mpesa || new MpesaService(options);
+    this.mtn = options.mtn || new MTNMoMoService(options);
+  }
+
+  async initiateBookingPayment(bookingId, payerId, options = {}) {
+    const method = normalizeMobileMoneyMethod(options.method || options.provider);
+    const phone = options.phone || options.destination;
+    const requestPayload = {
+      bookingId,
+      payerId,
+      amount: options.amount,
+      method,
+      phone
+    };
+
+    return runWithIdempotency(
+      options.idempotencyKey,
+      requestPayload,
+      () => this.createBookingPayment(bookingId, payerId, { ...options, method, phone }),
+      { scope: `booking.payment.${method}` }
+    );
+  }
+
+  async createBookingPayment(bookingId, payerId, options = {}) {
+    const method = normalizeMobileMoneyMethod(options.method);
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      throw appError('Booking not found', 404);
+    }
+
+    if (!sameId(booking.client, payerId)) {
+      throw appError('Only the booking shipper can fund escrow', 403);
+    }
+
+    if (!booking.owner) {
+      throw appError('Accept a carrier bid before funding escrow', 409);
+    }
+
+    if (!['confirmed', 'in_transit', 'delivered'].includes(booking.status)) {
+      throw appError('Booking must be confirmed before funding escrow', 409);
+    }
+
+    if (['escrowed', 'release_pending', 'released'].includes(booking.paymentStatus)) {
+      const existing = await Transaction.findOne({
+        booking: booking._id,
+        type: 'payment',
+        status: 'completed'
+      });
+      return { booking, transaction: existing, alreadyFunded: true };
+    }
+
+    if (booking.paymentStatus === 'pending') {
+      throw appError('Booking payment is already pending', 409);
+    }
+
+    if (!['unpaid', 'failed', undefined, null].includes(booking.paymentStatus)) {
+      throw appError('Booking payment cannot be funded from its current state', 409);
+    }
+
+    const amount = parsePositiveAmount(bookingEscrowAmount(booking, options.amount));
+    const currency =
+      method === 'mpesa'
+        ? String(envValue('MPESA_CURRENCY') || 'KES').toUpperCase()
+        : String(envValue('MTN_MOMO_CURRENCY', 'MOMO_CURRENCY') || 'EUR').toUpperCase();
+    const pendingReference = `${method}:pending:${booking._id}:${Date.now()}`;
+    const reserved = await Booking.findOneAndUpdate(
+      {
+        _id: booking._id,
+        $or: [{ paymentStatus: { $in: ['unpaid', 'failed'] } }, { paymentStatus: { $exists: false } }]
+      },
+      {
+        $set: {
+          paymentStatus: 'pending',
+          paymentMethod: method,
+          paymentAmount: amount,
+          paymentReference: pendingReference
+        }
+      },
+      { new: true }
+    );
+
+    if (!reserved) {
+      throw appError('Booking payment is already being funded', 409);
+    }
+
+    const transaction = await Transaction.create({
+      user: payerId,
+      booking: reserved._id,
+      type: 'payment',
+      method,
+      amount,
+      currency,
+      reference: pendingReference,
+      provider: method,
+      description: `${method === 'mpesa' ? 'M-Pesa' : 'MTN MoMo'} escrow payment for booking ${reserved._id}`,
+      status: 'pending',
+      metadata: {
+        channel: 'mobile_money',
+        phone: maskPhone(options.phone),
+        initiatedAt: new Date().toISOString(),
+        owner: reserved.owner
+      }
+    });
+
+    try {
+      const providerResult =
+        method === 'mpesa'
+          ? await this.mpesa.initiateStkPush({
+              amount,
+              phone: options.phone,
+              accountReference: `ITR-${String(reserved._id).slice(-8).toUpperCase()}`,
+              description: `iTruck booking ${String(reserved._id).slice(-8)}`,
+              callbackUrl: options.callbackUrl
+            })
+          : await this.mtn.requestToPay({
+              amount,
+              phone: options.phone,
+              externalId: reserved._id,
+              payerMessage: `iTruck booking ${String(reserved._id).slice(-8)}`,
+              payeeNote: 'iTruck escrow payment',
+              callbackUrl: options.callbackUrl
+            });
+
+      const finalReference = mobileMoneyReference(method, providerResult.providerReference);
+      const metadata = {
+        ...metadataObject(transaction.metadata),
+        providerReference: providerResult.providerReference,
+        merchantRequestId: providerResult.merchantRequestId,
+        providerResponse: providerResult.response
+      };
+      const updatedTransaction =
+        (await Transaction.findOneAndUpdate(
+          { _id: transaction._id },
+          {
+            $set: {
+              reference: finalReference,
+              providerEventId: providerResult.providerReference,
+              metadata
+            }
+          },
+          { new: true }
+        )) || {
+          ...transaction,
+          reference: finalReference,
+          providerEventId: providerResult.providerReference,
+          metadata
+        };
+
+      const updatedBooking =
+        (await Booking.findOneAndUpdate(
+          { _id: reserved._id, paymentStatus: 'pending', paymentReference: pendingReference },
+          { $set: { paymentReference: finalReference, paymentAmount: amount, paymentMethod: method } },
+          { new: true }
+        )) || reserved;
+
+      return {
+        success: true,
+        provider: method,
+        providerReference: providerResult.providerReference,
+        message: providerResult.message,
+        booking: updatedBooking,
+        transaction: updatedTransaction,
+        alreadyFunded: false
+      };
+    } catch (err) {
+      const metadata = {
+        ...metadataObject(transaction.metadata),
+        failureMessage: err.message,
+        failedAt: new Date().toISOString()
+      };
+      await Transaction.findOneAndUpdate(
+        { _id: transaction._id },
+        { $set: { status: 'failed', metadata } },
+        { new: true }
+      );
+      await Booking.updateOne(
+        { _id: reserved._id, paymentStatus: 'pending', paymentReference: pendingReference },
+        { $set: { paymentStatus: 'failed' }, $unset: { paymentReference: 1 } }
+      );
+      throw err;
+    }
+  }
+}
+
 class PaymentReconciliationService {
   async reconcileStripeEvent(event) {
     const object = stripeObject(event);
@@ -664,10 +1192,121 @@ class PaymentReconciliationService {
 
     return transaction;
   }
+
+  async reconcileMpesaCallback(payload = {}) {
+    const callback = payload?.Body?.stkCallback;
+    if (!callback?.CheckoutRequestID) {
+      throw appError('Invalid M-Pesa callback payload', 400);
+    }
+
+    const checkoutRequestId = callback.CheckoutRequestID;
+    const transaction = await Transaction.findOne({
+      provider: 'mpesa',
+      providerEventId: checkoutRequestId
+    });
+
+    if (!transaction) {
+      logger.warn({ checkoutRequestId }, 'M-Pesa callback did not match a transaction');
+      return { received: true, matched: false };
+    }
+
+    const successful = Number(callback.ResultCode) === 0;
+    const callbackItems = mpesaCallbackMetadata(callback.CallbackMetadata);
+    const receipt = callbackItems.MpesaReceiptNumber || callbackItems.ReceiptNumber;
+    const amount = firstPositiveAmount([callbackItems.Amount, transaction.amount]);
+    const metadata = {
+      ...metadataObject(transaction.metadata),
+      mpesaReceipt: receipt,
+      callbackResultCode: callback.ResultCode,
+      callbackResultDesc: callback.ResultDesc,
+      callbackMetadata: callbackItems,
+      reconciledAt: new Date().toISOString()
+    };
+    const reference = successful && receipt ? mobileMoneyReference('mpesa', receipt) : transaction.reference;
+
+    const updated = await saveTransaction(transaction, {
+      status: successful ? 'completed' : 'failed',
+      reference,
+      metadata
+    });
+    const booking = await updateBookingFromTransaction(updated || transaction, successful ? 'completed' : 'failed', {
+      amount
+    });
+
+    return {
+      received: true,
+      matched: true,
+      status: successful ? 'completed' : 'failed',
+      booking
+    };
+  }
+
+  async reconcileMTNMoMoCallback(referenceId, payload = {}) {
+    const providerReference = referenceId || payload.referenceId || payload.externalId;
+    if (!providerReference) {
+      throw appError('MTN MoMo reference id is required', 400);
+    }
+
+    const transaction = await Transaction.findOne({
+      provider: 'mtn',
+      providerEventId: providerReference
+    });
+
+    if (!transaction) {
+      logger.warn({ providerReference }, 'MTN MoMo callback did not match a transaction');
+      return { received: true, matched: false };
+    }
+
+    const providerPayload =
+      payload.status || payload.financialTransactionId ? payload : await new MTNMoMoService().requestToPayStatus(providerReference);
+    const status = String(providerPayload.status || 'PENDING').toUpperCase();
+    if (status === 'PENDING') {
+      const metadata = {
+        ...metadataObject(transaction.metadata),
+        providerStatus: status,
+        callbackPayload: providerPayload,
+        reconciledAt: new Date().toISOString()
+      };
+      await saveTransaction(transaction, { metadata });
+      return { received: true, matched: true, status: 'pending' };
+    }
+
+    const successful = status === 'SUCCESSFUL';
+    const amount = firstPositiveAmount([providerPayload.amount, transaction.amount]);
+    const metadata = {
+      ...metadataObject(transaction.metadata),
+      providerStatus: status,
+      financialTransactionId: providerPayload.financialTransactionId,
+      reason: providerPayload.reason,
+      callbackPayload: providerPayload,
+      reconciledAt: new Date().toISOString()
+    };
+    const reference =
+      successful && providerPayload.financialTransactionId
+        ? mobileMoneyReference('mtn', providerPayload.financialTransactionId)
+        : transaction.reference;
+
+    const updated = await saveTransaction(transaction, {
+      status: successful ? 'completed' : 'failed',
+      reference,
+      metadata
+    });
+    const booking = await updateBookingFromTransaction(updated || transaction, successful ? 'completed' : 'failed', {
+      amount
+    });
+
+    return {
+      received: true,
+      matched: true,
+      status: successful ? 'completed' : 'failed',
+      booking
+    };
+  }
 }
 
 module.exports = {
   payments: new PaymentReconciliationService(),
+  mobileMoney: new MobileMoneyPaymentService(),
   wallet: new WalletService(),
   checkIdempotency,
   generateIdempotencyKey,
@@ -676,8 +1315,9 @@ module.exports = {
   normalizeIdempotencyKey,
   runWithIdempotency,
   StripeService: class {},
-  MpesaService: class {},
-  MTNMoMoService: class {},
+  MpesaService,
+  MTNMoMoService,
+  MobileMoneyPaymentService,
   PaymentReconciliationService,
   WalletService
 };
