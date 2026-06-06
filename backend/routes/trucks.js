@@ -15,6 +15,7 @@ const {
   truckIdSchema
 } = require('../validators/trucks');
 const { demoTrucks } = require('../data/demo-users');
+const { normalizeTruckDocumentType } = require('../utils/documentTypes');
 
 const router = express.Router();
 const memoryTrucks = [...demoTrucks];
@@ -74,9 +75,10 @@ function filterTrucks(trucks, query) {
 }
 
 function upsertDocument(documents = [], type, patch) {
-  const existing = documents.find((item) => item.type === type);
+  const documentType = normalizeTruckDocumentType(type);
+  const existing = documents.find((item) => normalizeTruckDocumentType(item.type) === documentType);
   const update = {
-    type,
+    type: documentType,
     url: patch.url,
     fileName: patch.fileName,
     status: 'pending',

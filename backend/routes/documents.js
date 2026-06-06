@@ -6,6 +6,7 @@ const docs = require('../services/documents');
 const cloudinary = require('../services/cloudinary');
 const validate = require('../middleware/validate');
 const { bookingDocumentSchema } = require('../validators/documents');
+const { normalizeBookingDocumentType } = require('../utils/documentTypes');
 
 const router = express.Router();
 router.use(protect);
@@ -13,8 +14,11 @@ router.use(protect);
 const documentFactories = {
   waybill: docs.createWaybill,
   pod: docs.createPOD,
+  'proof-of-delivery': docs.createPOD,
   invoice: docs.createInvoice,
+  'commercial-invoice': docs.createInvoice,
   customs: docs.createCustoms,
+  'customs-declaration': docs.createCustoms,
   'receiver-confirmation': docs.createReceiverConfirmation,
   'packing-list': docs.createPackingList
 };
@@ -118,8 +122,11 @@ function cacheable(record) {
 
 async function cachedDocumentUrl(record, type, create, payload) {
   if (!cacheable(record)) return null;
+  const documentType = normalizeBookingDocumentType(type);
 
-  const existing = (record.documents || []).find((item) => item.type === type && item.url);
+  const existing = (record.documents || []).find(
+    (item) => normalizeBookingDocumentType(item.type) === documentType && item.url
+  );
   if (existing) return existing.url;
   if (!cloudinary.isConfigured()) return null;
 
@@ -131,7 +138,10 @@ async function cachedDocumentUrl(record, type, create, payload) {
     overwrite: true
   });
 
-  record.documents.push({ type, url, generatedAt: new Date() });
+  const document = (record.documents || []).find((item) => normalizeBookingDocumentType(item.type) === documentType);
+  const update = { type: documentType, url, generatedAt: new Date(), status: 'approved' };
+  if (document) Object.assign(document, update);
+  else record.documents.push(update);
   await record.save();
   return url;
 }

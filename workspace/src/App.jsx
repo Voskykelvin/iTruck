@@ -238,6 +238,65 @@ function slugDocumentType(value) {
     .replace(/(^-|-$)/g, '');
 }
 
+function normalizeProfileDocumentType(value, role = 'client') {
+  const slug = slugDocumentType(value);
+  if (slug === 'kyc') return role === 'owner' ? 'owner-kyc' : 'shipper-kyc';
+  return slug;
+}
+
+function normalizeTruckDocumentType(value) {
+  const slug = slugDocumentType(value);
+  const aliases = {
+    license: 'road-license',
+    logbook: 'vehicle-logbook',
+    'vehicle-photo': 'vehicle-photos'
+  };
+
+  return aliases[slug] || slug;
+}
+
+function normalizeBookingDocumentType(value) {
+  const slug = slugDocumentType(value);
+  const aliases = {
+    'cargo-photo': 'cargo-photos',
+    'commercial-invoice': 'invoice',
+    'customs-declaration': 'customs',
+    'proof-of-delivery': 'pod'
+  };
+
+  return aliases[slug] || slug;
+}
+
+function profileDocumentsForRole(role) {
+  if (role === 'owner') return ownerProfileDocuments;
+  if (role === 'admin') return [];
+  return shipperProfileDocuments;
+}
+
+function reviewReadyDocument(doc) {
+  return doc?.status === 'approved' || doc?.status === 'pending';
+}
+
+function findProfileDocument(documents = [], label, role) {
+  const expectedType = normalizeProfileDocumentType(label, role);
+  return documents.find((doc) => normalizeProfileDocumentType(doc.type, role) === expectedType);
+}
+
+function findTruckDocument(documents = [], label) {
+  const expectedType = normalizeTruckDocumentType(label);
+  return documents.find((doc) => normalizeTruckDocumentType(doc.type) === expectedType);
+}
+
+function missingRequiredProfileDocuments(user, role) {
+  return profileDocumentsForRole(role).filter(
+    (label) => !reviewReadyDocument(findProfileDocument(user?.documents, label, role))
+  );
+}
+
+function profileDocumentsReady(user, role) {
+  return missingRequiredProfileDocuments(user, role).length === 0;
+}
+
 function chatKey(shipmentId) {
   return `itruck_chat_${shipmentId || 'draft'}`;
 }
@@ -818,21 +877,23 @@ function ShipperPage({ notify, user }) {
     const target = cargoUploadRef.current?.target || shipmentWithBooking(documentReview?.target);
     if (!target) return;
 
-    setBusyAction('document-cargo-photos');
+    const definition = cargoUploadRef.current?.definition || documentActions[1];
+    const documentType = normalizeBookingDocumentType(definition.type);
+    setBusyAction(`document-${documentType}`);
     try {
-      const data = await api.uploadCargo(files);
-      saveLocal('cargo_uploads', {
-        bookingId: target.bookingId,
-        shipmentId: target.id,
-        files: files.map((file) => file.name),
-        urls: data.urls || []
-      });
+      const data = await api.uploadBookingDocument(target.bookingId, documentType, files);
+      if (data.booking) {
+        const updated = normalizeBookingShipment(data.booking);
+        setShipments((current) => current.map((item) => (item.bookingId === updated.bookingId ? updated : item)));
+      }
       setDocumentReview({
         target,
-        focusLabel: 'Cargo photos',
-        status: `${files.length} cargo photo${files.length === 1 ? '' : 's'} uploaded for ${target.id}`
+        focusLabel: definition.label,
+        status: `${files.length} ${definition.label.toLowerCase()} file${files.length === 1 ? '' : 's'} uploaded for ${
+          target.id
+        }`
       });
-      notify('Cargo photos uploaded');
+      notify(`${definition.label} uploaded`);
     } catch (err) {
       notify(err.message);
     } finally {
@@ -2478,10 +2539,10 @@ function OnboardingPage({ notify, user, setUser }) {
       .catch(() => setFleet(workspaceFleet.slice(0, 2)));
   }, [role]);
 
-  const profileDocs = role === 'owner' ? ownerProfileDocuments : shipperProfileDocuments;
+  const profileDocs = profileDocumentsForRole(role);
 
   function openProfileDoc(documentType) {
-    pendingDocRef.current = slugDocumentType(documentType);
+    pendingDocRef.current = normalizeProfileDocumentType(documentType, role);
     profileDocInputRef.current?.click();
   }
 
@@ -2551,6 +2612,16 @@ function OnboardingPage({ notify, user, setUser }) {
     }
   }
 
+  function openBookingWorkspace() {
+    const missing = missingRequiredProfileDocuments(user, role);
+    if (missing.length) {
+      notify(`Please complete your profile: ${missing.map((item) => `${item} is required`).join(', ')}`);
+      return;
+    }
+
+    navigate('/app/book');
+  }
+
   return (
     <section className="workspace-layout">
       <input
@@ -2598,8 +2669,8 @@ function OnboardingPage({ notify, user, setUser }) {
           </div>
           <div className="doc-list">
             {profileDocs.map((item) => {
-              const slug = slugDocumentType(item);
-              const existingDoc = (user.documents || []).find((doc) => doc.type === slug);
+              const slug = normalizeProfileDocumentType(item, role);
+              const existingDoc = findProfileDocument(user.documents || [], item, role);
               const docStatus = existingDoc ? existingDoc.status : 'missing';
 
               let tone = 'default';
@@ -2727,7 +2798,7 @@ function OnboardingPage({ notify, user, setUser }) {
         ) : (
           <Panel title="Shipping Workspace" eyebrow="Next Step">
             <div className="button-row">
-              <button className="primary icon-label" type="button" onClick={() => navigate('/app/book')}>
+              <button className="primary icon-label" type="button" onClick={openBookingWorkspace}>
                 <Plus size={18} />
                 <span>Book Shipment</span>
               </button>
@@ -3130,12 +3201,15 @@ function DocumentsPage({ notify, user }) {
             .catch(() => {});
         }
       } else {
-        const data = await api.uploadCargo([file]);
-        saveLocal('shipment_documents', {
-          targetId: pending.targetId,
-          documentType: pending.documentType,
-          url: data.urls?.[0]
-        });
+        const data = await api.uploadBookingDocument(
+          pending.targetId,
+          normalizeBookingDocumentType(pending.documentType),
+          file
+        );
+        if (data.booking) {
+          const updated = normalizeBookingShipment(data.booking);
+          setShipments((current) => current.map((item) => (item.bookingId === updated.bookingId ? updated : item)));
+        }
       }
       notify('Document sent to admin review');
     } catch (err) {
@@ -3165,8 +3239,8 @@ function DocumentsPage({ notify, user }) {
                     <p>{truck.name}</p>
                     <div style={{ display: 'grid', gap: '6px', marginTop: '8px' }}>
                       {ownerVehicleDocuments.map((item) => {
-                        const slug = slugDocumentType(item);
-                        const existingDoc = (truck.documents || []).find((doc) => doc.type === slug);
+                        const slug = normalizeTruckDocumentType(item);
+                        const existingDoc = findTruckDocument(truck.documents || [], item);
                         const docStatus = existingDoc ? existingDoc.status : 'missing';
 
                         let tone = 'default';
@@ -3247,7 +3321,7 @@ function DocumentsPage({ notify, user }) {
                           disabled={busy === `${shipment.bookingId}-${definition.type}`}
                           onClick={() =>
                             definition.mode === 'upload'
-                              ? openUpload('shipment', shipment.id, definition.type)
+                              ? openUpload('shipment', shipment.bookingId, definition.type)
                               : downloadDoc(definition, shipment)
                           }
                         >
@@ -3616,20 +3690,32 @@ function AdminPage({ notify }) {
     return Array.isArray(record?.documents) ? record.documents : [];
   }
 
+  function documentNormalizerFor(targetType, record) {
+    if (targetType === 'user' || record?.role) return (type) => normalizeProfileDocumentType(type, record?.role);
+    if (targetType === 'booking' || record?.pickup || record?.destination || record?.cargo) {
+      return normalizeBookingDocumentType;
+    }
+    return normalizeTruckDocumentType;
+  }
+
   function expectedProfileDocuments(user) {
-    if (user?.role === 'owner') return ownerProfileDocuments;
-    if (user?.role === 'client') return shipperProfileDocuments;
-    return [];
+    return profileDocumentsForRole(user?.role);
   }
 
   function expectedTruckDocuments() {
-    return ownerVehicleDocuments.filter((item) => slugDocumentType(item) !== 'vehicle-photos');
+    return ownerVehicleDocuments.filter((item) => normalizeTruckDocumentType(item) !== 'vehicle-photos');
   }
 
-  function documentRows(record, expectedLabels = []) {
-    const byType = new globalThis.Map(documentList(record).map((doc) => [doc.type, doc]));
+  function documentRows(record, expectedLabels = [], targetType = '') {
+    const normalize = documentNormalizerFor(targetType, record);
+    const byType = new globalThis.Map(
+      documentList(record).map((doc) => {
+        const type = normalize(doc.type);
+        return [type, { ...doc, type }];
+      })
+    );
     const rows = expectedLabels.map((label) => {
-      const type = slugDocumentType(label);
+      const type = normalize(label);
       const existing = byType.get(type);
       if (existing) {
         byType.delete(type);
@@ -3725,6 +3811,7 @@ function AdminPage({ notify }) {
   const truckReviewItems = adminData.trucks.filter(
     (truck) => !truck.isVerified || needsDocumentReview(truck) || hasDuplicatePlate(truck)
   );
+  const bookingDocumentReviewItems = adminData.bookings.filter((booking) => needsDocumentReview(booking));
   const approvedUsers = adminData.users.filter(
     (user) => user.role !== 'admin' && user.isVerified && !needsDocumentReview(user)
   );
@@ -3749,6 +3836,11 @@ function AdminPage({ notify }) {
       documentList(truck)
         .filter((doc) => doc.status === 'expired')
         .map((doc) => ({ targetType: 'truck', record: truck, doc }))
+    ),
+    ...adminData.bookings.flatMap((booking) =>
+      documentList(booking)
+        .filter((doc) => doc.status === 'expired')
+        .map((doc) => ({ targetType: 'booking', record: booking, doc }))
     )
   ];
 
@@ -3782,6 +3874,12 @@ function AdminPage({ notify }) {
       label: 'Trucks',
       count: truckReviewItems.length,
       tone: truckReviewItems.length ? 'warn' : 'success'
+    },
+    {
+      key: 'shipments',
+      label: 'Shipment docs',
+      count: bookingDocumentReviewItems.length,
+      tone: bookingDocumentReviewItems.length ? 'warn' : 'success'
     },
     { key: 'approved-profiles', label: 'Approved profiles', count: approvedUsers.length, tone: 'success' },
     { key: 'approved-trucks', label: 'Approved trucks', count: approvedTrucks.length, tone: 'success' },
@@ -3830,11 +3928,16 @@ function AdminPage({ notify }) {
       const note =
         reviewNotes[reviewNoteKey(targetType, record, doc.type)] ||
         `${formatDocumentLabel(doc.type)} marked ${documentStatusText(status).toLowerCase()} from admin workspace`;
-      const request = targetType === 'truck' ? api.adminReviewTruckDocument : api.adminReviewUserDocument;
+      const request =
+        targetType === 'truck'
+          ? api.adminReviewTruckDocument
+          : targetType === 'booking'
+            ? api.adminReviewBookingDocument
+            : api.adminReviewUserDocument;
       await request(recordId(record), doc.type, { status, notes: note });
       if (status !== 'approved') {
         if (targetType === 'truck') await api.adminVerifyTruck(recordId(record), false);
-        else await api.adminVerifyUser(recordId(record), false);
+        else if (targetType === 'user') await api.adminVerifyUser(recordId(record), false);
       }
       notify(`${formatDocumentLabel(doc.type)} marked ${documentStatusText(status).toLowerCase()}`);
       await loadAdminData();
@@ -3963,7 +4066,7 @@ function AdminPage({ notify }) {
   }
 
   function renderDocumentReview(targetType, record, expectedLabels = []) {
-    const rows = documentRows(record, expectedLabels);
+    const rows = documentRows(record, expectedLabels, targetType);
     if (!rows.length) return <EmptyState title="No documents" detail="Uploaded files will appear here." />;
 
     return (
@@ -4198,6 +4301,34 @@ function AdminPage({ notify }) {
     );
   }
 
+  function renderShipmentDocumentReview() {
+    if (!bookingDocumentReviewItems.length)
+      return <EmptyState title="No shipment document reviews" detail="Uploaded shipment files will appear here." />;
+
+    return (
+      <div className="admin-review-list">
+        {bookingDocumentReviewItems.map((booking) => (
+          <article className="admin-review-row" key={recordId(booking)}>
+            <div className="admin-review-summary">
+              <div>
+                <StatusBadge tone="warn">Shipment docs</StatusBadge>
+                <h3>{adminBookingRef(booking)}</h3>
+                <div className="admin-review-meta">
+                  <span>{adminBookingRoute(booking)}</span>
+                  <span>{statusLabel(adminBookingStatus(booking))}</span>
+                  <span>
+                    {documentList(booking).length} document{documentList(booking).length === 1 ? '' : 's'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            {renderDocumentReview('booking', booking, [])}
+          </article>
+        ))}
+      </div>
+    );
+  }
+
   function renderApprovedProfiles() {
     if (!approvedUsers.length)
       return <EmptyState title="No approved profiles" detail="Approved shippers and owners will appear here." />;
@@ -4409,7 +4540,11 @@ function AdminPage({ notify }) {
                 <StatusBadge tone="danger">Expired</StatusBadge>
                 <h3>{formatDocumentLabel(doc.type)}</h3>
                 <p>
-                  {targetType === 'truck' ? `${plateKey(record)} - ${ownerNameForTruck(record)}` : personName(record)}
+                  {targetType === 'truck'
+                    ? `${plateKey(record)} - ${ownerNameForTruck(record)}`
+                    : targetType === 'booking'
+                      ? `${adminBookingRef(record)} - ${adminBookingRoute(record)}`
+                      : personName(record)}
                 </p>
               </div>
             </div>
@@ -4459,6 +4594,7 @@ function AdminPage({ notify }) {
   const reviewTitles = {
     kyc: 'KYC Review Queue',
     trucks: 'Truck Review Queue',
+    shipments: 'Shipment Document Review',
     'approved-profiles': 'Approved Profiles',
     'approved-trucks': 'Approved Trucks',
     risk: 'Risk Overview',
@@ -4473,6 +4609,7 @@ function AdminPage({ notify }) {
   function renderActiveReview() {
     if (activeReview === 'kyc') return renderKycReview();
     if (activeReview === 'trucks') return renderTruckReview();
+    if (activeReview === 'shipments') return renderShipmentDocumentReview();
     if (activeReview === 'approved-profiles') return renderApprovedProfiles();
     if (activeReview === 'approved-trucks') return renderApprovedTrucks();
     if (activeReview === 'risk') return renderRiskReview();
@@ -4559,8 +4696,7 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
   const documentInputRef = useRef(null);
   const signedIn = Boolean(user.email);
   const activeUserRole = roleForUser(user);
-  const verificationItems =
-    activeUserRole === 'owner' ? ownerProfileDocuments : activeUserRole === 'admin' ? [] : shipperProfileDocuments;
+  const verificationItems = profileDocumentsForRole(activeUserRole);
 
   const selectPendingDocument = useCallback((item) => {
     pendingDocumentRef.current = item;
@@ -4706,7 +4842,7 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
 
     setUploadingDocument(documentType);
     try {
-      const data = await api.uploadProfileDocument(slugDocumentType(documentType), file);
+      const data = await api.uploadProfileDocument(normalizeProfileDocumentType(documentType, activeUserRole), file);
       if (data.user) {
         setSession({ user: data.user });
         setUser(data.user);
@@ -4925,8 +5061,7 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
           </div>
           <div style={{ display: 'grid', gap: '6px', margin: '6px 0' }}>
             {verificationItems.map((item) => {
-              const slug = slugDocumentType(item);
-              const existingDoc = (user.documents || []).find((doc) => doc.type === slug);
+              const existingDoc = findProfileDocument(user.documents || [], item, activeUserRole);
               const docStatus = existingDoc ? existingDoc.status : 'missing';
               let tone = 'default';
               let statusText = 'Upload';
@@ -5597,9 +5732,8 @@ const ONBOARDING_STEPS_CLIENT = [
 
 function computeOnboardingProgress(user, role, fleet = [], shipments = []) {
   const steps = role === 'owner' ? ONBOARDING_STEPS_OWNER : ONBOARDING_STEPS_CLIENT;
-  const docs = user?.documents || [];
   const hasProfile = Boolean(user?.firstName && user?.email);
-  const hasDocs = docs.some((d) => d.status === 'approved' || d.status === 'pending');
+  const hasDocs = profileDocumentsReady(user, role);
   const hasVehicle = fleet.length > 0;
   const hasBooking = shipments.length > 0;
 

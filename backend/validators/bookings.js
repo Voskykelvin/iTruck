@@ -1,5 +1,6 @@
-const { body, query } = require('express-validator');
+const { body, param, query } = require('express-validator');
 const Booking = require('../models/Booking');
+const { isDocumentUrl } = require('../utils/documentTypes');
 const {
   liveMongoIdParam,
   optionalPositiveNumber,
@@ -11,6 +12,10 @@ const {
 
 const bookingIdSchema = [liveMongoIdParam('id')];
 const acceptBidSchema = [...bookingIdSchema, liveMongoIdParam('bidId')];
+const documentTypeParam = param('documentType')
+  .trim()
+  .matches(/^[a-z0-9][a-z0-9_-]{0,79}$/)
+  .withMessage('documentType must be a document slug');
 
 const createBookingSchema = [
   requiredString('pickup', 160),
@@ -72,6 +77,22 @@ const updateStatusSchema = [
     .toFloat()
 ];
 
+const bookingDocumentUploadSchema = [
+  ...bookingIdSchema,
+  documentTypeParam,
+  body('url').trim().custom(isDocumentUrl).withMessage('url must be a valid document URL'),
+  body('urls')
+    .optional({ checkFalsy: true })
+    .custom((value) => Array.isArray(value) && value.every(isDocumentUrl))
+    .withMessage('urls must be valid document URLs'),
+  optionalString('fileName', 240),
+  body('fileNames')
+    .optional({ checkFalsy: true })
+    .custom((value) => Array.isArray(value) && value.every((item) => String(item || '').length <= 240))
+    .withMessage('fileNames must be a list of file names'),
+  optionalString('notes', 1000)
+];
+
 const bookingRatingSchema = [
   ...bookingIdSchema,
   body('score').isFloat({ min: 1, max: 5 }).withMessage('Rating score must be between 1 and 5').toFloat(),
@@ -89,6 +110,7 @@ const listBookingsSchema = [
 
 module.exports = {
   acceptBidSchema,
+  bookingDocumentUploadSchema,
   bookingRatingSchema,
   bookingIdSchema,
   createBookingSchema,

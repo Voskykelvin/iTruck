@@ -8,6 +8,7 @@ const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const {
   bookingIdSchema,
+  bookingDocumentUploadSchema,
   bookingRatingSchema,
   acceptBidSchema,
   createBookingSchema,
@@ -15,6 +16,7 @@ const {
   submitBidSchema,
   updateStatusSchema
 } = require('../validators/bookings');
+const { normalizeBookingDocumentType } = require('../utils/documentTypes');
 
 const router = express.Router();
 router.use(protect);
@@ -161,6 +163,29 @@ function cleanBookingPayload(body) {
 function emitBooking(req, bookingId, event, booking) {
   const io = req.app.get('io');
   if (io?.emitToBooking) io.emitToBooking(bookingId, event, booking);
+}
+
+function upsertBookingDocument(documents = [], type, patch) {
+  const documentType = normalizeBookingDocumentType(type);
+  const existing = documents.find((item) => normalizeBookingDocumentType(item.type) === documentType);
+  const urls = Array.isArray(patch.urls) && patch.urls.length ? patch.urls : patch.url ? [patch.url] : [];
+  const fileNames =
+    Array.isArray(patch.fileNames) && patch.fileNames.length ? patch.fileNames : patch.fileName ? [patch.fileName] : [];
+  const update = {
+    type: documentType,
+    url: patch.url || urls[0],
+    urls,
+    fileName: patch.fileName || fileNames[0],
+    fileNames,
+    status: 'pending',
+    notes: patch.notes || '',
+    reviewedAt: undefined,
+    generatedAt: new Date()
+  };
+
+  if (existing) Object.assign(existing, update);
+  else documents.push(update);
+  return documents;
 }
 
 function averageScore(bookings, path) {
@@ -494,6 +519,34 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
     await booking.save();
 
     emitBooking(req, booking._id, 'status-update', booking);
+    res.json({ booking });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/:id/documents/:documentType', bookingDocumentUploadSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    const documentType = normalizeBookingDocumentType(req.params.documentType);
+
+    if (!mongoReady()) {
+      const booking = memoryBookings.find((item) => item._id === req.params.id || item.id === req.params.id);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (!bookingVisibleTo(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+
+      booking.documents = upsertBookingDocument(booking.documents || [], documentType, req.body);
+      emitBooking(req, booking._id, 'document-updated', booking);
+      return res.json({ booking, mode: 'memory' });
+    }
+
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    if (!bookingVisibleTo(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+
+    booking.documents = upsertBookingDocument(booking.documents || [], documentType, req.body);
+    await booking.save();
+    emitBooking(req, booking._id, 'document-updated', booking);
     res.json({ booking });
   } catch (err) {
     next(err);
