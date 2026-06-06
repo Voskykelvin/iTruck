@@ -5802,7 +5802,11 @@ function ReportIssueModal({ shipment, onClose, onSubmit, busy }) {
    WALLET TOP-UP MODAL
    ============================================================ */
 function MobileMoneyEscrowModal({ shipment, busy, onClose, onSubmit }) {
-  const preferredMethod = String(shipment?.payment || '').toLowerCase().includes('mtn') ? 'mtn' : 'mpesa';
+  const preferredMethod = String(shipment?.payment || '')
+    .toLowerCase()
+    .includes('mtn')
+    ? 'mtn'
+    : 'mpesa';
   const [method, setMethod] = useState(preferredMethod);
   const [phone, setPhone] = useState('');
   const methods = [
@@ -5848,11 +5852,7 @@ function MobileMoneyEscrowModal({ shipment, busy, onClose, onSubmit }) {
               ))}
             </div>
           </div>
-          <Input
-            label={method === 'mpesa' ? 'M-Pesa phone' : 'MTN MoMo phone'}
-            value={phone}
-            onChange={setPhone}
-          />
+          <Input label={method === 'mpesa' ? 'M-Pesa phone' : 'MTN MoMo phone'} value={phone} onChange={setPhone} />
           <div className="button-row">
             <button className="primary icon-label" type="submit" disabled={busy || !phone.trim()}>
               <Smartphone size={18} />
