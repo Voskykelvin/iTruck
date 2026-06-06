@@ -35,7 +35,14 @@ const authLimiter = rateLimit({
 });
 
 function handleCastError(err) {
-  return AppError.badRequest(`Invalid ${err.path}: ${err.value}`);
+  const raw = err.value;
+  const value =
+    raw === null || raw === undefined
+      ? raw
+      : typeof raw === 'object'
+        ? JSON.stringify(raw)
+        : raw;
+  return AppError.badRequest(`Invalid ${err.path}: ${value}`);
 }
 
 function handleDuplicateKey(err) {
