@@ -1702,6 +1702,10 @@ input[type='radio'] {
   justify-items: end;
 }
 
+.payment-option button {
+  min-width: 118px;
+}
+
 .verification-card {
   display: grid;
   gap: 8px;
@@ -2472,6 +2476,15 @@ input[type='radio'] {
 [data-theme='dark'] .decision-grid span,
 [data-theme='dark'] .facts-grid span,
 [data-theme='dark'] .toggle-row {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+[data-theme='dark'] .bid-option,
+[data-theme='dark'] .tx-row,
+[data-theme='dark'] .topup-method-btn,
+[data-theme='dark'] .topup-chip {
+  border-color: var(--line);
   background: var(--surface-2);
   color: var(--ink);
 }

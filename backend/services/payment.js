@@ -203,6 +203,37 @@ function validObjectId(value) {
   return mongoose.Types.ObjectId.isValid(value);
 }
 
+function idOf(value) {
+  return value?._id || value;
+}
+
+function sameId(left, right) {
+  return String(idOf(left) || '') === String(idOf(right) || '');
+}
+
+function acceptedBidAmount(booking = {}) {
+  const bid = (booking.bids || []).find((item) => item.status === 'accepted');
+  const amount = Number(bid?.amount || 0);
+  return Number.isFinite(amount) && amount > 0 ? amount : 0;
+}
+
+function firstPositiveAmount(values = []) {
+  return values.map(Number).find((value) => Number.isFinite(value) && value > 0) || 0;
+}
+
+function bookingEscrowAmount(booking, requestedAmount) {
+  const requested = Number(requestedAmount || 0);
+  if (Number.isFinite(requested) && requested > 0) return requested;
+
+  return firstPositiveAmount([
+    acceptedBidAmount(booking),
+    booking?.paymentAmount,
+    booking?.budget,
+    booking?.estimate?.total,
+    booking?.cargoValue
+  ]);
+}
+
 function stripeObject(event) {
   return event?.data?.object || {};
 }
@@ -258,6 +289,11 @@ class WalletService {
   async getBalance(userId) {
     const wallet = await this.ensureWallet(userId);
     return wallet?.balance || 0;
+  }
+
+  async listTransactions(userId, options = {}) {
+    const limit = Math.min(Math.max(Number(options.limit || 12), 1), 50);
+    return Transaction.find({ user: userId }).sort('-createdAt').limit(limit);
   }
 
   async credit(userId, amount, description = 'Wallet credit', reference = 'manual', options = {}) {
@@ -384,6 +420,110 @@ class WalletService {
 
     await Wallet.updateOne({ _id: wallet._id }, { lastTransaction: transaction._id });
     return transaction;
+  }
+
+  async fundBookingEscrow(bookingId, payerId, options = {}) {
+    return runWithIdempotency(
+      options.idempotencyKey,
+      { bookingId, payerId, amount: options.amount },
+      () => this.createBookingEscrow(bookingId, payerId, options.amount),
+      { scope: 'booking.payment.escrow' }
+    );
+  }
+
+  async createBookingEscrow(bookingId, payerId, requestedAmount) {
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      throw appError('Booking not found', 404);
+    }
+
+    if (!sameId(booking.client, payerId)) {
+      throw appError('Only the booking shipper can fund escrow', 403);
+    }
+
+    if (!booking.owner) {
+      throw appError('Accept a carrier bid before funding escrow', 409);
+    }
+
+    if (!['confirmed', 'in_transit', 'delivered'].includes(booking.status)) {
+      throw appError('Booking must be confirmed before funding escrow', 409);
+    }
+
+    if (['escrowed', 'release_pending', 'released'].includes(booking.paymentStatus)) {
+      const existing = await Transaction.findOne({
+        booking: booking._id,
+        type: 'payment',
+        status: 'completed'
+      }).sort('-createdAt');
+      return { booking, transaction: existing, alreadyFunded: true };
+    }
+
+    if (!['unpaid', 'pending', 'failed'].includes(booking.paymentStatus || 'unpaid')) {
+      throw appError('Booking payment cannot be funded from its current state', 409);
+    }
+
+    const amount = parsePositiveAmount(bookingEscrowAmount(booking, requestedAmount));
+    await this.ensureWallet(payerId);
+
+    const originalPaymentStatus = booking.paymentStatus || 'unpaid';
+    const reserved = await Booking.findOneAndUpdate(
+      {
+        _id: booking._id,
+        $or: [{ paymentStatus: { $in: ['unpaid', 'pending', 'failed'] } }, { paymentStatus: { $exists: false } }]
+      },
+      {
+        $set: {
+          paymentStatus: 'pending',
+          paymentAmount: amount,
+          paymentReference: `wallet:${booking._id}`
+        }
+      },
+      { new: true }
+    );
+
+    if (!reserved) {
+      throw appError('Booking payment is already being funded', 409);
+    }
+
+    const wallet = await Wallet.findOneAndUpdate(
+      { user: payerId, balance: { $gte: amount } },
+      { $inc: { balance: -amount, version: 1 } },
+      { new: true }
+    );
+
+    if (!wallet) {
+      await Booking.updateOne(
+        { _id: booking._id, paymentStatus: 'pending' },
+        { $set: { paymentStatus: originalPaymentStatus }, $unset: { paymentReference: 1 } }
+      );
+      throw appError('Insufficient wallet balance', 400);
+    }
+
+    const transaction = await Transaction.create({
+      user: payerId,
+      booking: reserved._id,
+      type: 'payment',
+      method: 'wallet',
+      amount,
+      description: `Escrow funded for booking ${reserved._id}`,
+      reference: `escrow:${reserved._id}`,
+      status: 'completed',
+      metadata: {
+        walletBalance: wallet.balance,
+        owner: reserved.owner,
+        fundedAt: new Date().toISOString()
+      }
+    });
+
+    await Wallet.updateOne({ _id: wallet._id }, { lastTransaction: transaction._id });
+
+    reserved.paymentStatus = 'escrowed';
+    reserved.paymentReference = transaction.reference;
+    reserved.paymentAmount = amount;
+    reserved.paidAt = new Date();
+    await reserved.save();
+
+    return { booking: reserved, transaction, alreadyFunded: false };
   }
 
   async releaseBookingPayment(bookingId, releasedBy, options = {}) {

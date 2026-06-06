@@ -525,8 +525,28 @@ function bookingRoute(booking) {
   return booking.route || [booking.pickup, booking.destination].filter(Boolean).join(' to ') || 'Route pending';
 }
 
+function bookingPaymentAmount(booking = {}) {
+  const acceptedBid = (booking.bids || []).find((bid) => bid.status === 'accepted');
+  return (
+    [acceptedBid?.amount, booking.paymentAmount, booking.budget, booking.estimate?.total, booking.cargoValue]
+      .map(Number)
+      .find((value) => Number.isFinite(value) && value > 0) || 0
+  );
+}
+
 function statusLabel(status = 'pending') {
   return status.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function paymentTone(status = 'unpaid') {
+  if (['escrowed', 'released', 'completed', 'paid'].includes(status)) return 'success';
+  if (['failed', 'refunded', 'cancelled', 'disputed'].includes(status)) return 'danger';
+  if (['pending', 'release_pending', 'withdrawal'].includes(status)) return 'warn';
+  return 'default';
+}
+
+function isDebitTransaction(transaction = {}) {
+  return ['debit', 'payment', 'withdrawal'].includes(transaction.type);
 }
 
 function titleFromSlug(value = 'Document') {
@@ -597,6 +617,8 @@ function normalizeBookingShipment(booking) {
     speed: latest.speed ? `${latest.speed} km/h` : 'Speed pending',
     payment: booking.paymentMethod || 'Payment pending',
     paymentStatus: booking.paymentStatus || 'unpaid',
+    amount: bookingPaymentAmount(booking),
+    paymentReference: booking.paymentReference || '',
     documents: booking.estimate?.requiredDocuments || demoDocuments.slice(0, 3),
     bids: Array.isArray(booking.bids) ? booking.bids.map(normalizeBid) : [],
     tracking
@@ -3519,6 +3541,7 @@ function PaymentsPage({ notify, user }) {
   const [walletBalance, setWalletBalance] = useState(0);
   const [shipments, setShipments] = useState([]);
   const [withdrawBusy, setWithdrawBusy] = useState(false);
+  const [paymentBusy, setPaymentBusy] = useState('');
   const [topupOpen, setTopupOpen] = useState(false);
   const [topupBusy, setTopupBusy] = useState(false);
   const [walletTransactions, setWalletTransactions] = useState([]);
@@ -3532,7 +3555,10 @@ function PaymentsPage({ notify, user }) {
   useEffect(() => {
     api
       .wallet()
-      .then((data) => Number.isFinite(Number(data.balance)) && setWalletBalance(Number(data.balance)))
+      .then((data) => {
+        if (Number.isFinite(Number(data.balance))) setWalletBalance(Number(data.balance));
+        if (Array.isArray(data.transactions)) setWalletTransactions(data.transactions);
+      })
       .catch(() => {});
     api
       .listBookings()
@@ -3540,16 +3566,81 @@ function PaymentsPage({ notify, user }) {
       .catch(() => setShipments(workspaceShipments));
   }, []);
 
+  const escrowedCount = shipments.filter((shipment) =>
+    ['escrowed', 'release_pending', 'released'].includes(shipment.paymentStatus)
+  ).length;
+  const payableCount = shipments.filter((shipment) => canFundShipment(shipment)).length;
+
   function updateWithdraw(key, value) {
     setWithdrawDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function recordTransaction(transaction) {
+    if (!transaction) return;
+    const transactionId =
+      transaction._id || transaction.id || transaction.reference || `${transaction.type}-${Date.now()}`;
+    setWalletTransactions((current) =>
+      [
+        transaction,
+        ...current.filter((item) => String(item._id || item.id || item.reference) !== String(transactionId))
+      ].slice(0, 12)
+    );
+  }
+
+  function replaceShipment(booking) {
+    if (!booking) return null;
+    const updated = normalizeBookingShipment(booking);
+    setShipments((current) =>
+      current.map((shipment) =>
+        String(shipment.bookingId || shipment.id) === String(updated.bookingId || updated.id) ? updated : shipment
+      )
+    );
+    return updated;
+  }
+
+  function canFundShipment(shipment) {
+    return (
+      role === 'client' &&
+      shipment?.bookingId &&
+      shipment.amount > 0 &&
+      ['confirmed', 'in_transit', 'delivered'].includes(shipment.rawStatus) &&
+      !['escrowed', 'release_pending', 'released'].includes(shipment.paymentStatus)
+    );
+  }
+
+  async function fundShipmentEscrow(shipment) {
+    if (!canFundShipment(shipment)) {
+      notify('Accept a carrier bid before funding escrow');
+      return;
+    }
+
+    if (walletBalance < shipment.amount) {
+      notify('Wallet balance is below the escrow amount');
+      return;
+    }
+
+    setPaymentBusy(`escrow-${shipment.bookingId}`);
+    try {
+      const data = await api.fundEscrow(shipment.bookingId, { amount: shipment.amount });
+      const updated = replaceShipment(data.booking);
+      recordTransaction(data.transaction);
+      const nextBalance = Number(data.balance ?? data.transaction?.metadata?.walletBalance);
+      if (Number.isFinite(nextBalance)) setWalletBalance(nextBalance);
+      notify(data.alreadyFunded ? 'Escrow was already funded' : `Escrow funded for ${updated?.id || shipment.id}`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setPaymentBusy('');
+    }
   }
 
   async function requestWithdrawal(event) {
     event.preventDefault();
     setWithdrawBusy(true);
     try {
-      await api.withdraw({ ...withdrawDraft, amount: Number(withdrawDraft.amount) });
+      const data = await api.withdraw({ ...withdrawDraft, amount: Number(withdrawDraft.amount) });
       setWalletBalance((current) => Math.max(0, current - Number(withdrawDraft.amount || 0)));
+      recordTransaction(data.transaction);
       notify('Withdrawal queued');
     } catch (err) {
       notify(err.message);
@@ -3584,7 +3675,7 @@ function PaymentsPage({ notify, user }) {
       }
 
       setWalletBalance((current) => Number(current || 0) + value);
-      setWalletTransactions((current) => [transaction, ...current].slice(0, 8));
+      recordTransaction(transaction);
       setTopupOpen(false);
       notify(role === 'admin' ? 'Wallet credited' : 'Top-up request queued');
     } catch (err) {
@@ -3601,7 +3692,7 @@ function PaymentsPage({ notify, user }) {
           <MetricCard icon={Wallet} label="Wallet" value={money(walletBalance)} detail="Live payment balance" />
           <MetricCard icon={CreditCard} label="Role" value={roleName(role)} detail="Payment mode" />
           <MetricCard icon={PackageCheck} label="Shipments" value={shipments.length} detail="Billing records" />
-          <MetricCard icon={FileText} label="Invoices" value={shipments.length} detail="Document service" />
+          <MetricCard icon={FileText} label="Escrow" value={escrowedCount} detail={`${payableCount} ready to fund`} />
         </section>
         <Panel title="Wallet Top-Up" eyebrow="Funding">
           <div className="result-bar">
@@ -3612,6 +3703,57 @@ function PaymentsPage({ notify, user }) {
             <CreditCard size={18} />
             <span>Top Up Wallet</span>
           </button>
+        </Panel>
+        <Panel title="Shipment Escrow" eyebrow="Bookings">
+          <div className="bid-options payment-list">
+            {shipments.length ? (
+              shipments.map((shipment) => {
+                const canFund = canFundShipment(shipment);
+                const isBusy = paymentBusy === `escrow-${shipment.bookingId}`;
+                const funded = ['escrowed', 'release_pending', 'released'].includes(shipment.paymentStatus);
+                const lowBalance = canFund && walletBalance < shipment.amount;
+                return (
+                  <div className="bid-option payment-option" key={shipment.bookingId || shipment.id}>
+                    <div>
+                      <StatusBadge tone={paymentTone(shipment.paymentStatus)}>
+                        {statusLabel(shipment.paymentStatus)}
+                      </StatusBadge>
+                      <strong>{shipment.id}</strong>
+                      <span>{shipment.route}</span>
+                      <small>{shipment.paymentReference || shipment.payment || statusLabel(shipment.rawStatus)}</small>
+                    </div>
+                    <div>
+                      <strong>{money(shipment.amount)}</strong>
+                      {role === 'client' ? (
+                        <button
+                          className={funded ? 'secondary' : 'primary'}
+                          type="button"
+                          disabled={!canFund || lowBalance || isBusy}
+                          onClick={() => fundShipmentEscrow(shipment)}
+                        >
+                          {isBusy
+                            ? 'Funding...'
+                            : funded
+                              ? 'Escrowed'
+                              : !canFund
+                                ? 'Not Ready'
+                                : lowBalance
+                                  ? 'Low Balance'
+                                  : 'Fund Escrow'}
+                        </button>
+                      ) : (
+                        <StatusBadge tone={paymentTone(shipment.paymentStatus)}>
+                          {funded ? 'Protected' : 'Awaiting shipper'}
+                        </StatusBadge>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <EmptyState title="No payment bookings" detail="Shipment payments will appear after booking activity." />
+            )}
+          </div>
         </Panel>
         <Panel title={role === 'owner' ? 'Withdraw Earnings' : 'Shipment Invoices'} eyebrow="Payments">
           {role === 'owner' ? (
@@ -5686,18 +5828,23 @@ function WalletTopupModal({ balance, onClose, onTopup, busy, transactions = [] }
                 Recent transactions
               </p>
               <div className="tx-history">
-                {transactions.slice(0, 6).map((tx, i) => (
-                  <div className="tx-row" key={tx.id || i}>
-                    <div>
-                      <strong>{tx.description || tx.method || 'Transaction'}</strong>
-                      <span>{tx.createdAt ? new Date(tx.createdAt).toLocaleDateString() : ''}</span>
+                {transactions.slice(0, 6).map((tx, i) => {
+                  const debit = isDebitTransaction(tx);
+                  return (
+                    <div className="tx-row" key={tx._id || tx.id || tx.reference || i}>
+                      <div>
+                        <strong>{tx.description || tx.method || 'Transaction'}</strong>
+                        <span>
+                          {tx.createdAt ? new Date(tx.createdAt).toLocaleDateString() : statusLabel(tx.status)}
+                        </span>
+                      </div>
+                      <span className={`tx-amount ${debit ? 'debit' : ''}`}>
+                        {debit ? '-' : '+'}
+                        {money(tx.amount || 0)}
+                      </span>
                     </div>
-                    <span className={`tx-amount ${tx.type === 'debit' ? 'debit' : ''}`}>
-                      {tx.type === 'debit' ? '-' : '+'}
-                      {money(tx.amount || 0)}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
