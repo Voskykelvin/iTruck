@@ -5,14 +5,39 @@ const validate = require('../middleware/validate');
 const asyncHandler = require('../config/asyncHandler');
 const notifications = require('../services/notifications');
 const payment = require('../services/payment');
-const { amountSchema, fundEscrowSchema, releasePaymentSchema, withdrawalSchema } = require('../validators/payments');
+const {
+  amountSchema,
+  fundEscrowSchema,
+  initiateMobileMoneyBodySchema,
+  initiateMobileMoneySchema,
+  releasePaymentSchema,
+  withdrawalSchema
+} = require('../validators/payments');
 
 const router = express.Router();
 
-router.use(protect);
-
 function idempotencyKey(req) {
   return req.get('Idempotency-Key') || req.body.idempotencyKey || '';
+}
+
+function webhookSecret(req, ...keys) {
+  const expected = keys.map((key) => process.env[key]).find(Boolean);
+  if (!expected) return true;
+
+  const provided =
+    req.get('x-itruck-webhook-secret') ||
+    req.get('x-webhook-secret') ||
+    req.query.token ||
+    req.query.secret ||
+    '';
+  return provided === expected;
+}
+
+function requireWebhookSecret(...keys) {
+  return (req, res, next) => {
+    if (webhookSecret(req, ...keys)) return next();
+    return res.status(401).json({ message: 'Invalid webhook secret' });
+  };
 }
 
 function demoTransaction(req, type, overrides = {}) {
@@ -51,12 +76,93 @@ function demoTransactions(req) {
   ];
 }
 
+function demoMobileMoneyPayment(req, bookingId) {
+  const method = req.body.method || req.body.provider || 'mpesa';
+  const reference = idempotencyKey(req) || `${method}:memory:${Date.now()}`;
+  const transaction = demoTransaction(req, 'payment', {
+    amount: req.body.amount || 0,
+    method,
+    description: `Mobile money escrow request for booking ${bookingId}`,
+    status: 'pending'
+  });
+  transaction.reference = reference;
+  transaction.provider = method;
+
+  return {
+    success: true,
+    provider: method,
+    providerReference: reference,
+    message: `${method === 'mpesa' ? 'M-Pesa' : 'MTN MoMo'} request queued in demo mode`,
+    booking: {
+      _id: bookingId,
+      paymentStatus: 'pending',
+      paymentReference: reference,
+      paymentAmount: transaction.amount
+    },
+    transaction,
+    alreadyFunded: false,
+    mode: 'memory'
+  };
+}
+
 function transactionMetadataValue(transaction, key) {
   const metadata = transaction?.metadata;
   if (!metadata) return undefined;
   if (typeof metadata.get === 'function') return metadata.get(key);
   return metadata[key];
 }
+
+async function notifyEscrowIfCompleted(req, result, providerLabel) {
+  if (result?.status !== 'completed' || !result.booking) return;
+
+  try {
+    await notifications.notifyBookingParties(
+      result.booking,
+      'payment.escrowed',
+      {
+        title: `${result.booking._id} escrow funded`,
+        message: `${providerLabel} payment is now held in escrow for this shipment.`,
+        link: '/app/payments',
+        bookingId: result.booking._id,
+        amount: result.booking.paymentAmount
+      },
+      req.app.get('io')
+    );
+  } catch (_err) {
+    // Provider reconciliation should not fail because notification delivery failed.
+  }
+
+  const io = req.app.get('io');
+  if (io?.emitToBooking) io.emitToBooking(result.booking._id, 'payment-escrowed', result.booking);
+}
+
+router.post(
+  ['/webhooks/mpesa/stk', '/mpesa/callback'],
+  requireWebhookSecret('MPESA_WEBHOOK_SECRET', 'MPESA_CALLBACK_SECRET'),
+  asyncHandler(async (req, res) => {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.json({ received: true, matched: false, mode: 'memory' });
+
+    const result = await payment.payments.reconcileMpesaCallback(req.body);
+    await notifyEscrowIfCompleted(req, result, 'M-Pesa');
+    res.json(result);
+  })
+);
+
+router.post(
+  ['/webhooks/mtn/request-to-pay/:referenceId?', '/mtn/callback/:referenceId?', '/momo/callback/:referenceId?'],
+  requireWebhookSecret('MTN_MOMO_WEBHOOK_SECRET', 'MOMO_WEBHOOK_SECRET', 'MTN_MOMO_CALLBACK_SECRET'),
+  asyncHandler(async (req, res) => {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.json({ received: true, matched: false, mode: 'memory' });
+
+    const result = await payment.payments.reconcileMTNMoMoCallback(req.params.referenceId, req.body);
+    await notifyEscrowIfCompleted(req, result, 'MTN MoMo');
+    res.json(result);
+  })
+);
+
+router.use(protect);
 
 router.get(
   '/wallet',
@@ -138,6 +244,44 @@ router.post(
     );
 
     res.status(201).json({ transaction });
+  })
+);
+
+router.post(
+  '/initiate',
+  restrictTo('client'),
+  initiateMobileMoneyBodySchema,
+  validate,
+  asyncHandler(async (req, res) => {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.status(202).json(demoMobileMoneyPayment(req, req.body.bookingId));
+
+    const result = await payment.mobileMoney.initiateBookingPayment(req.body.bookingId, req.user._id, {
+      amount: req.body.amount,
+      method: req.body.method || req.body.provider,
+      phone: req.body.phone,
+      idempotencyKey: idempotencyKey(req)
+    });
+    res.status(result.alreadyFunded ? 200 : 202).json(result);
+  })
+);
+
+router.post(
+  '/bookings/:bookingId/mobile-money',
+  restrictTo('client'),
+  initiateMobileMoneySchema,
+  validate,
+  asyncHandler(async (req, res) => {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.status(202).json(demoMobileMoneyPayment(req, req.params.bookingId));
+
+    const result = await payment.mobileMoney.initiateBookingPayment(req.params.bookingId, req.user._id, {
+      amount: req.body.amount,
+      method: req.body.method || req.body.provider,
+      phone: req.body.phone,
+      idempotencyKey: idempotencyKey(req)
+    });
+    res.status(result.alreadyFunded ? 200 : 202).json(result);
   })
 );
 

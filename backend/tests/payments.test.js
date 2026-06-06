@@ -36,6 +36,7 @@ const Idempotency = require('../models/Idempotency');
 const {
   checkIdempotency,
   generateIdempotencyKey,
+  MobileMoneyPaymentService,
   PaymentReconciliationService,
   runWithIdempotency,
   WalletService
@@ -208,6 +209,95 @@ test('wallet escrow funding debits the shipper and marks booking payment escrowe
   expect(result.alreadyFunded).toBe(false);
 });
 
+test('mobile money initiation reserves booking and stores provider references', async () => {
+  const booking = {
+    _id: 'booking-1',
+    client: 'client-1',
+    owner: 'owner-1',
+    status: 'confirmed',
+    paymentStatus: 'unpaid',
+    bids: [{ status: 'accepted', amount: 1260 }]
+  };
+  const reserved = {
+    ...booking,
+    paymentStatus: 'pending',
+    paymentReference: 'mpesa:pending:booking-1'
+  };
+  const updatedBooking = {
+    ...reserved,
+    paymentReference: 'mpesa:checkout-1'
+  };
+  const updatedTransaction = {
+    _id: 'tx-mobile',
+    booking: 'booking-1',
+    providerEventId: 'checkout-1',
+    reference: 'mpesa:checkout-1'
+  };
+  const mpesa = {
+    initiateStkPush: jest.fn(async () => ({
+      provider: 'mpesa',
+      providerReference: 'checkout-1',
+      merchantRequestId: 'merchant-1',
+      message: 'M-Pesa STK push sent',
+      response: { CheckoutRequestID: 'checkout-1' }
+    }))
+  };
+
+  Booking.findById.mockResolvedValue(booking);
+  Booking.findOneAndUpdate.mockResolvedValueOnce(reserved).mockResolvedValueOnce(updatedBooking);
+  Transaction.findOneAndUpdate.mockResolvedValue(updatedTransaction);
+
+  const service = new MobileMoneyPaymentService({ mpesa });
+  const result = await service.initiateBookingPayment('booking-1', 'client-1', {
+    method: 'mpesa',
+    phone: '0712345678',
+    amount: 1260
+  });
+
+  expect(Booking.findOneAndUpdate).toHaveBeenNthCalledWith(
+    1,
+    {
+      _id: 'booking-1',
+      $or: [{ paymentStatus: { $in: ['unpaid', 'failed'] } }, { paymentStatus: { $exists: false } }]
+    },
+    expect.objectContaining({
+      $set: expect.objectContaining({
+        paymentStatus: 'pending',
+        paymentMethod: 'mpesa',
+        paymentAmount: 1260
+      })
+    }),
+    { new: true }
+  );
+  expect(Transaction.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      user: 'client-1',
+      booking: 'booking-1',
+      type: 'payment',
+      method: 'mpesa',
+      provider: 'mpesa',
+      status: 'pending'
+    })
+  );
+  expect(mpesa.initiateStkPush).toHaveBeenCalledWith(
+    expect.objectContaining({
+      amount: 1260,
+      phone: '0712345678'
+    })
+  );
+  expect(Transaction.findOneAndUpdate).toHaveBeenCalledWith(
+    { _id: 'tx-test' },
+    expect.objectContaining({
+      $set: expect.objectContaining({
+        reference: 'mpesa:checkout-1',
+        providerEventId: 'checkout-1'
+      })
+    }),
+    { new: true }
+  );
+  expect(result).toEqual(expect.objectContaining({ success: true, providerReference: 'checkout-1' }));
+});
+
 test('idempotency keys are deterministic and do not depend on wall-clock time', () => {
   const payload = { userId: 'user-1', bookingId: 'booking-1', amount: 1200, provider: 'mpesa' };
 
@@ -323,4 +413,92 @@ test('stripe reconciliation idempotently records completed escrow payments', asy
     },
     { new: true }
   );
+});
+
+test('mpesa callback completes transaction and marks booking escrowed', async () => {
+  const transaction = {
+    _id: 'tx-mpesa',
+    booking: 'booking-1',
+    provider: 'mpesa',
+    providerEventId: 'checkout-1',
+    amount: 1260,
+    reference: 'mpesa:checkout-1',
+    metadata: {},
+    save: jest.fn(function save() {
+      return Promise.resolve(this);
+    })
+  };
+  Transaction.findOne.mockResolvedValue(transaction);
+  Booking.findByIdAndUpdate.mockResolvedValue({ _id: 'booking-1', paymentStatus: 'escrowed' });
+
+  const service = new PaymentReconciliationService();
+  const result = await service.reconcileMpesaCallback({
+    Body: {
+      stkCallback: {
+        CheckoutRequestID: 'checkout-1',
+        ResultCode: 0,
+        ResultDesc: 'Accepted',
+        CallbackMetadata: {
+          Item: [
+            { Name: 'Amount', Value: 1260 },
+            { Name: 'MpesaReceiptNumber', Value: 'RCP123' }
+          ]
+        }
+      }
+    }
+  });
+
+  expect(transaction.status).toBe('completed');
+  expect(transaction.reference).toBe('mpesa:RCP123');
+  expect(transaction.save).toHaveBeenCalled();
+  expect(Booking.findByIdAndUpdate).toHaveBeenCalledWith(
+    'booking-1',
+    {
+      $set: expect.objectContaining({
+        paymentStatus: 'escrowed',
+        paymentReference: 'mpesa:RCP123',
+        paymentAmount: 1260
+      })
+    },
+    { new: true }
+  );
+  expect(result).toEqual(expect.objectContaining({ received: true, matched: true, status: 'completed' }));
+});
+
+test('mtn momo callback records failures against the booking', async () => {
+  const transaction = {
+    _id: 'tx-mtn',
+    booking: 'booking-2',
+    provider: 'mtn',
+    providerEventId: 'mtn-ref-1',
+    amount: 900,
+    reference: 'mtn:mtn-ref-1',
+    metadata: {},
+    save: jest.fn(function save() {
+      return Promise.resolve(this);
+    })
+  };
+  Transaction.findOne.mockResolvedValue(transaction);
+  Booking.findByIdAndUpdate.mockResolvedValue({ _id: 'booking-2', paymentStatus: 'failed' });
+
+  const service = new PaymentReconciliationService();
+  const result = await service.reconcileMTNMoMoCallback('mtn-ref-1', {
+    status: 'FAILED',
+    reason: 'PAYER_NOT_FOUND'
+  });
+
+  expect(transaction.status).toBe('failed');
+  expect(transaction.save).toHaveBeenCalled();
+  expect(Booking.findByIdAndUpdate).toHaveBeenCalledWith(
+    'booking-2',
+    {
+      $set: expect.objectContaining({
+        paymentStatus: 'failed',
+        paymentReference: 'mtn:mtn-ref-1',
+        paymentAmount: 900
+      })
+    },
+    { new: true }
+  );
+  expect(result).toEqual(expect.objectContaining({ received: true, matched: true, status: 'failed' }));
 });

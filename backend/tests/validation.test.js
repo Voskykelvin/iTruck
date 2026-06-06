@@ -218,6 +218,26 @@ test('wallet routes use memory fallback when the demo database is offline', asyn
   expect(withdrawal.body.transaction.status).toBe('pending');
 });
 
+test('mobile money escrow initiation validates input and supports memory fallback', async () => {
+  const invalid = await request(app)
+    .post('/api/payments/bookings/ITK-2044/mobile-money')
+    .set('Authorization', authHeader({ id: 'demo-client-primary', role: 'client' }))
+    .send({ phone: '+254711000000' });
+
+  expect(invalid.status).toBe(422);
+  expect(invalid.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ message: 'method is required' })]));
+
+  const queued = await request(app)
+    .post('/api/payments/bookings/ITK-2044/mobile-money')
+    .set('Authorization', authHeader({ id: 'demo-client-primary', role: 'client' }))
+    .set('Idempotency-Key', 'test-mobile-001')
+    .send({ amount: 25, method: 'mpesa', phone: '+254711000000' });
+
+  expect(queued.status).toBe(202);
+  expect(queued.body.mode).toBe('memory');
+  expect(queued.body.transaction.status).toBe('pending');
+});
+
 test('non-admin users cannot release booking payments', async () => {
   const res = await request(app)
     .post('/api/payments/bookings/ITK-2044/release')
