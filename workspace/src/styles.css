@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 :root {
   --bg: #f4fef0;
@@ -2153,7 +2153,7 @@ input[type='radio'] {
   /* orange retained only for semantic warning/amber states */
   --orange: #f59e0b;
   --orange-dark: #92400e;
-  --orange-soft: rgba(245, 158, 11, 0.10);
+  --orange-soft: rgba(245, 158, 11, 0.1);
   --orange-border: rgba(245, 158, 11, 0.24);
   /* accent = lime — used wherever orange was interactive */
   --accent: #65a30d;
@@ -2500,7 +2500,9 @@ input[type='radio'] {
   color: var(--ink);
   cursor: pointer;
   box-shadow: var(--shadow-sm);
-  transition: background 0.16s ease, border-color 0.16s ease;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease;
 }
 
 .dark-toggle:hover {
@@ -2527,7 +2529,9 @@ input[type='radio'] {
   color: var(--ink);
   cursor: pointer;
   box-shadow: var(--shadow-sm);
-  transition: background 0.16s ease, border-color 0.16s ease;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease;
 }
 
 .notif-bell-btn:hover {
@@ -3445,4 +3449,179 @@ input[type='radio'] {
   .topbar-actions {
     gap: 8px;
   }
+}
+
+/* ============================================================
+   SIGNED-OUT WORKSPACE
+   ============================================================ */
+.app-shell.signed-out {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(132, 204, 22, 0.18), transparent 32%),
+    linear-gradient(135deg, rgba(244, 254, 240, 0.98), rgba(255, 247, 237, 0.72)), var(--bg);
+}
+
+.app-shell.signed-out .app-main {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: 18px 16px 48px;
+}
+
+.guest-topbar {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.guest-brand {
+  margin-bottom: 0;
+}
+
+.guest-topbar-copy {
+  min-width: 0;
+}
+
+.guest-topbar-copy h1 {
+  margin-top: 2px;
+  font-size: clamp(28px, 5vw, 44px);
+}
+
+.app-shell.signed-out .topbar-actions {
+  display: flex;
+}
+
+.app-shell.signed-out .topbar-actions .ghost,
+.app-shell.signed-out .topbar-actions .primary,
+.app-shell.signed-out .notif-bell-wrap,
+.app-shell.signed-out .mobile-bottom-nav {
+  display: none;
+}
+
+.profile-layout.auth-only {
+  width: min(1040px, 100%);
+  max-width: none;
+  margin: 24px auto 0;
+}
+
+.profile-layout.auth-only .panel {
+  overflow: hidden;
+  padding: 0;
+}
+
+.profile-layout.auth-only .panel-heading {
+  display: none;
+}
+
+.profile-layout.auth-only .auth-card {
+  gap: 0;
+}
+
+.profile-layout.auth-only .auth-copy,
+.profile-layout.auth-only .auth-controls {
+  display: grid;
+  align-content: center;
+  padding: 26px;
+}
+
+.profile-layout.auth-only .auth-copy {
+  min-height: 280px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(135deg, rgba(240, 253, 244, 0.94), rgba(255, 247, 237, 0.78)), var(--surface-2);
+}
+
+.profile-layout.auth-only .auth-copy h3 {
+  max-width: 480px;
+  font-size: clamp(34px, 9vw, 54px);
+  line-height: 0.98;
+}
+
+.profile-layout.auth-only .auth-copy p {
+  max-width: 420px;
+  color: var(--text);
+  font-size: 17px;
+}
+
+.auth-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-provider-button,
+.auth-submit {
+  width: 100%;
+}
+
+@media (min-width: 760px) {
+  .profile-layout.auth-only .auth-card {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  }
+
+  .profile-layout.auth-only .auth-copy {
+    min-height: 520px;
+    border-right: 1px solid var(--line);
+    border-bottom: 0;
+  }
+
+  .profile-layout.auth-only .auth-copy,
+  .profile-layout.auth-only .auth-controls {
+    padding: 34px;
+  }
+}
+
+@media (min-width: 900px) {
+  .app-shell.signed-out {
+    display: block;
+  }
+}
+
+/* ============================================================
+   DARK MODE READABILITY
+   ============================================================ */
+[data-theme='dark'] {
+  --bg: #071106;
+  --surface: #101c0b;
+  --surface-2: #17270d;
+  --surface-3: #213614;
+  --lime-dark: #bef264;
+  --lime-text: #d9f99d;
+  --muted: #b7d7a4;
+  --dim: #8fbf74;
+  --ink: #f7fee7;
+  --text: #e8f5dc;
+  --line: rgba(190, 242, 100, 0.18);
+  --line-strong: rgba(190, 242, 100, 0.3);
+}
+
+[data-theme='dark'] .app-shell.signed-out {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(132, 204, 22, 0.18), transparent 34%),
+    linear-gradient(135deg, #071106, #0f1b0a 58%, #161b09), var(--bg);
+}
+
+[data-theme='dark'] .intro-band,
+[data-theme='dark'] .profile-layout.auth-only .auth-copy {
+  border-color: var(--line-strong);
+  background: linear-gradient(135deg, rgba(16, 28, 11, 0.98), rgba(23, 39, 13, 0.96)), var(--surface);
+}
+
+[data-theme='dark'] .intro-band h2,
+[data-theme='dark'] .intro-band p,
+[data-theme='dark'] .profile-layout.auth-only .auth-copy h3,
+[data-theme='dark'] .profile-layout.auth-only .auth-copy p {
+  color: var(--ink);
+}
+
+[data-theme='dark'] .primary {
+  background: linear-gradient(180deg, #65a30d 0%, #3f6212 100%);
+  color: #ffffff;
+}
+
+[data-theme='dark'] .auth-provider-button,
+[data-theme='dark'] .notif-dropdown,
+[data-theme='dark'] .notif-item {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+[data-theme='dark'] .notif-item.unread {
+  background: rgba(132, 204, 22, 0.16);
 }

@@ -8,6 +8,7 @@ const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const { recordReviewedDocument } = require('../services/documentRecords');
+const notifications = require('../services/notifications');
 const {
   documentReviewSchema,
   notifySchema,
@@ -42,6 +43,12 @@ async function recordAudit(req, action, targetType, targetId, metadata = {}) {
     ip: req.ip,
     userAgent: req.get('user-agent')
   });
+}
+
+function labelFromType(type) {
+  return String(type || 'Document')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function upsertDocument(documents = [], type, patch, normalizeType = (value) => value) {
@@ -190,6 +197,25 @@ router.patch('/users/:id/verification', userVerificationSchema, validate, async 
     const user = await User.findByIdAndUpdate(req.params.id, { isVerified: req.body.isVerified }, { new: true });
     if (!user) return res.status(404).json({ message: 'User not found' });
 
+    const io = req.app.get('io');
+    await notifications.deliver(
+      user._id,
+      'profile.verified',
+      {
+        title: user.isVerified ? 'Profile verified' : 'Profile held for review',
+        message: user.isVerified ? 'Your iTruck profile is approved.' : 'Your iTruck profile needs additional review.',
+        link: '/app/profile',
+        isVerified: user.isVerified
+      },
+      io
+    );
+    if (io?.emitToUser) {
+      io.emitToUser(user._id, 'profile:verified', {
+        title: user.isVerified ? 'Profile verified' : 'Profile held for review',
+        isVerified: user.isVerified
+      });
+    }
+
     await recordAudit(req, 'user.verification.updated', 'user', user._id, { isVerified: user.isVerified });
     res.json({ user });
   } catch (err) {
@@ -209,6 +235,31 @@ router.patch('/trucks/:id/verification', truckVerificationSchema, validate, asyn
 
     const truck = await Truck.findByIdAndUpdate(req.params.id, { isVerified: req.body.isVerified }, { new: true });
     if (!truck) return res.status(404).json({ message: 'Truck not found' });
+
+    const io = req.app.get('io');
+    await notifications.deliver(
+      truck.owner,
+      'truck.verified',
+      {
+        title: truck.isVerified ? 'Vehicle verified' : 'Vehicle held for review',
+        message: truck.isVerified
+          ? `${truck.plateNumber} is approved for iTruck jobs.`
+          : `${truck.plateNumber} needs additional review.`,
+        link: '/app/vehicles',
+        truckId: truck._id,
+        plateNumber: truck.plateNumber,
+        isVerified: truck.isVerified
+      },
+      io
+    );
+    if (io?.emitToUser) {
+      io.emitToUser(truck.owner, 'truck:verified', {
+        title: truck.isVerified ? 'Vehicle verified' : 'Vehicle held for review',
+        truckId: truck._id,
+        plateNumber: truck.plateNumber,
+        isVerified: truck.isVerified
+      });
+    }
 
     await recordAudit(req, 'truck.verification.updated', 'truck', truck._id, { isVerified: truck.isVerified });
     res.json({ truck });
@@ -248,10 +299,25 @@ router.patch('/users/:id/documents/:documentType', documentReviewSchema, validat
       metadata: { role: user.role }
     });
 
-    // Emit socket event to user about document update
     const io = req.app.get('io');
+    const notification = await notifications.deliver(
+      user._id,
+      'document.updated',
+      {
+        title: `${labelFromType(documentType)} ${req.body.status}`,
+        message: `Your ${labelFromType(documentType)} document was marked ${req.body.status}.`,
+        link: '/app/profile',
+        documentType,
+        status: req.body.status
+      },
+      io
+    );
     if (io) {
       io.emitToUser(user._id, 'document:updated', {
+        id: String(notification._id),
+        title: `${labelFromType(documentType)} ${req.body.status}`,
+        message: `Your ${labelFromType(documentType)} document was marked ${req.body.status}.`,
+        link: '/app/profile',
         documentType,
         status: req.body.status
       });
@@ -293,10 +359,26 @@ router.patch('/trucks/:id/documents/:documentType', documentReviewSchema, valida
       patch: { ...req.body, reviewedAt: new Date() }
     });
 
-    // Emit socket event to user about document update
     const io = req.app.get('io');
+    const notification = await notifications.deliver(
+      truck.owner,
+      'document.updated',
+      {
+        title: `${labelFromType(documentType)} ${req.body.status}`,
+        message: `${truck.plateNumber} ${labelFromType(documentType)} was marked ${req.body.status}.`,
+        link: '/app/vehicles',
+        documentType,
+        status: req.body.status,
+        truckId: truck._id
+      },
+      io
+    );
     if (io) {
       io.emitToUser(truck.owner, 'document:updated', {
+        id: String(notification._id),
+        title: `${labelFromType(documentType)} ${req.body.status}`,
+        message: `${truck.plateNumber} ${labelFromType(documentType)} was marked ${req.body.status}.`,
+        link: '/app/vehicles',
         documentType,
         status: req.body.status
       });
@@ -345,10 +427,24 @@ router.patch('/bookings/:id/documents/:documentType', documentReviewSchema, vali
     });
 
     const io = req.app.get('io');
+    await notifications.notifyBookingParties(
+      booking,
+      'document.updated',
+      {
+        title: `${labelFromType(documentType)} ${req.body.status}`,
+        message: `${labelFromType(documentType)} for booking ${booking._id} was marked ${req.body.status}.`,
+        link: '/app/documents',
+        documentType,
+        status: req.body.status,
+        bookingId: booking._id
+      },
+      io
+    );
     if (io?.emitToBooking) {
       io.emitToBooking(booking._id, 'document:updated', {
         documentType,
-        status: req.body.status
+        status: req.body.status,
+        silent: true
       });
     }
 
