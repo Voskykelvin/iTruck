@@ -6,6 +6,7 @@ const Transaction = require('../models/Transaction');
 const Booking = require('../models/Booking');
 const Idempotency = require('../models/Idempotency');
 const logger = require('../config/logger');
+const { assertDeliveryProofForPaymentRelease } = require('./operationsPolicy');
 
 const IDEMPOTENCY_TTL_MINUTES = 60;
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_.:-]+$/;
@@ -904,6 +905,8 @@ class WalletService {
     if (booking.paymentStatus !== 'escrowed') {
       throw appError('Booking payment is not held in escrow', 409);
     }
+
+    assertDeliveryProofForPaymentRelease(booking);
 
     if (!booking.owner) {
       throw appError('Booking has no assigned owner', 409);

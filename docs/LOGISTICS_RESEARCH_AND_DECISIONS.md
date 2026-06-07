@@ -9,6 +9,7 @@ Date: 2026-05-25
 - Truckstop reviews show that users value easy filtering, visible load/payment/pickup information, factoring/broker reliability signals, and decision tools. Users dislike duplicated/unclear listings, inaccurate details, overwhelming setup, and poor support navigation.
 - Freightos user feedback is positive on quote comparison, booking, tracking, chat, and shipment management. Negative feedback clusters around surprise fees, unclear service inclusions, customs/document ambiguity, and hard-to-reach human support when shipments drift.
 - African logistics competitors such as Lori Systems and Kobo360 center their value on vetted transporters, rate certainty, cargo safety, real-time or periodic status updates, wallet/payment release, electronic delivery confirmation, and route/cost optimization.
+- Amitruck and similar East African freight marketplaces validate demand for direct shipper-to-transporter matching, but also show why iTruck needs stricter trust gates, document proof, payment-release discipline, and SME/LTL differentiation instead of being only a bid board.
 
 ## Codebase Findings
 
@@ -27,18 +28,23 @@ Date: 2026-05-25
 - Improved marketplace filters with best-fit, price, rating, and completed-trip sorting plus minimum rating.
 - Improved truck cards with fit score, availability, document status, response time, rate, rating, trip count, capacity, and route chips.
 - Reduced homepage overclaiming by changing inflated coverage metrics to smaller priority-lane language.
+- Enforced production bidding rules so owners need approved profile documents and an approved, available truck before submitting bids.
+- Required delivery proof before delivery completion and approved delivery proof before owner payment release.
+- Added destination geofence checks for delivery completion and POD generation when destination coordinates are available.
+- Added LTL booking fields, shared-capacity estimates, route keys, and a protected marketplace route-clustering endpoint.
 
 ## Regressive Or Deferred
 
 - Did not add a subscription tier, factoring, or financing surface yet. Those can be high value for owners, but adding them without backend workflows would create promises the product cannot fulfill.
-- Did not add automated driver GPS permission prompts beyond tracking features. User reviews show location permissions can become a trust problem if overreaching.
+- Did not add aggressive driver GPS permission prompts beyond shipment status and geofence-sensitive moments. User reviews show location permissions can become a trust problem if overreaching.
 - Did not hide bus/matatu listings. They may be useful for mixed passenger and parcel logistics in African corridors, but they should remain clearly labeled rather than blended into heavy freight.
 
 ## Next High-Value Backlog
 
 - Bid comparison persistence: award bid, counteroffer, rejection reason, and carrier acceptance should become real API-backed workflows.
+- Full LTL dispatch and capacity allocation: pickup windows, truck capacity remaining, cargo compatibility, and multi-stop sequencing.
 - Facility and depot ratings: wait time, detention history, contact reliability, and loading constraints.
 - Support case tracking: status, owner, SLA timer, escalation trail, and issue categories tied to shipment IDs.
-- Proof-of-delivery upload and receiver e-signature as a first-class workflow.
+- Receiver e-signature, richer cargo photo evidence, and dispute evidence trails around proof of delivery.
 - Duplicate load/truck detection in marketplace results.
 - Low-data mode for maps and tracking: text milestones, SMS share links, and map fallback.

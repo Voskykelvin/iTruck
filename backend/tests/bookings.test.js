@@ -26,6 +26,25 @@ test('buildEstimate exposes fees, documents, and risk for cross-border moves', (
   );
 });
 
+test('buildEstimate supports LTL shared-capacity pricing and route keys', () => {
+  const estimate = buildEstimate({
+    pickup: 'Nairobi',
+    destination: 'Kisumu',
+    distance: 350,
+    vehicleType: 'Lorry',
+    loadMode: 'ltl',
+    cargoWeightTonnes: 2
+  });
+
+  expect(estimate.loadMode).toBe('ltl');
+  expect(estimate.basePrice).toBeLessThan(estimate.fullTruckBasePrice);
+  expect(estimate.capacityUtilization).toBeCloseTo(0.167, 3);
+  expect(estimate.consolidationEligible).toBe(true);
+  expect(estimate.recommendedMode).toBe('route-cluster');
+  expect(estimate.routeKey).toBe('nairobi:kisumu:lorry');
+  expect(estimate.lineItems.map((item) => item.key)).toContain('ltlHandlingFee');
+});
+
 test('autoAssign returns a queued assignment record', async () => {
   await expect(autoAssign('ITK-2044')).resolves.toEqual({ bookingId: 'ITK-2044', status: 'queued' });
 });

@@ -20,7 +20,50 @@ const documentTypeParam = param('documentType')
 const createBookingSchema = [
   requiredString('pickup', 160),
   requiredString('destination', 160),
+  body('pickupCoordinates').optional({ checkFalsy: true }).isObject().withMessage('pickupCoordinates must be an object'),
+  body('pickupCoordinates.lat')
+    .optional({ checkFalsy: true })
+    .isFloat({ min: -90, max: 90 })
+    .withMessage('Pickup latitude is invalid')
+    .toFloat(),
+  body('pickupCoordinates.lng')
+    .optional({ checkFalsy: true })
+    .isFloat({ min: -180, max: 180 })
+    .withMessage('Pickup longitude is invalid')
+    .toFloat(),
+  body('destinationCoordinates')
+    .optional({ checkFalsy: true })
+    .isObject()
+    .withMessage('destinationCoordinates must be an object'),
+  body('destinationCoordinates.lat')
+    .optional({ checkFalsy: true })
+    .isFloat({ min: -90, max: 90 })
+    .withMessage('Destination latitude is invalid')
+    .toFloat(),
+  body('destinationCoordinates.lng')
+    .optional({ checkFalsy: true })
+    .isFloat({ min: -180, max: 180 })
+    .withMessage('Destination longitude is invalid')
+    .toFloat(),
+  body('deliveryGeofenceMeters')
+    .optional({ checkFalsy: true })
+    .isFloat({ min: 25, max: 5000 })
+    .withMessage('deliveryGeofenceMeters must be between 25 and 5000')
+    .toFloat(),
   optionalString('vehicleType', 80),
+  body('loadMode').optional({ checkFalsy: true }).isIn(Booking.LOAD_MODES).withMessage('Load mode is invalid'),
+  optionalPositiveNumber('cargoWeightTonnes'),
+  optionalPositiveNumber('reservedCapacityTonnes'),
+  body().custom((_, { req }) => {
+    if (req.body?.loadMode !== 'ltl') return true;
+    if (Number(req.body?.cargoWeightTonnes) > 0) return true;
+    throw new Error('cargoWeightTonnes is required for LTL bookings');
+  }),
+  body('consolidationEligible')
+    .optional({ checkFalsy: true })
+    .isBoolean()
+    .withMessage('consolidationEligible must be true or false')
+    .toBoolean(),
   requiredString('cargo', 1000),
   optionalPositiveNumber('distance'),
   optionalPositiveNumber('cargoValue'),
@@ -51,9 +94,7 @@ const submitBidSchema = [
   optionalString('truck', 120)
 ];
 
-const updateStatusSchema = [
-  ...bookingIdSchema,
-  body('status').optional({ checkFalsy: true }).isIn(Booking.STATUSES).withMessage('Status is invalid'),
+const locationSchema = [
   body('location').optional({ checkFalsy: true }).isObject().withMessage('location must be an object'),
   body('location.lat')
     .optional({ checkFalsy: true })
@@ -74,8 +115,21 @@ const updateStatusSchema = [
     .optional({ checkFalsy: true })
     .isFloat({ min: 0, max: 360 })
     .withMessage('Heading is invalid')
+    .toFloat(),
+  body('location.accuracy')
+    .optional({ checkFalsy: true })
+    .isFloat({ min: 0, max: 10000 })
+    .withMessage('Location accuracy is invalid')
     .toFloat()
 ];
+
+const updateStatusSchema = [
+  ...bookingIdSchema,
+  body('status').optional({ checkFalsy: true }).isIn(Booking.STATUSES).withMessage('Status is invalid'),
+  ...locationSchema
+];
+
+const confirmDeliverySchema = [...bookingIdSchema, ...locationSchema];
 
 const bookingDocumentUploadSchema = [
   ...bookingIdSchema,
@@ -113,6 +167,7 @@ module.exports = {
   bookingDocumentUploadSchema,
   bookingRatingSchema,
   bookingIdSchema,
+  confirmDeliverySchema,
   createBookingSchema,
   listBookingsSchema,
   submitBidSchema,

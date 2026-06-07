@@ -8,6 +8,16 @@ const vehicleRates = {
   Specialised: 4
 };
 
+const vehicleCapacityTonnes = {
+  Matatu: 0.8,
+  Pickup: 1.2,
+  Lorry: 12,
+  'Large Truck': 20,
+  Trailer: 28,
+  Bus: 4,
+  Specialised: 15
+};
+
 const optionalServiceRules = {
   loadingCrew: { label: 'Loading crew', rate: 0.08, minimum: 35 },
   customsBroker: { label: 'Customs broker coordination', rate: 0.1, minimum: 60 },
@@ -18,6 +28,66 @@ const optionalServiceRules = {
 
 function suggestPrice(distance = 100, vehicleType = 'Lorry') {
   return Math.round(distance * (vehicleRates[vehicleType] || vehicleRates.Lorry));
+}
+
+function normalizeLaneName(value = '') {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
+
+function routeKeyFor(input = {}) {
+  const pickup = normalizeLaneName(input.pickup);
+  const destination = normalizeLaneName(input.destination);
+  const vehicleType = normalizeLaneName(input.vehicleType || 'Lorry');
+  return [pickup, destination, vehicleType].filter(Boolean).join(':');
+}
+
+function normalizeLoadMode(value) {
+  return value === 'ltl' || value === 'partial' || value === 'shared' ? 'ltl' : 'full-truck';
+}
+
+function vehicleCapacity(vehicleType = 'Lorry') {
+  return vehicleCapacityTonnes[vehicleType] || vehicleCapacityTonnes.Lorry;
+}
+
+function ltlPricing(input = {}, fullTruckBasePrice = 0) {
+  const loadMode = normalizeLoadMode(input.loadMode);
+  const estimatedTruckCapacityTonnes = Number(input.reservedCapacityTonnes || vehicleCapacity(input.vehicleType));
+  const cargoWeightTonnes = Number(input.cargoWeightTonnes || 0);
+  if (loadMode !== 'ltl' || !Number.isFinite(cargoWeightTonnes) || cargoWeightTonnes <= 0) {
+    return {
+      loadMode,
+      cargoWeightTonnes: Number.isFinite(cargoWeightTonnes) && cargoWeightTonnes > 0 ? cargoWeightTonnes : undefined,
+      estimatedTruckCapacityTonnes,
+      capacityUtilization: undefined,
+      basePrice: fullTruckBasePrice,
+      lineItems: [],
+      consolidationEligible: false
+    };
+  }
+
+  const safeCapacity =
+    Number.isFinite(estimatedTruckCapacityTonnes) && estimatedTruckCapacityTonnes > 0
+      ? estimatedTruckCapacityTonnes
+      : vehicleCapacity(input.vehicleType);
+  const capacityUtilization = Math.min(1, cargoWeightTonnes / safeCapacity);
+  const billableShare = Math.min(1, Math.max(0.18, capacityUtilization));
+  const sharedBasePrice = Math.max(25, Math.round(fullTruckBasePrice * billableShare));
+  const handlingFee = Math.max(15, Math.round(sharedBasePrice * 0.12));
+
+  return {
+    loadMode,
+    cargoWeightTonnes,
+    estimatedTruckCapacityTonnes: safeCapacity,
+    capacityUtilization: Number(capacityUtilization.toFixed(3)),
+    billableCapacityShare: Number(billableShare.toFixed(3)),
+    basePrice: sharedBasePrice,
+    lineItems: [{ key: 'ltlHandlingFee', label: 'Shared-load coordination', amount: handlingFee }],
+    consolidationEligible: capacityUtilization < 0.85
+  };
 }
 
 function selectedServices(input = {}) {
@@ -64,7 +134,9 @@ function buildEstimate(input = {}) {
   const vehicleType = input.vehicleType || 'Lorry';
   const requirements = input.requirements || input.cargoRequirement || 'Standard';
   const crossBorder = input.crossBorder === true || input.crossBorder === 'true' || input.border === 'Cross-border';
-  const basePrice = suggestPrice(distance, vehicleType);
+  const fullTruckBasePrice = suggestPrice(distance, vehicleType);
+  const ltl = ltlPricing({ ...input, vehicleType }, fullTruckBasePrice);
+  const basePrice = ltl.basePrice;
   const services = selectedServices(input.optionalServices || input.accessorials);
   const serviceItems = serviceLineItems(basePrice, services);
   const crossBorderFee = crossBorder ? Math.round(basePrice * 0.12) : 0;
@@ -73,10 +145,15 @@ function buildEstimate(input = {}) {
   const cargoValue = Number(input.cargoValue || 0);
   const missingFields = ['pickup', 'destination', 'cargo', 'weight'].filter((key) => !input[key]);
   const lineItems = [
-    { key: 'basePrice', label: `${vehicleType} lane estimate`, amount: basePrice },
+    {
+      key: 'basePrice',
+      label: ltl.loadMode === 'ltl' ? `${vehicleType} shared-capacity estimate` : `${vehicleType} lane estimate`,
+      amount: basePrice
+    },
     ...(crossBorderFee ? [{ key: 'crossBorderFee', label: 'Cross-border handling', amount: crossBorderFee }] : []),
     { key: 'insurance', label: 'Standard cargo protection', amount: insurance },
     { key: 'escrowFee', label: 'Escrow and payment handling', amount: escrowFee },
+    ...ltl.lineItems,
     ...serviceItems
   ];
   const total = Math.max(
@@ -88,8 +165,16 @@ function buildEstimate(input = {}) {
   return {
     distance,
     vehicleType,
+    loadMode: ltl.loadMode,
+    cargoWeightTonnes: ltl.cargoWeightTonnes,
+    estimatedTruckCapacityTonnes: ltl.estimatedTruckCapacityTonnes,
+    capacityUtilization: ltl.capacityUtilization,
+    billableCapacityShare: ltl.billableCapacityShare,
+    consolidationEligible: ltl.consolidationEligible,
+    routeKey: routeKeyFor({ ...input, vehicleType }),
     currency: input.currency || 'USD',
     basePrice,
+    fullTruckBasePrice,
     crossBorderFee,
     insurance,
     escrowFee,
@@ -97,7 +182,7 @@ function buildEstimate(input = {}) {
     lineItems,
     total,
     confidence: missingFields.length ? 'medium' : risk === 'high' ? 'medium' : 'high',
-    recommendedMode: distance > 900 || crossBorder ? 'open-bids' : 'instant-match',
+    recommendedMode: ltl.loadMode === 'ltl' ? 'route-cluster' : distance > 900 || crossBorder ? 'open-bids' : 'instant-match',
     routeRisk: risk,
     requiredDocuments: requiredDocuments({ crossBorder, requirements, cargoValue }),
     warnings: missingFields.map((field) => `${field} missing may change carrier pricing`),
@@ -110,4 +195,12 @@ async function autoAssign(bookingId) {
   return { bookingId, status: 'queued' };
 }
 
-module.exports = { suggestPrice, buildEstimate, autoAssign };
+module.exports = {
+  autoAssign,
+  buildEstimate,
+  ltlPricing,
+  normalizeLoadMode,
+  routeKeyFor,
+  suggestPrice,
+  vehicleCapacity
+};

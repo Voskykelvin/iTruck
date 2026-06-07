@@ -209,6 +209,67 @@ test('wallet escrow funding debits the shipper and marks booking payment escrowe
   expect(result.alreadyFunded).toBe(false);
 });
 
+test('wallet payment release requires approved delivery proof', async () => {
+  const booking = {
+    _id: 'booking-1',
+    client: 'client-1',
+    owner: 'owner-1',
+    status: 'delivered',
+    paymentStatus: 'escrowed',
+    paymentAmount: 1260,
+    documents: [{ type: 'pod', status: 'pending', url: 'https://example.com/pod.pdf' }]
+  };
+
+  Booking.findById.mockResolvedValue(booking);
+
+  const wallet = new WalletService();
+  await expect(wallet.releaseBookingPayment('booking-1', 'admin-1')).rejects.toThrow(
+    'Approve proof of delivery or receiver confirmation before releasing payment'
+  );
+
+  expect(Booking.findOneAndUpdate).not.toHaveBeenCalled();
+  expect(Transaction.create).not.toHaveBeenCalled();
+});
+
+test('wallet payment release credits owner after approved delivery proof', async () => {
+  const booking = {
+    _id: 'booking-1',
+    client: 'client-1',
+    owner: 'owner-1',
+    status: 'delivered',
+    paymentStatus: 'escrowed',
+    paymentAmount: 1260,
+    documents: [{ type: 'receiver-confirmation', status: 'approved', url: 'https://example.com/receiver.pdf' }]
+  };
+  const reserved = {
+    ...booking,
+    paymentStatus: 'release_pending',
+    save: jest.fn()
+  };
+
+  Booking.findById.mockResolvedValue(booking);
+  Transaction.findOne.mockReturnValue({
+    sort: jest.fn().mockResolvedValue({ _id: 'tx-payment', amount: 1260 })
+  });
+  Booking.findOneAndUpdate.mockResolvedValue(reserved);
+  Wallet.findOneAndUpdate.mockResolvedValue({ _id: 'wallet-owner', balance: 1260 });
+
+  const wallet = new WalletService();
+  const result = await wallet.releaseBookingPayment('booking-1', 'admin-1');
+
+  expect(Wallet.findOneAndUpdate).toHaveBeenCalledWith(
+    { user: 'owner-1' },
+    {
+      $inc: { balance: 1260, version: 1 },
+      $setOnInsert: { user: 'owner-1', currency: 'USD' }
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+  expect(reserved.save).toHaveBeenCalled();
+  expect(result.booking.paymentStatus).toBe('released');
+  expect(result.alreadyReleased).toBe(false);
+});
+
 test('mobile money initiation reserves booking and stores provider references', async () => {
   const booking = {
     _id: 'booking-1',

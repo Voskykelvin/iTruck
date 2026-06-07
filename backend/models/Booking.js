@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const STATUSES = ['pending', 'bidding', 'confirmed', 'in_transit', 'delivered', 'cancelled', 'disputed'];
 const PAYMENT_STATUSES = ['unpaid', 'pending', 'escrowed', 'release_pending', 'released', 'failed', 'refunded'];
+const LOAD_MODES = ['full-truck', 'ltl'];
 const STATUS_TRANSITIONS = {
   pending: ['bidding', 'cancelled', 'disputed'],
   bidding: ['confirmed', 'cancelled', 'disputed'],
@@ -45,11 +46,25 @@ const bookingSchema = new mongoose.Schema(
     truck: { type: mongoose.Schema.Types.ObjectId, ref: 'Truck' },
     pickup: String,
     destination: String,
+    pickupCoordinates: {
+      lat: Number,
+      lng: Number
+    },
+    destinationCoordinates: {
+      lat: Number,
+      lng: Number
+    },
+    deliveryGeofenceMeters: { type: Number, min: 25, max: 5000, default: 100 },
     distance: Number,
     border: String,
     pickupDate: Date,
     pickupWindow: String,
     vehicleType: String,
+    loadMode: { type: String, enum: LOAD_MODES, default: 'full-truck' },
+    cargoWeightTonnes: { type: Number, min: 0.01 },
+    reservedCapacityTonnes: { type: Number, min: 0.01 },
+    consolidationEligible: { type: Boolean, default: false },
+    routeKey: { type: String, trim: true, lowercase: true },
     cargo: String,
     cargoValue: Number,
     weight: String,
@@ -90,6 +105,7 @@ const bookingSchema = new mongoose.Schema(
         lng: Number,
         speed: Number,
         heading: Number,
+        accuracy: Number,
         timestamp: { type: Date, default: Date.now }
       }
     ],
@@ -141,10 +157,13 @@ bookingSchema.index({ paymentReference: 1 }, { sparse: true });
 bookingSchema.index({ truck: 1, createdAt: -1 });
 bookingSchema.index({ 'bids.owner': 1, createdAt: -1 });
 bookingSchema.index({ 'documents.type': 1 });
+bookingSchema.index({ loadMode: 1, routeKey: 1, status: 1, pickupDate: 1 });
+bookingSchema.index({ consolidationEligible: 1, routeKey: 1, status: 1 });
 
 bookingSchema.statics.STATUSES = STATUSES;
 bookingSchema.statics.PAYMENT_STATUSES = PAYMENT_STATUSES;
 bookingSchema.statics.STATUS_TRANSITIONS = STATUS_TRANSITIONS;
+bookingSchema.statics.LOAD_MODES = LOAD_MODES;
 bookingSchema.statics.assertStatusTransition = assertStatusTransition;
 
 bookingSchema.methods.transitionTo = function transitionTo(nextStatus) {

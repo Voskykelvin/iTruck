@@ -107,6 +107,17 @@ Recommended sequence:
 4. CI lint/build/test gate. Done.
 5. Device-scoped session management. Done.
 
+## Later Production Policy Batch
+
+Implemented on 2026-06-07 as native project code, not from the downloaded validation/session batches:
+
+1. Production bidding gates for approved owner profiles and approved, available trucks.
+2. POD or receiver-confirmation requirement before delivery completion.
+3. Destination geofence checks for delivery completion and POD generation when coordinates are available.
+4. Approved delivery proof requirement before admin payment release.
+5. Admin audit logging for payment release.
+6. LTL booking, shared-capacity estimate, and route-clustering foundations.
+
 ## Verification Checklist
 
 After implementing validators:

@@ -4,10 +4,12 @@ const LoadRequest = require('../models/LoadRequest');
 const BookingMessage = require('../models/BookingMessage');
 const IssueReport = require('../models/IssueReport');
 const Booking = require('../models/Booking');
+const Truck = require('../models/Truck');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const notifications = require('../services/notifications');
+const { assertOwnerCanBid } = require('../services/operationsPolicy');
 const {
   createLoadRequestSchema,
   createMessageSchema,
@@ -69,6 +71,20 @@ function bookingOpenForBids(booking) {
   return ['pending', 'bidding'].includes(booking.status) && !booking.owner;
 }
 
+async function biddingTruckForOwner(req) {
+  if (req.user.role !== 'owner') return null;
+
+  const truckId = req.body.truck;
+  if (!truckId || !mongoose.Types.ObjectId.isValid(truckId)) {
+    assertOwnerCanBid(req.user, null);
+  }
+
+  const truck = await Truck.findOne({ _id: truckId, owner: req.user._id });
+  if (!truck) return assertOwnerCanBid(req.user, null);
+  assertOwnerCanBid(req.user, truck);
+  return truck;
+}
+
 async function createLoadRequest(req, res, next) {
   try {
     if (requireDatabase(req, res)) return;
@@ -116,6 +132,7 @@ async function submitBid(req, res, next) {
     const booking = await Booking.findById(bookingId);
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
     if (!bookingOpenForBids(booking)) return res.status(409).json({ message: 'Booking is not open for bids' });
+    const truck = await biddingTruckForOwner(req);
 
     const amount = Number(req.body.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -129,7 +146,7 @@ async function submitBid(req, res, next) {
       status: 'pending',
       createdAt: new Date()
     };
-    if (mongoose.Types.ObjectId.isValid(req.body.truck)) bid.truck = req.body.truck;
+    if (truck || mongoose.Types.ObjectId.isValid(req.body.truck)) bid.truck = req.body.truck;
 
     booking.bids.push(bid);
     if (booking.status === 'pending') booking.transitionTo('bidding');

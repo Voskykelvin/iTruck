@@ -114,6 +114,12 @@ Then verify:
 - Login with the production admin.
 - Create a client booking.
 - Add an owner truck.
+- Approve required owner and truck documents, then confirm only the approved owner/truck can submit bids.
+- Create an LTL booking and confirm the estimate returns shared-capacity pricing.
+- Call the authenticated marketplace cluster route and confirm it returns lane-level summaries.
+- Upload POD or receiver confirmation before delivery completion.
+- Confirm destination geofence enforcement when destination coordinates are set.
+- Confirm admin payment release requires delivered status, escrowed funds, and approved delivery proof.
 - Upload an avatar or cargo image and confirm the URL is Cloudinary-hosted.
 - Confirm protected routes do not serve demo memory data when MongoDB is unavailable.
 
@@ -123,4 +129,5 @@ These services are deployment-ready structurally but not yet business-live:
 
 - Email templates currently log/queue through the stub service.
 - SMS/OTP currently uses simple generated OTP helpers.
-- Payment providers include wallet behavior and provider shells. Stripe webhook signature verification is wired, but real Stripe/M-Pesa/MTN reconciliation still needs integration.
+- Payment providers include wallet behavior, payment-release gates, and provider shells. Stripe webhook signature verification is wired, but real Stripe/M-Pesa/MTN reconciliation still needs integration before live money movement.
+- LTL currently has booking, estimate, and cluster foundations; full dispatch allocation and multi-stop sequencing still need product workflows.

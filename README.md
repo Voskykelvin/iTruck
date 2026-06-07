@@ -179,6 +179,7 @@ POST   /api/admin/notify
 GET    /api/marketplace/trust
 GET    /api/marketplace/localization
 POST   /api/marketplace/estimate
+GET    /api/marketplace/clusters
 
 GET    /api/workflow
 POST   /api/workflow/requests
@@ -520,6 +521,52 @@ The frontend includes installability and offline support:
 - `frontend/manifest.json` defines the app name, colors, display mode, and icons.
 - `frontend/assets/icon-192.png` and `frontend/assets/icon-512.png` support home-screen installation.
 - `frontend/sw.js` precaches important assets and serves `frontend/offline.html` for offline navigation fallback.
+
+## What Sets Us Apart
+
+iTruck is not intended to be only a load board where shippers post jobs and truck owners bid. The product direction is to become an SME-first freight operating layer for African routes, with the controls needed to manage trust, documents, payments, and delivery proof after a truck is matched.
+
+Current MVP foundation:
+
+- Role-specific workspaces for shippers, fleet owners, and admins.
+- Booking, bidding, marketplace, tracking, documents, payments, notifications, and admin review flows.
+- Verification records for owners, shippers, trucks, and shipment documents.
+- Generated waybills, proof-of-delivery documents, invoices, customs documents, and receiver confirmations.
+- Wallet, escrow-style payment records, and provider shells for card and mobile money workflows.
+- PWA support for lighter field use and offline-friendly access.
+
+Current production safeguards:
+
+- Owner bidding requires an approved owner profile plus an approved, available truck with required documents.
+- Delivery completion requires uploaded proof of delivery or receiver confirmation.
+- Delivery completion and POD generation enforce a destination geofence when destination coordinates are available.
+- Owner payment release requires a delivered booking, collected escrow funds, and approved delivery proof.
+- Admin payment release actions are recorded in the audit log.
+- LTL bookings can store cargo weight, reserved capacity, consolidation eligibility, and route keys.
+- LTL estimates use shared-capacity pricing and can recommend route clustering.
+- Protected marketplace clustering can surface lane-level LTL consolidation opportunities.
+
+Stage 1: launch discipline and trust controls:
+
+- Prioritize SME shippers and shorter payment cycles before taking on large corporate credit exposure.
+- Require clear quote acknowledgement, receiver details, cargo photos, and shipment document responsibility before dispatch.
+- Expand bid award, counteroffer, rejection reason, dispute, and admin escalation workflows.
+- Extend admin audit logs into every high-risk operational change and external provider reconciliation.
+
+Stage 2: local payment and delivery proof:
+
+- Complete real M-Pesa and MTN MoMo reconciliation, webhook verification, and owner payout workflows.
+- Release owner funds only after collected funds, verified escrow, or approved financing is available.
+- Expand proof of delivery with receiver e-signature, richer cargo photo review, and dispute evidence trails.
+- Add WhatsApp/SMS-assisted workflows so drivers can receive jobs, submit updates, and upload PODs without relying on a heavy dashboard.
+
+Stage 3: stronger differentiation beyond direct matching:
+
+- Expand LTL from booking/estimate support into full dispatch, bid award, and capacity allocation workflows.
+- Improve route clustering with pickup windows, truck capacity remaining, cargo compatibility, and multi-stop sequencing.
+- Add route, depot, and facility intelligence such as wait times, delay history, document requirements, and risk notes.
+- Introduce third-party financing or factoring only after payment reconciliation and delivery-proof workflows are stable.
+- Expand corridor by corridor rather than claiming broad pan-African coverage before operational density exists.
 
 ## Business Model Direction
 

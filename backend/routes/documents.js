@@ -5,6 +5,7 @@ const Booking = require('../models/Booking');
 const Document = require('../models/Document');
 const docs = require('../services/documents');
 const { recordGeneratedDocument, syncEmbeddedDocumentRecords } = require('../services/documentRecords');
+const { assertDeliveryGeofence } = require('../services/operationsPolicy');
 const cloudinary = require('../services/cloudinary');
 const validate = require('../middleware/validate');
 const { bookingDocumentSchema, documentListSchema } = require('../validators/documents');
@@ -169,6 +170,7 @@ async function renderDocument(req, res, next, type, create) {
     if (!loaded) return;
 
     const documentType = normalizeBookingDocumentType(type);
+    if (loaded.record && documentType === 'pod') assertDeliveryGeofence(loaded.record);
     const cachedUrl = await cachedDocumentUrl(req, loaded.record, type, create, loaded.payload);
     if (cachedUrl) return res.redirect(302, cachedUrl);
 

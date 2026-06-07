@@ -1,12 +1,21 @@
-const { body } = require('express-validator');
+const { body, query } = require('express-validator');
 const { optionalPositiveNumber, optionalString, requiredString } = require('./common');
 
 const VEHICLE_TYPES = ['Matatu', 'Pickup', 'Lorry', 'Large Truck', 'Trailer', 'Bus', 'Specialised'];
+const LOAD_MODES = ['full-truck', 'ltl'];
 
 const estimateSchema = [
   requiredString('pickup', 160),
   requiredString('destination', 160),
   body('vehicleType').optional({ checkFalsy: true }).isIn(VEHICLE_TYPES).withMessage('Vehicle type is invalid'),
+  body('loadMode').optional({ checkFalsy: true }).isIn(LOAD_MODES).withMessage('Load mode is invalid'),
+  optionalPositiveNumber('cargoWeightTonnes'),
+  optionalPositiveNumber('reservedCapacityTonnes'),
+  body().custom((_, { req }) => {
+    if (req.body?.loadMode !== 'ltl') return true;
+    if (Number(req.body?.cargoWeightTonnes) > 0) return true;
+    throw new Error('cargoWeightTonnes is required for LTL estimates');
+  }),
   optionalPositiveNumber('distance'),
   optionalPositiveNumber('cargoValue'),
   optionalString('cargo', 1000),
@@ -23,4 +32,19 @@ const estimateSchema = [
     .toBoolean()
 ];
 
-module.exports = { estimateSchema };
+const clusterSchema = [
+  query('pickup').optional({ checkFalsy: true }).trim().isLength({ max: 160 }).withMessage('pickup is invalid'),
+  query('destination')
+    .optional({ checkFalsy: true })
+    .trim()
+    .isLength({ max: 160 })
+    .withMessage('destination is invalid'),
+  query('vehicleType').optional({ checkFalsy: true }).isIn(VEHICLE_TYPES).withMessage('Vehicle type is invalid'),
+  query('limit')
+    .optional({ checkFalsy: true })
+    .isInt({ min: 1, max: 50 })
+    .withMessage('limit must be between 1 and 50')
+    .toInt()
+];
+
+module.exports = { clusterSchema, estimateSchema };
