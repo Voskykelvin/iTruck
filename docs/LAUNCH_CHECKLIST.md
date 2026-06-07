@@ -1,6 +1,6 @@
 # iTruck Launch Checklist
 
-## 🚀 Critical Path to First Deploy (Do These First)
+## Critical Path to First Deploy (Do These First)
 
 ### Prep (30 mins)
 - [ ] Get production MongoDB URI (MongoDB Atlas cloud or self-hosted)
@@ -17,8 +17,8 @@
   FRONTEND_URL=https://your-domain
   ALLOWED_ORIGINS=https://your-domain
   ```
-- [ ] Verify `.env` has Cloudinary ✅ (already done)
-- [ ] Verify `.env` has JWT_SECRET ✅ (already done)
+- [ ] Verify `.env` has Cloudinary configured
+- [ ] Verify `.env` has JWT_SECRET configured
 
 ### Deploy (5 mins via Render)
 - [ ] Push code to GitHub
@@ -28,17 +28,17 @@
 - [ ] Click Deploy
 
 ### Test (15 mins)
-- [ ] Visit `https://your-domain/app` → Should see React app
-- [ ] Visit `https://your-domain/api/health` → Should return `200`
-- [ ] Try register shipper → Should work
-- [ ] Try register owner → Should work
-- [ ] Try login → Should work
+- [ ] Visit `https://your-domain/app` and confirm the React app loads
+- [ ] Visit `https://your-domain/api/health` and confirm it returns `200`
+- [ ] Try register shipper and confirm it works
+- [ ] Try register owner and confirm it works
+- [ ] Try login and confirm it works
 
 **Total time: ~1 hour to live.**
 
 ---
 
-## 📋 Before You Go Live to Real Users
+## Before You Go Live to Real Users
 
 ### Security
 - [ ] HTTPS working (auto on Render)
@@ -52,6 +52,9 @@
 - [ ] Owner bidding is blocked until owner and truck verification documents are approved
 - [ ] POD or receiver confirmation upload works before delivery completion
 - [ ] Delivery geofence blocks completion when destination coordinates exist and driver location is outside the allowed radius
+- [ ] Owner live GPS starts only on assigned confirmed/in-transit jobs
+- [ ] Tracking points appear for the shipper without a page refresh
+- [ ] Offline driver tracking queues points and syncs them when the network returns
 - [ ] Admin payment release is blocked until delivery, escrow, and approved delivery proof are present
 - [ ] LTL booking estimate returns shared-capacity pricing and route-cluster recommendation
 - [ ] Marketplace cluster endpoint responds for authenticated users
@@ -71,20 +74,20 @@
 
 ---
 
-## 🔄 Optional Phase 2 (After You Have Users)
+## Optional Phase 2 (After You Have Users)
 
 These can wait, use demo/fallback until ready:
 - [ ] Stripe payment integration
 - [ ] M-Pesa mobile money
 - [ ] SMS notifications (Africa's Talking)
 - [ ] Email confirmations (SendGrid)
-- [ ] Maps (Google Maps API)
+- [ ] Google Maps JavaScript markers, route polylines, and ETA
 - [ ] WhatsApp/SMS-assisted driver workflow
 - [ ] Full LTL dispatch allocation and multi-stop sequencing
 
 ---
 
-## 📞 Support
+## Support
 
 Issues during deploy?
 1. Check `DEPLOYMENT_GUIDE.md` troubleshooting section
@@ -92,4 +95,4 @@ Issues during deploy?
 3. Verify env vars are set correctly in Render dashboard
 4. Check Render logs: `render logs itruck-api`
 
-**Your Render.yaml is pre-configured** — it will handle build & start automatically.
+**Your Render.yaml is pre-configured** - it will handle build and start automatically.

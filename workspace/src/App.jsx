@@ -13,17 +13,23 @@ import {
   LayoutDashboard,
   LogOut,
   Map,
+  MapPin,
   Menu,
   MessageSquare,
   Moon,
+  Navigation,
   PackageCheck,
   Phone,
+  PlayCircle,
   Plus,
+  Radio,
+  RotateCw,
   Search,
   Send,
   ShieldCheck,
   Smartphone,
   Star,
+  StopCircle,
   Sun,
   Truck,
   UserRound,
@@ -34,6 +40,12 @@ import { api, clearSession, currentUser, setSession } from './api.js';
 import ServiceWorkerUpdateToast from './components/ServiceWorkerUpdateToast.jsx';
 import SessionsManager from './components/SessionsManager.jsx';
 import { demoDocuments, demoFleet, demoLoads, demoShipments } from './data.js';
+import {
+  flushTelemetryQueue,
+  normalizeBrowserPosition,
+  queueTelemetryPoint,
+  shouldSendTelemetry
+} from './utils/trackingTelemetry.js';
 import io from 'socket.io-client';
 
 const roleNavigation = {
@@ -595,6 +607,8 @@ function normalizeBookingShipment(booking) {
   const tracking = booking.tracking || [];
   const latest = tracking[tracking.length - 1] || {};
   const progress = Number(booking.progress || progressForStatus(booking.status));
+  const hasLatestCoordinates = [latest.lat, latest.lng].every((value) => Number.isFinite(Number(value)));
+  const latestSpeed = Number(latest.speed);
 
   return {
     id: bookingRef(booking),
@@ -613,8 +627,8 @@ function normalizeBookingShipment(booking) {
     rawStatus: booking.status || 'pending',
     progress,
     eta: booking.eta || (booking.status === 'delivered' ? 'POD ready' : 'Awaiting update'),
-    position: latest.city || (latest.lat && latest.lng ? `${latest.lat}, ${latest.lng}` : 'Awaiting GPS update'),
-    speed: latest.speed ? `${latest.speed} km/h` : 'Speed pending',
+    position: latest.city || (hasLatestCoordinates ? formatCoordinatePair(latest) : 'Awaiting GPS update'),
+    speed: Number.isFinite(latestSpeed) ? `${Number(latestSpeed.toFixed(1))} km/h` : 'Speed pending',
     payment: booking.paymentMethod || 'Payment pending',
     paymentStatus: booking.paymentStatus || 'unpaid',
     amount: bookingPaymentAmount(booking),
@@ -623,6 +637,28 @@ function normalizeBookingShipment(booking) {
     bids: Array.isArray(booking.bids) ? booking.bids.map(normalizeBid) : [],
     tracking
   };
+}
+
+function latestTrackingPoint(shipment) {
+  const list = shipment?.tracking || [];
+  for (let index = list.length - 1; index >= 0; index -= 1) {
+    const point = list[index];
+    if ([point?.lat, point?.lng].every((value) => Number.isFinite(Number(value)))) return point;
+  }
+  return null;
+}
+
+function formatCoordinatePair(point, precision = 5) {
+  if (!point || ![point.lat, point.lng].every((value) => Number.isFinite(Number(value)))) return 'Awaiting GPS update';
+  return `${Number(point.lat).toFixed(precision)}, ${Number(point.lng).toFixed(precision)}`;
+}
+
+function formatTrackingTime(point) {
+  const value = point?.timestamp || point?.createdAt || point?.queuedAt;
+  if (!value) return 'No timestamp yet';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'No timestamp yet';
+  return date.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
 }
 
 function normalizeOpenLoad(booking) {
@@ -1926,6 +1962,315 @@ function MarketplacePage({ route }) {
   );
 }
 
+function useAnimatedTrackingPoint(targetPoint) {
+  const [animated, setAnimated] = useState(targetPoint || null);
+  const latestRef = useRef(targetPoint || null);
+
+  useEffect(() => {
+    latestRef.current = animated;
+  }, [animated]);
+
+  useEffect(() => {
+    if (!targetPoint) {
+      setAnimated(null);
+      return undefined;
+    }
+
+    const current = latestRef.current;
+    if (
+      !current ||
+      ![current.lat, current.lng, targetPoint.lat, targetPoint.lng].every((value) => Number.isFinite(Number(value)))
+    ) {
+      setAnimated(targetPoint);
+      return undefined;
+    }
+
+    const from = {
+      lat: Number(current.lat),
+      lng: Number(current.lng),
+      speed: Number(current.speed || 0)
+    };
+    const to = {
+      lat: Number(targetPoint.lat),
+      lng: Number(targetPoint.lng),
+      speed: Number(targetPoint.speed || 0)
+    };
+    const startedAt = performance.now();
+    const duration = 900;
+    let frameId;
+
+    function tick(now) {
+      const progress = Math.min(1, (now - startedAt) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const next = {
+        ...targetPoint,
+        lat: from.lat + (to.lat - from.lat) * eased,
+        lng: from.lng + (to.lng - from.lng) * eased,
+        speed: from.speed + (to.speed - from.speed) * eased
+      };
+      latestRef.current = next;
+      setAnimated(next);
+      if (progress < 1) frameId = requestAnimationFrame(tick);
+    }
+
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
+  }, [targetPoint?.lat, targetPoint?.lng, targetPoint?.speed, targetPoint?.timestamp]);
+
+  return animated;
+}
+
+function LivePositionCard({ shipment }) {
+  const targetPoint = latestTrackingPoint(shipment);
+  const animatedPoint = useAnimatedTrackingPoint(targetPoint);
+  const hasPoint = Boolean(animatedPoint);
+
+  return (
+    <div className="live-position-card">
+      <div>
+        <span>
+          <MapPin size={16} />
+          Current position
+        </span>
+        <strong>{hasPoint ? formatCoordinatePair(animatedPoint) : shipment.position}</strong>
+      </div>
+      <div className="live-position-grid">
+        <span>Speed</span>
+        <strong>
+          {Number.isFinite(Number(animatedPoint?.speed)) ? `${Number(animatedPoint.speed).toFixed(1)} km/h` : shipment.speed}
+        </strong>
+        <span>Heading</span>
+        <strong>
+          {Number.isFinite(Number(animatedPoint?.heading)) ? `${Math.round(Number(animatedPoint.heading))} deg` : 'Pending'}
+        </strong>
+        <span>Accuracy</span>
+        <strong>
+          {Number.isFinite(Number(animatedPoint?.accuracy)) ? `${Math.round(Number(animatedPoint.accuracy))} m` : 'Pending'}
+        </strong>
+        <span>Updated</span>
+        <strong>{hasPoint ? formatTrackingTime(animatedPoint) : 'No GPS yet'}</strong>
+      </div>
+    </div>
+  );
+}
+
+function DriverLiveTracker({ shipment, notify, onBookingUpdate }) {
+  const [isTracking, setIsTracking] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('Idle');
+  const [lastPoint, setLastPoint] = useState(() => latestTrackingPoint(shipment));
+  const [queuedCount, setQueuedCount] = useState(0);
+  const watchIdRef = useRef(null);
+  const wakeLockRef = useRef(null);
+  const lastPointRef = useRef(latestTrackingPoint(shipment));
+  const lastSentAtRef = useRef(0);
+  const offlineNoticeRef = useRef(false);
+  const bookingId = shipment?.bookingId;
+  const canTrack = Boolean(bookingId && ['confirmed', 'in_transit'].includes(shipment?.rawStatus));
+
+  const applyBooking = useCallback(
+    (booking) => {
+      if (booking) onBookingUpdate(booking);
+    },
+    [onBookingUpdate]
+  );
+
+  const requestWakeLock = useCallback(async () => {
+    if (!navigator.wakeLock?.request || wakeLockRef.current) return;
+    try {
+      wakeLockRef.current = await navigator.wakeLock.request('screen');
+      wakeLockRef.current.addEventListener('release', () => {
+        wakeLockRef.current = null;
+      });
+    } catch (_err) {
+      wakeLockRef.current = null;
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(() => {
+    const current = wakeLockRef.current;
+    wakeLockRef.current = null;
+    current?.release?.().catch(() => {});
+  }, []);
+
+  const flushQueued = useCallback(
+    async ({ quiet = false } = {}) => {
+      if (!bookingId) return;
+      try {
+        const result = await flushTelemetryQueue(bookingId, async (updates) => {
+          const data = await api.sendTrackingBatch(bookingId, updates);
+          applyBooking(data.booking);
+          return data;
+        });
+        if (result.sent) {
+          setQueuedCount(0);
+          setSyncStatus(`Synced ${result.sent} queued point${result.sent === 1 ? '' : 's'}`);
+          offlineNoticeRef.current = false;
+          if (!quiet) notify(`Synced ${result.sent} tracking point${result.sent === 1 ? '' : 's'}`);
+        }
+      } catch (err) {
+        setSyncStatus('Queue waiting');
+        if (!quiet) notify(err.message || 'Tracking queue is waiting for sync');
+      }
+    },
+    [applyBooking, bookingId, notify]
+  );
+
+  const sendOrQueue = useCallback(
+    async (point) => {
+      if (!bookingId) return;
+      lastSentAtRef.current = Date.now();
+      setLastPoint(point);
+      setSyncStatus('Sending');
+
+      try {
+        const data = await api.sendTrackingUpdate(bookingId, point);
+        applyBooking(data.booking);
+        setSyncStatus('Live');
+        offlineNoticeRef.current = false;
+        await flushQueued({ quiet: true });
+      } catch (err) {
+        const message = err.message || '';
+        const rejected = /forbidden|only accepted|latitude|longitude|validation|not found/i.test(message);
+        if (rejected) {
+          setSyncStatus('Rejected');
+          notify(message || 'Tracking update was rejected');
+          return;
+        }
+
+        try {
+          await queueTelemetryPoint(bookingId, point);
+        } catch (_queueErr) {
+          setSyncStatus('Queue failed');
+          notify('Unable to queue tracking update');
+          return;
+        }
+        setQueuedCount((count) => count + 1);
+        setSyncStatus('Queued');
+        if (!offlineNoticeRef.current) {
+          notify('Tracking update queued until connection returns');
+          offlineNoticeRef.current = true;
+        }
+      }
+    },
+    [applyBooking, bookingId, flushQueued, notify]
+  );
+
+  const stopTracking = useCallback(
+    (announce = true) => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation?.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      releaseWakeLock();
+      setIsTracking(false);
+      setSyncStatus((current) => (current === 'Live' ? 'Stopped' : current));
+      if (announce) notify('Live tracking stopped');
+    },
+    [notify, releaseWakeLock]
+  );
+
+  const startTracking = useCallback(async () => {
+    if (watchIdRef.current !== null) return;
+    if (!canTrack) {
+      notify('Live tracking starts after the job is assigned and active');
+      return;
+    }
+    if (!navigator.geolocation) {
+      notify('GPS is not available on this device');
+      return;
+    }
+
+    if (shipment.rawStatus === 'confirmed') {
+      api
+        .updateBookingStatus(bookingId, { status: 'in_transit' })
+        .then((data) => applyBooking(data.booking))
+        .catch(() => {});
+    }
+
+    await requestWakeLock();
+    setSyncStatus('Locating');
+    setIsTracking(true);
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const point = normalizeBrowserPosition(position);
+        if (!shouldSendTelemetry(point, lastPointRef.current, lastSentAtRef.current)) return;
+        lastPointRef.current = point;
+        sendOrQueue(point);
+      },
+      (error) => {
+        setSyncStatus('GPS blocked');
+        notify(error.message || 'Unable to read device location');
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+    );
+    notify('Live tracking started');
+  }, [applyBooking, bookingId, canTrack, notify, requestWakeLock, sendOrQueue, shipment?.rawStatus]);
+
+  useEffect(() => {
+    const point = latestTrackingPoint(shipment);
+    setLastPoint(point);
+    lastPointRef.current = point;
+    lastSentAtRef.current = 0;
+  }, [shipment?.bookingId]);
+
+  useEffect(() => () => stopTracking(false), [shipment?.bookingId, stopTracking]);
+
+  useEffect(() => {
+    if (!bookingId) return undefined;
+    const handleOnline = () => flushQueued();
+    window.addEventListener('online', handleOnline);
+    flushQueued({ quiet: true });
+    return () => window.removeEventListener('online', handleOnline);
+  }, [bookingId, flushQueued]);
+
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === 'visible' && isTracking) requestWakeLock();
+    }
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [isTracking, requestWakeLock]);
+
+  return (
+    <div className="driver-live-tracker">
+      <div className="tracker-heading">
+        <span className={`live-dot ${isTracking ? 'active' : ''}`} />
+        <div>
+          <strong>Driver GPS</strong>
+          <small>{syncStatus}</small>
+        </div>
+        <Radio size={18} />
+      </div>
+
+      <div className="tracker-stats">
+        <span>Position</span>
+        <strong>{lastPoint ? formatCoordinatePair(lastPoint) : 'No GPS yet'}</strong>
+        <span>Accuracy</span>
+        <strong>{Number.isFinite(Number(lastPoint?.accuracy)) ? `${Math.round(Number(lastPoint.accuracy))} m` : 'Pending'}</strong>
+        <span>Queued</span>
+        <strong>{queuedCount}</strong>
+      </div>
+
+      <div className="tracker-actions">
+        <button
+          className={`${isTracking ? 'secondary' : 'primary'} icon-label`}
+          type="button"
+          disabled={!canTrack}
+          onClick={isTracking ? () => stopTracking() : startTracking}
+        >
+          {isTracking ? <StopCircle size={18} /> : <PlayCircle size={18} />}
+          <span>{isTracking ? 'Stop' : 'Start'}</span>
+        </button>
+        <button className="ghost icon-label" type="button" disabled={!bookingId} onClick={() => flushQueued()}>
+          <RotateCw size={18} />
+          <span>Sync</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function TrackingPage({ notify, route, user }) {
   const activeRole = roleForUser(user);
   const [selected, setSelected] = useState(0);
@@ -1941,6 +2286,19 @@ function TrackingPage({ notify, route, user }) {
   const routeShipment = trackingParams.get('shipment');
   const contactMode = trackingParams.get('contact');
   const currentUserId = userIdFor(user);
+  const upsertBookingShipment = useCallback((booking) => {
+    if (!booking) return;
+    const updated = normalizeBookingShipment(booking);
+    setShipments((current) => {
+      const index = current.findIndex((item) =>
+        [item.id, item.bookingId].some((value) => String(value) === String(updated.bookingId || updated.id))
+      );
+      if (index < 0) return [updated, ...current];
+      const next = [...current];
+      next[index] = updated;
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     api
@@ -1953,6 +2311,30 @@ function TrackingPage({ notify, route, user }) {
 
   const shipment = shipments[selected] || shipments[0];
   const shipmentMessageKey = shipment?.bookingId || shipment?.id || '';
+
+  useEffect(() => {
+    if (!shipment?.bookingId) return undefined;
+
+    const socket = io(window.location.origin, {
+      auth: { token: localStorage.getItem('itruck_token') || '' },
+      transports: ['websocket', 'polling']
+    });
+
+    const updateFromBooking = (payload = {}) => {
+      const booking = payload.booking || payload;
+      const incomingId = booking._id || booking.id || booking.bookingId || payload.bookingId;
+      if (!incomingId) return;
+      if (![shipment.bookingId, shipment.id].some((value) => String(value) === String(incomingId))) return;
+      upsertBookingShipment(booking);
+    };
+
+    socket.emit('join-booking', shipment.bookingId);
+    socket.on('status-update', updateFromBooking);
+    socket.on('delivery-confirmed', updateFromBooking);
+    socket.on('tracking-updated', updateFromBooking);
+
+    return () => socket.disconnect();
+  }, [shipment?.bookingId, shipment?.id, upsertBookingShipment]);
 
   useEffect(() => {
     if (!routeShipment || !shipments.length) return;
@@ -2033,7 +2415,8 @@ function TrackingPage({ notify, route, user }) {
     }
 
     try {
-      const data = await api.confirmDelivery(shipment.bookingId);
+      const location = latestTrackingPoint(shipment);
+      const data = await api.confirmDelivery(shipment.bookingId, location ? { location } : {});
       const updated = normalizeBookingShipment(data.booking || {});
       setShipments((current) => current.map((item) => (item.bookingId === shipment.bookingId ? updated : item)));
       notify('Delivery confirmed');
@@ -2167,10 +2550,10 @@ function TrackingPage({ notify, route, user }) {
         </div>
         <iframe title="Shipment route" src={mapUrl} loading="lazy" />
         <div className="map-status">
-          <span>Current position</span>
-          <strong>{shipment.position}</strong>
+          <LivePositionCard shipment={shipment} />
           <small>
-            {shipment.speed} - ETA {shipment.eta}
+            <Navigation size={14} />
+            ETA {shipment.eta}
           </small>
         </div>
       </section>
@@ -2192,6 +2575,9 @@ function TrackingPage({ notify, route, user }) {
           <div className="progress">
             <span style={{ width: `${shipment.progress}%` }} />
           </div>
+          {activeRole === 'owner' ? (
+            <DriverLiveTracker shipment={shipment} notify={notify} onBookingUpdate={upsertBookingShipment} />
+          ) : null}
           <ShipmentTimeline rawStatus={timelineStatus} tracking={shipment.tracking || []} />
           <div className="doc-list compact">
             {shipment.documents.map((item) => (
@@ -6008,7 +6394,7 @@ function ShipmentTimeline({ rawStatus, tracking = [] }) {
         return (
           <div key={step.key} className={`timeline-step ${stateClass}`}>
             <div className="timeline-track">
-              <div className="timeline-node">{isDone ? '✓' : i + 1}</div>
+              <div className="timeline-node">{isDone ? <CheckCircle2 size={14} /> : i + 1}</div>
             </div>
             <div className="timeline-body">
               <span className="timeline-label">{step.label}</span>

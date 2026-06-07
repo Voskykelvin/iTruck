@@ -1391,7 +1391,7 @@ input[type='radio'] {
 
 .map-status {
   display: grid;
-  gap: 4px;
+  gap: 10px;
   padding: 14px;
   background: var(--navy);
   color: #ffffff;
@@ -1400,6 +1400,110 @@ input[type='radio'] {
 .map-status span,
 .map-status small {
   color: #d6e8d0;
+}
+
+.map-status > small {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.live-position-card {
+  display: grid;
+  gap: 12px;
+}
+
+.live-position-card > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.live-position-card > div:first-child span,
+.tracker-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.live-position-card strong,
+.tracker-stats strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.live-position-grid,
+.tracker-stats {
+  display: grid;
+  grid-template-columns: minmax(76px, auto) minmax(0, 1fr);
+  gap: 7px 12px;
+  align-items: center;
+}
+
+.live-position-grid span,
+.tracker-stats span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.map-status .live-position-grid span {
+  color: #d6e8d0;
+}
+
+.driver-live-tracker {
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.tracker-heading {
+  justify-content: space-between;
+}
+
+.tracker-heading div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  margin-right: auto;
+}
+
+.tracker-heading strong {
+  color: var(--ink);
+}
+
+.tracker-heading small {
+  color: var(--orange-dark);
+  font-weight: 800;
+}
+
+.tracker-heading svg {
+  color: var(--orange);
+}
+
+.live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+
+.live-dot.active {
+  background: var(--lime);
+  box-shadow: 0 0 0 6px rgba(132, 204, 22, 0.18);
+}
+
+.tracker-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tracker-actions button {
+  min-width: 0;
 }
 
 .tracking-side {

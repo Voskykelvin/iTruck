@@ -295,6 +295,48 @@ test('non-admin users cannot release booking payments', async () => {
   expect(res.status).toBe(403);
 });
 
+test('tracking updates are owner scoped and validate coordinate payloads', async () => {
+  const clientAttempt = await request(app)
+    .post('/api/bookings/ITK-2044/tracking')
+    .set('Authorization', authHeader({ id: 'demo-client-primary', role: 'client' }))
+    .send({ lat: -1.2921, lng: 36.8219 });
+
+  expect(clientAttempt.status).toBe(403);
+
+  const invalid = await request(app)
+    .post('/api/bookings/ITK-2044/tracking')
+    .set('Authorization', authHeader({ id: 'demo-owner-primary', role: 'owner' }))
+    .send({ lat: -120, lng: 36.8219 });
+
+  expect(invalid.status).toBe(422);
+  expect(invalid.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ field: 'lat' })]));
+
+  const single = await request(app)
+    .post('/api/bookings/ITK-2044/tracking')
+    .set('Authorization', authHeader({ id: 'demo-owner-primary', role: 'owner' }))
+    .send({ lat: -1.2921, lng: 36.8219, speed: 64, heading: 270, accuracy: 12 });
+
+  expect(single.status).toBe(200);
+  expect(single.body.accepted).toBe(1);
+  expect(single.body.booking.tracking.at(-1)).toEqual(
+    expect.objectContaining({ lat: -1.2921, lng: 36.8219, speed: 64, heading: 270, accuracy: 12 })
+  );
+
+  const batch = await request(app)
+    .post('/api/bookings/ITK-2044/tracking/batch')
+    .set('Authorization', authHeader({ id: 'demo-owner-primary', role: 'owner' }))
+    .send({
+      updates: [
+        { lat: -1.2922, lng: 36.822, speed: 65, heading: 271 },
+        { lat: -1.2923, lng: 36.8221, speed: 66, heading: 272 }
+      ]
+    });
+
+  expect(batch.status).toBe(200);
+  expect(batch.body.accepted).toBe(2);
+  expect(batch.body.booking.tracking.slice(-2).map((point) => point.lat)).toEqual([-1.2922, -1.2923]);
+});
+
 test('clients cannot submit carrier bids through workflow routes', async () => {
   const res = await request(app)
     .post('/api/workflow/bids')

@@ -26,7 +26,7 @@ iTruck uses one workspace shell with role-specific navigation.
 3. Choose full-truck or LTL/shared-capacity details where appropriate.
 4. Review carrier bids from the Bids page.
 5. Award a bid.
-6. Track shipment, messages, documents, and invoices.
+6. Track live shipment location, messages, documents, and invoices.
 7. Upload POD or receiver confirmation before delivery is completed.
 8. Rate the carrier after delivery is confirmed.
 
@@ -37,13 +37,14 @@ iTruck uses one workspace shell with role-specific navigation.
 3. Upload vehicle photos and vehicle documents.
 4. Find open work from the Bids page.
 5. Submit bids only with an approved, available vehicle.
-6. Manage awarded jobs, pickup updates, messages, documents, and payouts.
+6. Manage awarded jobs, live GPS tracking, pickup updates, messages, documents, and payouts.
 7. Provide location updates for geofence-sensitive delivery completion when destination coordinates are present.
 8. Rate the shipper after delivery is confirmed.
 
 ## Delivery and Payment Rules
 
 - Delivery completion requires uploaded POD or receiver confirmation.
+- Live tracking updates are accepted only from the assigned owner or admin while the booking is confirmed or in transit.
 - When destination coordinates are present, delivery completion and generated POD output require the latest driver location to be inside the delivery geofence.
 - Admin payment release requires delivered status, escrowed funds, and approved POD or receiver confirmation.
 - Payment release actions are recorded in the admin audit log.

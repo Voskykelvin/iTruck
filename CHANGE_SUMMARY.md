@@ -27,9 +27,19 @@ This file summarizes the security hardening, workflow fixes, and latest iTruck w
 - Extended estimates with shared-capacity pricing, LTL coordination fees, route keys, and `route-cluster` recommendations.
 - Added protected `GET /api/marketplace/clusters` for lane-level LTL consolidation opportunities.
 
+### Live tracking ingestion and owner workspace controls
+- **Files:** `backend/routes/bookings.js`, `backend/validators/bookings.js`, `workspace/src/App.jsx`, `workspace/src/api.js`, `workspace/src/styles.css`, `workspace/src/utils/trackingTelemetry.js`
+- Added owner/admin-only `POST /api/bookings/:id/tracking` and `POST /api/bookings/:id/tracking/batch`.
+- Restricted tracking updates to confirmed or in-transit bookings assigned to the owner.
+- Emitted `tracking-updated` and `status-update` events to the booking room after accepted tracking updates.
+- Added driver GPS start/stop controls in the owner tracking view, including Wake Lock support where available.
+- Added browser telemetry filtering, IndexedDB queueing with localStorage fallback, route compression, and online batch flush.
+- Added selected-booking Socket.io updates and a smoother current-position display for the shipper tracking page.
+
 ### Test coverage
 - **Files:** `backend/tests/operations-policy.test.js`, `backend/tests/payments.test.js`, `backend/tests/bookings.test.js`, `backend/tests/model-indexes.test.js`, `backend/tests/validation.test.js`
 - Added unit and route tests for verified operations policy, delivery geofencing, LTL estimates, model indexes, booking validation, and payment release gates.
+- Added route tests for tracking authorization, coordinate validation, single-point updates, and batch updates.
 
 ---
 
@@ -138,6 +148,7 @@ This file summarizes the security hardening, workflow fixes, and latest iTruck w
 - `workspace/vite.config.js`
 - `workspace/src/App.jsx`
 - `workspace/src/api.js`
+- `workspace/src/utils/trackingTelemetry.js`
 - `workspace/src/styles.css`
 - `frontend/app/index.html`
 - `frontend/app/assets/*`
@@ -173,13 +184,13 @@ Earlier hardening rounds also touched:
 npm.cmd run app:build
 ```
 
-Result: passed on June 6, 2026.
+Result: passed on June 7, 2026.
 
 Build output:
 
 - `frontend/app/index.html`
-- `frontend/app/assets/index-BGSZQZZl.css`
-- `frontend/app/assets/index-C8Gzgb68.js`
+- `frontend/app/assets/index-BtFBinYU.css`
+- `frontend/app/assets/index-CUfyU_G7.js`
 
 Note: PowerShell blocked `npm` through `npm.ps1` on this machine, so `npm.cmd` was used.
 
@@ -202,7 +213,7 @@ Result: passed on June 7, 2026.
 Test output:
 
 - 11 test suites passed.
-- 94 tests passed.
+- 95 tests passed.
 
 ---
 
@@ -218,3 +229,6 @@ Test output:
 8. Approve/reject a document as admin and confirm owner document status refreshes.
 9. Toggle dark mode and confirm the preference persists after reload.
 10. Open global search and confirm booking/truck results navigate correctly.
+11. As an assigned owner on a confirmed job, start driver GPS from `/app/tracking` and confirm the booking moves to in transit.
+12. Temporarily go offline while tracking, confirm points queue, then restore network and sync the queue.
+13. Open the same shipment as the shipper and confirm tracking updates appear without refreshing.

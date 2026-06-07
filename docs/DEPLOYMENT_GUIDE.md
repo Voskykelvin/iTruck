@@ -23,12 +23,12 @@ Before deploying, ensure all production secrets are configured:
 
 ### 2. Code Readiness
 
-- [ ] Backend tests passing: `npm.cmd --prefix backend test` - 94 tests pass
+- [ ] Backend tests passing: `npm.cmd --prefix backend test` - 95 tests pass
 - [ ] Code linting: `npm run lint` ✅ Passes
 - [ ] Build artifacts generated: `npm run app:build` ✅ In `frontend/app/`
 - [ ] No `DEMO_MODE` in production code
 
-Current backend verification: `npm.cmd --prefix backend test` passes with 94 tests.
+Current backend verification: `npm.cmd --prefix backend test` passes with 95 tests.
 
 ### 3. Database Setup
 
@@ -166,6 +166,8 @@ curl https://your-domain.example/app/
 - Verify destination geofence enforcement when a booking has destination coordinates.
 - Verify admin payment release requires delivery, escrow, and approved delivery proof.
 - Verify LTL estimate and authenticated marketplace cluster routes respond.
+- Verify owner live tracking accepts single/batch GPS updates only for assigned confirmed or in-transit jobs.
+- Verify the shipper tracking page receives live booking-room location updates without refresh.
 
 ### 6. Check Logs
 
@@ -278,6 +280,6 @@ Environment:   🟡 Ready (needs domain + MongoDB)
 Deployment:    🟡 Ready (Render.yaml configured)
 ```
 
-Safeguards status: verified bidding, POD/geofence, payment release, and LTL foundations are covered by backend tests.
+Safeguards status: verified bidding, POD/geofence, payment release, LTL foundations, and tracking authorization are covered by backend tests.
 
 **Next step:** Get MongoDB URI + domain, then deploy to Render in 10 minutes.

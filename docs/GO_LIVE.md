@@ -8,6 +8,7 @@
   - React workspace dashboards read bookings, open loads, fleet trucks, and admin stats from API endpoints before falling back to local demo mode.
 - Production safeguards now enforce verified owner/truck bidding, delivery-proof-gated completion, approved-proof payment release, and payment-release audit logs.
 - LTL booking fields, shared-capacity estimates, and protected marketplace route clustering are available for controlled SME pilots.
+- Live tracking now supports owner-scoped single/batch GPS ingestion, offline queueing in the workspace, compressed sync, and booking-room realtime updates for the selected shipment.
 - Finish deeper dashboard actions against real API data, including counteroffers, rejection reasons, dispute queues, route preferences, and expanded document review.
 - Add production Google Maps integration with a Google Cloud API key.
 - Expand shipment proof of delivery into receiver e-signature, cargo-photo evidence trails, and dispute review.
@@ -37,7 +38,8 @@
 
 ## Maps
 
-- Google Maps Embed API is enough for a first public tracking view.
+- Google Maps Embed API is enough for the first public route view.
+- Current live tracking displays the latest driver GPS point and syncs updates through backend booking rooms.
 - Google Maps JavaScript API is the next step for custom markers, route polylines, geocoding, and live vehicle updates.
 - Store the API key server-side or inject it at build/deploy time.
 
@@ -61,7 +63,7 @@
 7. Start with `NODE_ENV=production npm start`.
 8. Confirm `/api/health`, `/app`, login, booking, marketplace, and admin routes.
 9. Deploy staging behind HTTPS.
-10. Test client booking, verified owner bid, LTL estimate, route cluster query, tracking, POD/receiver-confirmation upload, geofence delivery confirmation, payment release, and admin verification.
+10. Test client booking, verified owner bid, LTL estimate, route cluster query, owner live GPS, offline tracking sync, shipper tracking refresh, POD/receiver-confirmation upload, geofence delivery confirmation, payment release, and admin verification.
 11. Deploy production.
 
 ## Live Mode Behavior
@@ -73,6 +75,8 @@
 - In live mode, upload routes fail instead of returning mock local URLs if Cloudinary is not configured.
 - Login/register issue the existing access token response plus an httpOnly refresh cookie when MongoDB is available.
 - Owner bids require approved profile and truck documents in live MongoDB-backed flows.
+- Tracking updates require an assigned owner/admin and a confirmed or in-transit booking.
+- The workspace queues driver GPS updates offline and syncs compressed batches after connectivity returns.
 - Delivery confirmation and generated POD output enforce destination geofence checks when destination coordinates are present.
 - Payment release requires approved delivery proof and writes an admin audit log.
 - Demo users and demo trucks remain available only for local development when `DEMO_MODE` is not set to `false`.

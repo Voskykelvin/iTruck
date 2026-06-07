@@ -117,6 +117,7 @@ Implemented on 2026-06-07 as native project code, not from the downloaded valida
 4. Approved delivery proof requirement before admin payment release.
 5. Admin audit logging for payment release.
 6. LTL booking, shared-capacity estimate, and route-clustering foundations.
+7. Owner-controlled live tracking ingestion, offline telemetry queueing, compressed batch sync, and shipper booking-room updates.
 
 ## Verification Checklist
 

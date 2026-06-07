@@ -32,11 +32,12 @@ Date: 2026-05-25
 - Required delivery proof before delivery completion and approved delivery proof before owner payment release.
 - Added destination geofence checks for delivery completion and POD generation when destination coordinates are available.
 - Added LTL booking fields, shared-capacity estimates, route keys, and a protected marketplace route-clustering endpoint.
+- Added owner-controlled live GPS tracking endpoints, offline telemetry queueing, compressed batch sync, and booking-room realtime tracking updates.
 
 ## Regressive Or Deferred
 
 - Did not add a subscription tier, factoring, or financing surface yet. Those can be high value for owners, but adding them without backend workflows would create promises the product cannot fulfill.
-- Did not add aggressive driver GPS permission prompts beyond shipment status and geofence-sensitive moments. User reviews show location permissions can become a trust problem if overreaching.
+- Did not add aggressive background GPS or broad permission prompts. Tracking is owner-controlled from active jobs and only sends updates for confirmed or in-transit bookings.
 - Did not hide bus/matatu listings. They may be useful for mixed passenger and parcel logistics in African corridors, but they should remain clearly labeled rather than blended into heavy freight.
 
 ## Next High-Value Backlog
@@ -47,4 +48,5 @@ Date: 2026-05-25
 - Support case tracking: status, owner, SLA timer, escalation trail, and issue categories tied to shipment IDs.
 - Receiver e-signature, richer cargo photo evidence, and dispute evidence trails around proof of delivery.
 - Duplicate load/truck detection in marketplace results.
-- Low-data mode for maps and tracking: text milestones, SMS share links, and map fallback.
+- Low-data mode for maps and tracking: text milestones, SMS share links, map fallback, and driver-side WhatsApp/SMS update bridges.
+- Production maps upgrade: Google Maps JavaScript markers, route polylines, ETA, and optional geocoding once API keys and quota rules are ready.

@@ -209,8 +209,21 @@ export const api = {
   listOpenBookings: () => request('/bookings/open'),
   getBooking: (bookingId) => request(`/bookings/${encodeURIComponent(bookingId)}`),
   createBooking: (payload) => request('/bookings', { method: 'POST', body: JSON.stringify(payload) }),
-  confirmDelivery: (bookingId) =>
-    request(`/bookings/${encodeURIComponent(bookingId)}/confirm-delivery`, { method: 'PATCH' }),
+  confirmDelivery: (bookingId, payload = {}) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/confirm-delivery`, {
+      method: 'PATCH',
+      ...(Object.keys(payload || {}).length ? { body: JSON.stringify(payload) } : {})
+    }),
+  sendTrackingUpdate: (bookingId, payload) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/tracking`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  sendTrackingBatch: (bookingId, updates) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/tracking/batch`, {
+      method: 'POST',
+      body: JSON.stringify({ updates })
+    }),
   updateBookingStatus: (bookingId, payload) =>
     request(`/bookings/${encodeURIComponent(bookingId)}/status`, {
       method: 'PATCH',

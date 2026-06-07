@@ -206,7 +206,10 @@ Current API health may also return `status: "OK"` with platform, version, and ti
 4. Call the authenticated marketplace cluster endpoint.
 5. Upload POD or receiver confirmation before delivery completion.
 6. Confirm geofence blocking when destination coordinates exist and driver location is outside the allowed radius.
-7. Confirm admin payment release is blocked until delivery, escrow, and approved delivery proof are present.
+7. Confirm owner live tracking starts on assigned confirmed/in-transit jobs and sends GPS points.
+8. Confirm shipper tracking updates arrive without refreshing the page.
+9. Confirm offline owner tracking queues points and syncs when the network returns.
+10. Confirm admin payment release is blocked until delivery, escrow, and approved delivery proof are present.
 
 ---
 
@@ -247,7 +250,7 @@ Current API health may also return `status: "OK"` with platform, version, and ti
 
 - Google Maps API key might be invalid
 - Check `VITE_GOOGLE_MAPS_API_KEY` is set in .env
-- Fallback placeholder should show if key invalid (not blank)
+- The current route view uses Google Maps Embed plus iTruck live coordinate updates; the next map upgrade is JavaScript markers, polylines, and ETA
 
 ### "Photos not uploading"
 
@@ -288,8 +291,8 @@ Once verified, you now have:
 - ✅ React app at: `https://itruck-api-*.onrender.com/app`
 - ✅ Real MongoDB database
 - ✅ Image uploads to Cloudinary
-- ✅ Maps (Google Maps API)
-- ✅ Real-time notifications (Socket.io)
+- ✅ Route map view plus iTruck live GPS updates
+- ✅ Real-time notifications and tracking events (Socket.io)
 - ✅ All middleware (auth, validation, rate limiting)
 
 **Next phase:**
