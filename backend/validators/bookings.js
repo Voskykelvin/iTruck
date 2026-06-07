@@ -123,6 +123,37 @@ const locationSchema = [
     .toFloat()
 ];
 
+const trackingPointSchema = (prefix = '') => [
+  body(`${prefix}lat`)
+    .isFloat({ min: -90, max: 90 })
+    .withMessage('Latitude is invalid')
+    .toFloat(),
+  body(`${prefix}lng`)
+    .isFloat({ min: -180, max: 180 })
+    .withMessage('Longitude is invalid')
+    .toFloat(),
+  body(`${prefix}speed`)
+    .optional({ checkFalsy: true })
+    .isFloat({ min: 0, max: 180 })
+    .withMessage('Speed is invalid')
+    .toFloat(),
+  body(`${prefix}heading`)
+    .optional({ checkFalsy: true })
+    .isFloat({ min: 0, max: 360 })
+    .withMessage('Heading is invalid')
+    .toFloat(),
+  body(`${prefix}accuracy`)
+    .optional({ checkFalsy: true })
+    .isFloat({ min: 0, max: 10000 })
+    .withMessage('Location accuracy is invalid')
+    .toFloat(),
+  body(`${prefix}timestamp`)
+    .optional({ checkFalsy: true })
+    .isISO8601()
+    .withMessage('Timestamp is invalid')
+    .toDate()
+];
+
 const updateStatusSchema = [
   ...bookingIdSchema,
   body('status').optional({ checkFalsy: true }).isIn(Booking.STATUSES).withMessage('Status is invalid'),
@@ -130,6 +161,41 @@ const updateStatusSchema = [
 ];
 
 const confirmDeliverySchema = [...bookingIdSchema, ...locationSchema];
+const trackingLocationSchema = [...bookingIdSchema, ...trackingPointSchema()];
+const trackingBatchSchema = [
+  ...bookingIdSchema,
+  body('updates')
+    .isArray({ min: 1, max: 250 })
+    .withMessage('updates must contain between 1 and 250 tracking points'),
+  body('updates.*.lat')
+    .isFloat({ min: -90, max: 90 })
+    .withMessage('Latitude is invalid')
+    .toFloat(),
+  body('updates.*.lng')
+    .isFloat({ min: -180, max: 180 })
+    .withMessage('Longitude is invalid')
+    .toFloat(),
+  body('updates.*.speed')
+    .optional({ checkFalsy: true })
+    .isFloat({ min: 0, max: 180 })
+    .withMessage('Speed is invalid')
+    .toFloat(),
+  body('updates.*.heading')
+    .optional({ checkFalsy: true })
+    .isFloat({ min: 0, max: 360 })
+    .withMessage('Heading is invalid')
+    .toFloat(),
+  body('updates.*.accuracy')
+    .optional({ checkFalsy: true })
+    .isFloat({ min: 0, max: 10000 })
+    .withMessage('Location accuracy is invalid')
+    .toFloat(),
+  body('updates.*.timestamp')
+    .optional({ checkFalsy: true })
+    .isISO8601()
+    .withMessage('Timestamp is invalid')
+    .toDate()
+];
 
 const bookingDocumentUploadSchema = [
   ...bookingIdSchema,
@@ -171,5 +237,7 @@ module.exports = {
   createBookingSchema,
   listBookingsSchema,
   submitBidSchema,
+  trackingBatchSchema,
+  trackingLocationSchema,
   updateStatusSchema
 };

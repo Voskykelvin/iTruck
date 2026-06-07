@@ -23,6 +23,8 @@ const {
   createBookingSchema,
   listBookingsSchema,
   submitBidSchema,
+  trackingBatchSchema,
+  trackingLocationSchema,
   updateStatusSchema
 } = require('../validators/bookings');
 const { normalizeBookingDocumentType } = require('../utils/documentTypes');
@@ -160,6 +162,27 @@ function normalizeCoordinates(value) {
   return { lat, lng };
 }
 
+function normalizeTrackingPoint(value = {}) {
+  const point = {
+    lat: Number(value.lat),
+    lng: Number(value.lng),
+    timestamp: value.timestamp ? new Date(value.timestamp) : new Date()
+  };
+  if (value.speed !== undefined && value.speed !== '') point.speed = Number(value.speed);
+  if (value.heading !== undefined && value.heading !== '') point.heading = Number(value.heading);
+  if (value.accuracy !== undefined && value.accuracy !== '') point.accuracy = Number(value.accuracy);
+  return point;
+}
+
+function trackingAllowed(booking) {
+  return ['confirmed', 'in_transit'].includes(booking.status);
+}
+
+function pushMemoryTracking(booking, updates) {
+  booking.tracking = [...(booking.tracking || []), ...updates].slice(-1000);
+  return booking;
+}
+
 function cleanBookingPayload(body) {
   const loadMode = matching.normalizeLoadMode(body.loadMode);
   const payload = {
@@ -200,6 +223,18 @@ function cleanBookingPayload(body) {
 function emitBooking(req, bookingId, event, booking) {
   const io = req.app.get('io');
   if (io?.emitToBooking) io.emitToBooking(bookingId, event, booking);
+}
+
+function emitTracking(req, booking, updates) {
+  const io = req.app.get('io');
+  if (!io?.emitToBooking) return;
+  io.emitToBooking(booking._id, 'tracking-updated', {
+    bookingId: booking._id,
+    latest: updates[updates.length - 1],
+    updates,
+    booking
+  });
+  io.emitToBooking(booking._id, 'status-update', booking);
 }
 
 async function biddingTruckForOwner(req) {
@@ -627,6 +662,60 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
     next(err);
   }
 });
+
+async function appendTrackingUpdates(req, res, next, updates) {
+  try {
+    if (requireDatabase(req, res)) return;
+
+    if (!mongoReady()) {
+      const booking = memoryBookings.find((item) => item._id === req.params.id);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+      if (!trackingAllowed(booking)) {
+        return res.status(409).json({ message: 'Tracking updates are only accepted for confirmed or in-transit bookings' });
+      }
+
+      pushMemoryTracking(booking, updates);
+      emitTracking(req, booking, updates);
+      return res.json({ booking, updates, accepted: updates.length, mode: 'memory' });
+    }
+
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+    if (!trackingAllowed(booking)) {
+      return res.status(409).json({ message: 'Tracking updates are only accepted for confirmed or in-transit bookings' });
+    }
+
+    const query = { _id: booking._id, status: { $in: ['confirmed', 'in_transit'] } };
+    if (req.user.role !== 'admin') query.owner = req.user._id;
+
+    const updatedBooking = await Booking.findOneAndUpdate(
+      query,
+      { $push: { tracking: { $each: updates, $slice: -1000 } } },
+      { new: true, runValidators: true }
+    );
+    if (!updatedBooking) return res.status(409).json({ message: 'Tracking update could not be applied' });
+
+    emitTracking(req, updatedBooking, updates);
+    return res.json({ booking: updatedBooking, updates, accepted: updates.length });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+router.post('/:id/tracking', restrictTo('owner', 'admin'), trackingLocationSchema, validate, (req, res, next) =>
+  appendTrackingUpdates(req, res, next, [normalizeTrackingPoint(req.body)])
+);
+
+router.post('/:id/tracking/batch', restrictTo('owner', 'admin'), trackingBatchSchema, validate, (req, res, next) =>
+  appendTrackingUpdates(
+    req,
+    res,
+    next,
+    req.body.updates.map((item) => normalizeTrackingPoint(item))
+  )
+);
 
 router.patch('/:id/documents/:documentType', bookingDocumentUploadSchema, validate, async (req, res, next) => {
   try {

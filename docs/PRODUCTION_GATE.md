@@ -67,6 +67,9 @@ Then verify:
 - Verified owner can submit a bid only with an approved, available truck.
 - Shipper can accept a bid.
 - Owner/admin can move booking status through the allowed state machine.
+- Assigned owner/admin can post single and batch tracking updates only for confirmed or in-transit bookings.
+- Owner workspace GPS tracking starts/stops from the selected job and queues points while offline.
+- Shipper tracking view receives `tracking-updated` booking-room events without refreshing.
 - Shipper/admin can confirm delivery only after POD or receiver confirmation is uploaded.
 - Delivery confirmation and generated POD output respect the destination geofence when destination coordinates are present.
 - LTL booking creation stores cargo weight, reserved capacity, consolidation eligibility, and route key metadata.

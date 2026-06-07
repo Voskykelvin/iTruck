@@ -38,6 +38,7 @@ Implemented:
 - Cloudinary upload integration with live-mode enforcement.
 - Pino structured logging.
 - PDF document generation for waybill, POD, invoice, and customs documents.
+- Owner-scoped live tracking ingestion with single-point and batch GPS endpoints, Socket.io booking-room updates, offline driver telemetry queueing, and compressed sync.
 - PWA manifest, install icons, service worker caching, and offline fallback page.
 - Dockerfile, docker-compose setup, Nginx config, Render config, and GitHub Actions checks.
 - Jest/Supertest backend tests.
@@ -46,7 +47,7 @@ Still in progress before full business launch:
 
 - Real payment-provider reconciliation for Stripe, M-Pesa, MTN MoMo, and owner payouts.
 - Real SMS and email delivery providers.
-- Production Google Maps API integration for live route markers and route polylines.
+- Production Google Maps JavaScript integration for custom live route markers, route polylines, and ETA calculation.
 - Deeper admin workflows for bid awards, dispute handling, document review, and payment release.
 - Full audit logging for high-risk admin actions.
 - Production monitoring, analytics, and incident alerting.
@@ -152,6 +153,9 @@ GET    /api/bookings/open
 POST   /api/bookings
 POST   /api/bookings/:id/bids
 PATCH  /api/bookings/:id/status
+PATCH  /api/bookings/:id/confirm-delivery
+POST   /api/bookings/:id/tracking
+POST   /api/bookings/:id/tracking/batch
 
 GET    /api/payments/wallet
 POST   /api/payments/wallet/debit
@@ -532,6 +536,7 @@ Current MVP foundation:
 - Booking, bidding, marketplace, tracking, documents, payments, notifications, and admin review flows.
 - Verification records for owners, shippers, trucks, and shipment documents.
 - Generated waybills, proof-of-delivery documents, invoices, customs documents, and receiver confirmations.
+- Live shipment tracking with driver GPS capture, offline queueing, batch sync, booking-room realtime events, and smoother current-position display.
 - Wallet, escrow-style payment records, and provider shells for card and mobile money workflows.
 - PWA support for lighter field use and offline-friendly access.
 
@@ -542,6 +547,9 @@ Current production safeguards:
 - Delivery completion and POD generation enforce a destination geofence when destination coordinates are available.
 - Owner payment release requires a delivered booking, collected escrow funds, and approved delivery proof.
 - Admin payment release actions are recorded in the audit log.
+- Live tracking updates are restricted to the assigned owner or admin and accepted only for confirmed or in-transit bookings.
+- Driver tracking filters noisy GPS points, queues updates offline, compresses queued routes, and syncs batches when connectivity returns.
+- The shipper tracking page listens for booking-room events so live location and status changes appear without a refresh.
 - LTL bookings can store cargo weight, reserved capacity, consolidation eligibility, and route keys.
 - LTL estimates use shared-capacity pricing and can recommend route clustering.
 - Protected marketplace clustering can surface lane-level LTL consolidation opportunities.

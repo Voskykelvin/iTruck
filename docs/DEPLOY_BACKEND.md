@@ -117,6 +117,8 @@ Then verify:
 - Approve required owner and truck documents, then confirm only the approved owner/truck can submit bids.
 - Create an LTL booking and confirm the estimate returns shared-capacity pricing.
 - Call the authenticated marketplace cluster route and confirm it returns lane-level summaries.
+- Confirm an assigned owner can post single and batch tracking updates only for confirmed or in-transit bookings.
+- Confirm Socket.io `tracking-updated` and `status-update` events reach the selected booking room.
 - Upload POD or receiver confirmation before delivery completion.
 - Confirm destination geofence enforcement when destination coordinates are set.
 - Confirm admin payment release requires delivered status, escrowed funds, and approved delivery proof.
@@ -131,3 +133,4 @@ These services are deployment-ready structurally but not yet business-live:
 - SMS/OTP currently uses simple generated OTP helpers.
 - Payment providers include wallet behavior, payment-release gates, and provider shells. Stripe webhook signature verification is wired, but real Stripe/M-Pesa/MTN reconciliation still needs integration before live money movement.
 - LTL currently has booking, estimate, and cluster foundations; full dispatch allocation and multi-stop sequencing still need product workflows.
+- Tracking currently has production ingestion, owner workspace capture, offline queueing, and realtime booking events. Google Maps JavaScript markers, route polylines, and ETA calculation remain the next map upgrade.
