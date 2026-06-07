@@ -3,6 +3,7 @@ const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const asyncHandler = require('../config/asyncHandler');
+const { recordAdminAudit } = require('../services/audit');
 const notifications = require('../services/notifications');
 const payment = require('../services/payment');
 const {
@@ -369,6 +370,13 @@ router.post(
 
     const result = await payment.wallet.releaseBookingPayment(req.params.bookingId, req.user._id, {
       idempotencyKey: idempotencyKey(req)
+    });
+    await recordAdminAudit(req, 'booking.payment.release', 'payment', req.params.bookingId, {
+      booking: result.booking?._id || req.params.bookingId,
+      owner: result.booking?.owner,
+      amount: result.transaction?.amount || result.booking?.paymentAmount,
+      transaction: result.transaction?._id,
+      alreadyReleased: Boolean(result.alreadyReleased)
     });
     res.status(result.alreadyReleased ? 200 : 201).json(result);
   })

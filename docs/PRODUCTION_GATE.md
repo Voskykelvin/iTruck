@@ -63,12 +63,17 @@ Then verify:
 - Owner can archive a truck and archived trucks no longer appear in public/fleet listings.
 - Admin can verify the truck and review user/truck documents.
 - Shipper can create a booking.
-- Owner can submit a bid.
+- Unverified owners, owners missing required documents, and unverified trucks cannot submit production bids.
+- Verified owner can submit a bid only with an approved, available truck.
 - Shipper can accept a bid.
 - Owner/admin can move booking status through the allowed state machine.
-- Shipper/admin can confirm delivery.
+- Shipper/admin can confirm delivery only after POD or receiver confirmation is uploaded.
+- Delivery confirmation and generated POD output respect the destination geofence when destination coordinates are present.
+- LTL booking creation stores cargo weight, reserved capacity, consolidation eligibility, and route key metadata.
+- `GET /api/marketplace/clusters` returns authenticated lane-level LTL consolidation summaries without exposing individual shipper records.
 - Stripe webhook signature verification succeeds and reconciles a test payment into a booking payment status.
-- Admin payment release credits the owner wallet once.
+- Admin payment release is blocked until delivery, escrowed funds, and approved POD or receiver confirmation are present.
+- Admin payment release credits the owner wallet once and records an audit log.
 - Repeating a payment, withdrawal, or release request with the same `Idempotency-Key` does not create duplicate ledger entries.
 - Documents generate only for users who can see the booking.
 - Notifications only mark current-user records as read.

@@ -4,6 +4,35 @@ This file summarizes the security hardening, workflow fixes, and latest iTruck w
 
 ---
 
+## 0) Production Differentiation Batches
+
+### Verified bidding, delivery proof, and payment release controls
+- **Files:** `backend/services/operationsPolicy.js`, `backend/routes/bookings.js`, `backend/routes/workflow.js`, `backend/services/payment.js`, `backend/routes/payments.js`, `backend/services/audit.js`
+- Added a shared operations policy layer for production trust rules.
+- Enforced that owner bids require an approved owner profile and an approved, available truck with required documents.
+- Required uploaded proof of delivery or receiver confirmation before delivery completion.
+- Required approved proof of delivery or receiver confirmation before admin payment release.
+- Added audit logging for admin payment release actions.
+
+### Destination geofence and POD generation safeguards
+- **Files:** `backend/models/Booking.js`, `backend/services/operationsPolicy.js`, `backend/routes/bookings.js`, `backend/routes/documents.js`, `backend/validators/bookings.js`
+- Added pickup and destination coordinates plus configurable delivery geofence radius on bookings.
+- Enforced destination geofence checks on delivery completion when destination coordinates exist.
+- Enforced destination geofence checks before generated POD output when destination coordinates exist.
+- Allowed delivery status requests to include current driver location with accuracy metadata.
+
+### LTL and route-clustering foundation
+- **Files:** `backend/models/Booking.js`, `backend/services/matching.js`, `backend/routes/bookings.js`, `backend/routes/marketplace.js`, `backend/validators/marketplace.js`
+- Added LTL booking fields for load mode, cargo weight, reserved capacity, consolidation eligibility, and route keys.
+- Extended estimates with shared-capacity pricing, LTL coordination fees, route keys, and `route-cluster` recommendations.
+- Added protected `GET /api/marketplace/clusters` for lane-level LTL consolidation opportunities.
+
+### Test coverage
+- **Files:** `backend/tests/operations-policy.test.js`, `backend/tests/payments.test.js`, `backend/tests/bookings.test.js`, `backend/tests/model-indexes.test.js`, `backend/tests/validation.test.js`
+- Added unit and route tests for verified operations policy, delivery geofencing, LTL estimates, model indexes, booking validation, and payment release gates.
+
+---
+
 ## 1) Security and Logic Hardening
 
 ### Protected document draft generation
@@ -119,6 +148,17 @@ Earlier hardening rounds also touched:
 - `backend/routes/bookings.js`
 - `backend/routes/users.js`
 - `backend/routes/trucks.js`
+- `backend/routes/marketplace.js`
+- `backend/routes/payments.js`
+- `backend/routes/workflow.js`
+- `backend/models/Booking.js`
+- `backend/services/audit.js`
+- `backend/services/matching.js`
+- `backend/services/operationsPolicy.js`
+- `backend/services/payment.js`
+- `backend/validators/bookings.js`
+- `backend/validators/marketplace.js`
+- `backend/tests/operations-policy.test.js`
 - `backend/validators/users.js`
 - `backend/validators/trucks.js`
 - `workspace/src/api.js`
@@ -150,6 +190,19 @@ npm.cmd run lint
 ```
 
 Result: passed on June 6, 2026.
+
+### Backend production safeguard tests
+
+```bash
+npm.cmd --prefix backend test
+```
+
+Result: passed on June 7, 2026.
+
+Test output:
+
+- 11 test suites passed.
+- 94 tests passed.
 
 ---
 

@@ -23,10 +23,12 @@ Before deploying, ensure all production secrets are configured:
 
 ### 2. Code Readiness
 
-- [ ] Backend tests passing: `npm test` ✅ All 60 tests pass
+- [ ] Backend tests passing: `npm.cmd --prefix backend test` - 94 tests pass
 - [ ] Code linting: `npm run lint` ✅ Passes
 - [ ] Build artifacts generated: `npm run app:build` ✅ In `frontend/app/`
 - [ ] No `DEMO_MODE` in production code
+
+Current backend verification: `npm.cmd --prefix backend test` passes with 94 tests.
 
 ### 3. Database Setup
 
@@ -157,7 +159,15 @@ curl https://your-domain.example/app/
 # Verify image appears from Cloudinary
 ```
 
-### 5. Check Logs
+### 5. Production Safeguards Work
+
+- Verify unapproved owners or trucks cannot bid.
+- Verify POD or receiver confirmation is required before delivery completion.
+- Verify destination geofence enforcement when a booking has destination coordinates.
+- Verify admin payment release requires delivery, escrow, and approved delivery proof.
+- Verify LTL estimate and authenticated marketplace cluster routes respond.
+
+### 6. Check Logs
 
 ```bash
 # On Render: Dashboard > Logs
@@ -267,5 +277,7 @@ JWT Secret:    ✅ Strong secret set
 Environment:   🟡 Ready (needs domain + MongoDB)
 Deployment:    🟡 Ready (Render.yaml configured)
 ```
+
+Safeguards status: verified bidding, POD/geofence, payment release, and LTL foundations are covered by backend tests.
 
 **Next step:** Get MongoDB URI + domain, then deploy to Render in 10 minutes.

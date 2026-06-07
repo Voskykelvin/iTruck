@@ -1,10 +1,16 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
 const Truck = require('../models/Truck');
 const User = require('../models/User');
 const matching = require('../services/matching');
 const { recordUploadedDocument } = require('../services/documentRecords');
 const notifications = require('../services/notifications');
+const {
+  assertDeliveryGeofence,
+  assertDeliveryProofForDelivery,
+  assertOwnerCanBid
+} = require('../services/operationsPolicy');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
@@ -12,6 +18,7 @@ const {
   bookingIdSchema,
   bookingDocumentUploadSchema,
   bookingRatingSchema,
+  confirmDeliverySchema,
   acceptBidSchema,
   createBookingSchema,
   listBookingsSchema,
@@ -146,10 +153,23 @@ function normalizeOptionalServices(value) {
   return [];
 }
 
+function normalizeCoordinates(value) {
+  const lat = Number(value?.lat);
+  const lng = Number(value?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+  return { lat, lng };
+}
+
 function cleanBookingPayload(body) {
+  const loadMode = matching.normalizeLoadMode(body.loadMode);
   const payload = {
     ...body,
+    loadMode,
+    pickupCoordinates: normalizeCoordinates(body.pickupCoordinates),
+    destinationCoordinates: normalizeCoordinates(body.destinationCoordinates),
     optionalServices: normalizeOptionalServices(body.optionalServices),
+    consolidationEligible:
+      loadMode === 'ltl' || body.consolidationEligible === true || body.consolidationEligible === 'true',
     quoteAcknowledged:
       body.quoteAcknowledged === true || body.quoteAcknowledged === 'true' || body.quoteAcknowledged === 'on'
   };
@@ -157,7 +177,22 @@ function cleanBookingPayload(body) {
   if (payload.distance !== undefined && payload.distance !== '') payload.distance = Number(payload.distance);
   if (payload.cargoValue !== undefined && payload.cargoValue !== '') payload.cargoValue = Number(payload.cargoValue);
   if (payload.budget !== undefined && payload.budget !== '') payload.budget = Number(payload.budget);
+  if (payload.cargoWeightTonnes !== undefined && payload.cargoWeightTonnes !== '') {
+    payload.cargoWeightTonnes = Number(payload.cargoWeightTonnes);
+  }
+  if (payload.reservedCapacityTonnes !== undefined && payload.reservedCapacityTonnes !== '') {
+    payload.reservedCapacityTonnes = Number(payload.reservedCapacityTonnes);
+  }
+  if (loadMode === 'ltl' && !payload.reservedCapacityTonnes) {
+    payload.reservedCapacityTonnes = matching.vehicleCapacity(payload.vehicleType || 'Lorry');
+  }
+  if (payload.deliveryGeofenceMeters !== undefined && payload.deliveryGeofenceMeters !== '') {
+    payload.deliveryGeofenceMeters = Number(payload.deliveryGeofenceMeters);
+  }
+  if (!payload.pickupCoordinates) delete payload.pickupCoordinates;
+  if (!payload.destinationCoordinates) delete payload.destinationCoordinates;
   if (!payload.truck) delete payload.truck;
+  payload.routeKey = matching.routeKeyFor(payload);
   payload.estimate = matching.buildEstimate(payload);
   return payload;
 }
@@ -165,6 +200,19 @@ function cleanBookingPayload(body) {
 function emitBooking(req, bookingId, event, booking) {
   const io = req.app.get('io');
   if (io?.emitToBooking) io.emitToBooking(bookingId, event, booking);
+}
+
+async function biddingTruckForOwner(req) {
+  if (req.user.role !== 'owner') return null;
+
+  if (!req.body.truck || !mongoose.Types.ObjectId.isValid(req.body.truck)) {
+    assertOwnerCanBid(req.user, null);
+  }
+
+  const truck = await Truck.findOne({ _id: req.body.truck, owner: req.user._id });
+  if (!truck) return assertOwnerCanBid(req.user, null);
+  assertOwnerCanBid(req.user, truck);
+  return truck;
 }
 
 function upsertBookingDocument(documents = [], type, patch) {
@@ -354,6 +402,7 @@ router.post('/:id/bids', restrictTo('owner', 'admin'), submitBidSchema, validate
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
     if (!bookingOpenForBids(booking)) return res.status(409).json({ message: 'Booking is not open for bids' });
 
+    await biddingTruckForOwner(req);
     booking.bids.push({ ...req.body, owner: req.user._id });
     if (booking.status === 'pending') booking.transitionTo('bidding');
     await booking.save();
@@ -423,7 +472,7 @@ router.patch(
 router.patch(
   '/:id/confirm-delivery',
   restrictTo('client', 'admin'),
-  bookingIdSchema,
+  confirmDeliverySchema,
   validate,
   async (req, res, next) => {
     try {
@@ -444,6 +493,9 @@ router.patch(
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
       if (!canConfirmDelivery(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
 
+      assertDeliveryGeofence(booking, req.body.location);
+      assertDeliveryProofForDelivery(booking);
+      if (req.body.location) booking.tracking.push(req.body.location);
       booking.transitionTo('delivered');
       booking.deliveredAt = new Date();
       await booking.save();
@@ -549,6 +601,10 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
     if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
 
+    if (req.body.status === 'delivered') {
+      assertDeliveryGeofence(booking, req.body.location);
+      assertDeliveryProofForDelivery(booking);
+    }
     if (req.body.status) booking.transitionTo(req.body.status);
     if (req.body.location) booking.tracking.push(req.body.location);
     await booking.save();

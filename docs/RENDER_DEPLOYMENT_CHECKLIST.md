@@ -180,6 +180,8 @@ You should see JSON response:
 { "status": "ok", "mode": "live", "database": "connected" }
 ```
 
+Current API health may also return `status: "OK"` with platform, version, and timestamp fields depending on deployment build.
+
 ### Step 5: Test Registration
 
 1. Go to `https://your-domain/app`
@@ -195,6 +197,16 @@ You should see JSON response:
 3. Upload a photo
 4. Should upload to Cloudinary (not fail)
 5. Photo appears with truck listing ✅
+
+### Step 7: Test Production Safeguards
+
+1. Approve required owner and truck documents as admin.
+2. Confirm only the approved owner/truck can submit bids.
+3. Create an LTL booking and confirm shared-capacity estimate output.
+4. Call the authenticated marketplace cluster endpoint.
+5. Upload POD or receiver confirmation before delivery completion.
+6. Confirm geofence blocking when destination coordinates exist and driver location is outside the allowed radius.
+7. Confirm admin payment release is blocked until delivery, escrow, and approved delivery proof are present.
 
 ---
 

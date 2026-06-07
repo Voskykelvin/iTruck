@@ -115,6 +115,40 @@ test('booking creation validates required flat payload fields', async () => {
   );
 });
 
+test('ltl booking creation stores shared-capacity fields and route key', async () => {
+  const res = await request(app).post('/api/bookings').set('Authorization', authHeader()).send({
+    pickup: 'Nairobi',
+    destination: 'Kisumu',
+    cargo: 'Retail cartons',
+    vehicleType: 'Lorry',
+    loadMode: 'ltl',
+    cargoWeightTonnes: 2,
+    destinationCoordinates: { lat: -0.0917, lng: 34.768 },
+    deliveryGeofenceMeters: 150
+  });
+
+  expect(res.status).toBe(201);
+  expect(res.body.booking.loadMode).toBe('ltl');
+  expect(res.body.booking.reservedCapacityTonnes).toBe(12);
+  expect(res.body.booking.consolidationEligible).toBe(true);
+  expect(res.body.booking.routeKey).toBe('nairobi:kisumu:lorry');
+  expect(res.body.booking.estimate.recommendedMode).toBe('route-cluster');
+});
+
+test('ltl bookings require cargo weight', async () => {
+  const res = await request(app).post('/api/bookings').set('Authorization', authHeader()).send({
+    pickup: 'Nairobi',
+    destination: 'Kisumu',
+    cargo: 'Retail cartons',
+    loadMode: 'ltl'
+  });
+
+  expect(res.status).toBe(422);
+  expect(res.body.errors).toEqual(
+    expect.arrayContaining([expect.objectContaining({ message: 'cargoWeightTonnes is required for LTL bookings' })])
+  );
+});
+
 test('notification read route rejects invalid object ids', async () => {
   const res = await request(app).patch('/api/notifications/not-an-id/read').set('Authorization', authHeader());
 
@@ -161,6 +195,19 @@ test('marketplace estimate validates required route fields', async () => {
 
   expect(res.status).toBe(422);
   expect(res.body.errors.map((error) => error.field)).toEqual(expect.arrayContaining(['pickup', 'destination']));
+});
+
+test('marketplace clusters require auth and support memory fallback', async () => {
+  const unauthenticated = await request(app).get('/api/marketplace/clusters');
+  expect(unauthenticated.status).toBe(401);
+
+  const res = await request(app)
+    .get('/api/marketplace/clusters?pickup=Nairobi&destination=Kisumu&vehicleType=Lorry')
+    .set('Authorization', authHeader());
+
+  expect(res.status).toBe(200);
+  expect(res.body.clusters).toEqual([]);
+  expect(res.body.mode).toBe('memory');
 });
 
 test('unknown api routes return json 404 instead of the frontend app', async () => {

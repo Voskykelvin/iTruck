@@ -49,6 +49,12 @@
 ### Functionality
 - [ ] Truck registration works (photo upload to Cloudinary)
 - [ ] Booking creation works
+- [ ] Owner bidding is blocked until owner and truck verification documents are approved
+- [ ] POD or receiver confirmation upload works before delivery completion
+- [ ] Delivery geofence blocks completion when destination coordinates exist and driver location is outside the allowed radius
+- [ ] Admin payment release is blocked until delivery, escrow, and approved delivery proof are present
+- [ ] LTL booking estimate returns shared-capacity pricing and route-cluster recommendation
+- [ ] Marketplace cluster endpoint responds for authenticated users
 - [ ] Notifications show (or fail gracefully)
 - [ ] Admin dashboard loads
 
@@ -73,6 +79,8 @@ These can wait, use demo/fallback until ready:
 - [ ] SMS notifications (Africa's Talking)
 - [ ] Email confirmations (SendGrid)
 - [ ] Maps (Google Maps API)
+- [ ] WhatsApp/SMS-assisted driver workflow
+- [ ] Full LTL dispatch allocation and multi-stop sequencing
 
 ---
 
