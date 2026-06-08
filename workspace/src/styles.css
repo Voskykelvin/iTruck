@@ -297,8 +297,7 @@ textarea {
   width: 100%;
 }
 
-.button-row,
-.quick-actions {
+.button-row {
   display: grid;
   gap: 10px;
 }
@@ -2039,8 +2038,7 @@ input[type='radio'] {
 }
 
 @media (min-width: 560px) {
-  .button-row,
-  .quick-actions {
+  .button-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -2253,7 +2251,6 @@ input[type='radio'] {
   }
 }
 
-
 .brand,
 .app-topbar h1,
 .intro-band h2,
@@ -2276,12 +2273,7 @@ input[type='radio'] {
 .intro-band {
   border-color: var(--line);
   background:
-    linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.98) 0%,
-      rgba(248, 245, 232, 0.96) 66%,
-      rgba(255, 206, 27, 0.16) 100%
-    ),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 245, 232, 0.96) 66%, rgba(255, 206, 27, 0.16) 100%),
     var(--surface);
 }
 
@@ -3311,8 +3303,7 @@ input[type='radio'] {
   transition: background 0.12s ease;
 }
 
-.global-search-result:hover,
-.global-search-result.focused {
+.global-search-result:hover {
   background: var(--surface-2);
 }
 
@@ -3454,10 +3445,6 @@ input[type='radio'] {
   text-transform: uppercase;
 }
 
-.bid-comparison th.sort-active {
-  color: var(--brand-dark);
-}
-
 .bid-comparison th button {
   display: flex;
   align-items: center;
@@ -3588,8 +3575,7 @@ input[type='radio'] {
   display: none;
 }
 
-.app-shell.signed-out
-  :where(.workspace-layout, .booking-grid, .market-layout, .tracking-layout, .profile-layout) {
+.app-shell.signed-out :where(.workspace-layout, .booking-grid, .market-layout, .tracking-layout, .profile-layout) {
   width: min(920px, 100%);
   max-width: none;
   grid-template-columns: 1fr;
