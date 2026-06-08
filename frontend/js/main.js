@@ -188,7 +188,7 @@ function createParticles() {
   if (!container) return;
   for (let i = 0; i < 18; i += 1) {
     const particle = document.createElement('i');
-    particle.style.cssText = `position:absolute;width:3px;height:3px;border-radius:50%;background:rgba(245,158,11,.56);left:${Math.random() * 100}%;top:${Math.random() * 100}%;opacity:.58`;
+    particle.style.cssText = `position:absolute;width:3px;height:3px;border-radius:50%;background:rgba(255,206,27,.56);left:${Math.random() * 100}%;top:${Math.random() * 100}%;opacity:.58`;
     container.appendChild(particle);
   }
 }
