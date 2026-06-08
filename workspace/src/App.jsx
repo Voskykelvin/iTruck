@@ -6563,21 +6563,21 @@ function OnboardingBanner({ user, role, fleet = [], shipments = [] }) {
   return (
     <div className="onboarding-banner">
       <div className="onboarding-banner-head">
-        <strong>Complete your profile — {pct}% done</strong>
+        <strong>Complete your profile - {pct}% done</strong>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span>
             {doneCount}/{total} steps
           </span>
           <button
+            className="dismiss-button"
             type="button"
-            style={{ background: 'transparent', color: 'var(--muted)', fontSize: 18, lineHeight: 1, padding: 0 }}
             onClick={() => {
               setDismissed(true);
               localStorage.setItem('itruck_onboarding_dismissed', '1');
             }}
             aria-label="Dismiss"
           >
-            ×
+            x
           </button>
         </div>
       </div>

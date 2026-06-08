@@ -145,9 +145,9 @@ textarea {
   gap: 11px;
   min-height: 46px;
   padding: 0 12px;
-  border: 1px solid transparent;
+  border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: transparent;
+  background: var(--surface);
   color: var(--muted);
   font-weight: 700;
   text-align: left;
@@ -223,6 +223,7 @@ textarea {
   justify-content: center;
   min-height: 44px;
   padding: 0 15px;
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   font-weight: 800;
   text-align: center;
@@ -234,12 +235,14 @@ textarea {
 }
 
 .primary {
+  border-color: rgba(3, 45, 31, 0.46);
   background: var(--brand);
   color: #ffffff;
   box-shadow: 0 10px 24px rgba(6, 64, 43, 0.2);
 }
 
 .primary:hover {
+  border-color: rgba(3, 45, 31, 0.62);
   background: var(--brand-dark);
   box-shadow: 0 14px 30px rgba(6, 64, 43, 0.24);
 }
@@ -269,8 +272,9 @@ textarea {
 
 .text-button {
   min-height: 36px;
-  padding: 0;
-  background: transparent;
+  padding: 0 11px;
+  border-color: var(--mustard-border);
+  background: var(--mustard-soft);
   color: var(--mustard-dark);
 }
 
@@ -622,7 +626,7 @@ textarea {
 .doc-list > :is(span, button) {
   min-height: 48px;
   padding: 12px;
-  border: 1px solid transparent;
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #f7fbf2;
   color: var(--ink);
@@ -1966,14 +1970,16 @@ input[type='radio'] {
   min-height: 50px;
   place-items: center;
   gap: 2px;
+  border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: transparent;
+  background: var(--surface);
   color: var(--muted);
   font-size: 11px;
   font-weight: 800;
 }
 
 .mobile-bottom-nav button.active {
+  border-color: var(--mustard-border);
   background: var(--mustard-soft);
   color: var(--mustard-dark);
 }
@@ -2661,8 +2667,11 @@ input[type='radio'] {
 }
 
 .notif-header button {
-  padding: 0;
-  background: transparent;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
   color: var(--brand-dark);
   font-size: 12px;
   font-weight: 800;
@@ -2999,6 +3008,26 @@ input[type='radio'] {
   font-size: 13px;
 }
 
+.dismiss-button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.dismiss-button:hover {
+  border-color: var(--brand-border);
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+}
+
 .onboarding-steps {
   display: flex;
   gap: 6px;
@@ -3295,9 +3324,12 @@ input[type='radio'] {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
-  padding: 10px 16px;
-  background: transparent;
+  width: calc(100% - 16px);
+  margin: 4px 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   text-align: left;
   cursor: pointer;
   transition: background 0.12s ease;
@@ -3449,11 +3481,14 @@ input[type='radio'] {
   display: flex;
   align-items: center;
   gap: 4px;
-  background: transparent;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   color: inherit;
   font: inherit;
   cursor: pointer;
-  padding: 0;
 }
 
 .bid-comparison td {
