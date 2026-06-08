@@ -28,5 +28,5 @@ jobs:
             workspace/package-lock.json
       - run: npm ci
       - run: npm ci --prefix backend
-      - run: npm ci --prefix workspace
+      - run: npm ci --include=dev --prefix workspace
       - run: npm run ci:check
