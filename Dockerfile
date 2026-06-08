@@ -1,7 +1,7 @@
 FROM node:22-alpine AS app-build
 WORKDIR /app
 COPY workspace/package*.json ./workspace/
-RUN cd workspace && npm ci
+RUN cd workspace && npm ci --include=dev
 COPY workspace ./workspace
 RUN cd workspace && npm run build
 
