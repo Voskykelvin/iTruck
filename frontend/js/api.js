@@ -280,7 +280,7 @@ window.API = new ITruckAPI();
     root.dataset.theme = theme;
     localStorage.setItem('itruck_theme', theme);
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', theme === 'light' ? '#F8FAFC' : '#0A0F1E');
+    if (meta) meta.setAttribute('content', theme === 'light' ? '#EDE8D0' : '#06402B');
     document.querySelectorAll('[data-theme-choice]').forEach((btn) => {
       const active = btn.dataset.themeChoice === theme;
       btn.classList.toggle('active', active);

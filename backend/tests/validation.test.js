@@ -116,16 +116,19 @@ test('booking creation validates required flat payload fields', async () => {
 });
 
 test('ltl booking creation stores shared-capacity fields and route key', async () => {
-  const res = await request(app).post('/api/bookings').set('Authorization', authHeader()).send({
-    pickup: 'Nairobi',
-    destination: 'Kisumu',
-    cargo: 'Retail cartons',
-    vehicleType: 'Lorry',
-    loadMode: 'ltl',
-    cargoWeightTonnes: 2,
-    destinationCoordinates: { lat: -0.0917, lng: 34.768 },
-    deliveryGeofenceMeters: 150
-  });
+  const res = await request(app)
+    .post('/api/bookings')
+    .set('Authorization', authHeader())
+    .send({
+      pickup: 'Nairobi',
+      destination: 'Kisumu',
+      cargo: 'Retail cartons',
+      vehicleType: 'Lorry',
+      loadMode: 'ltl',
+      cargoWeightTonnes: 2,
+      destinationCoordinates: { lat: -0.0917, lng: 34.768 },
+      deliveryGeofenceMeters: 150
+    });
 
   expect(res.status).toBe(201);
   expect(res.body.booking.loadMode).toBe('ltl');

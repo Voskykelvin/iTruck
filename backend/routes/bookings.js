@@ -672,7 +672,9 @@ async function appendTrackingUpdates(req, res, next, updates) {
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
       if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
       if (!trackingAllowed(booking)) {
-        return res.status(409).json({ message: 'Tracking updates are only accepted for confirmed or in-transit bookings' });
+        return res
+          .status(409)
+          .json({ message: 'Tracking updates are only accepted for confirmed or in-transit bookings' });
       }
 
       pushMemoryTracking(booking, updates);
@@ -684,7 +686,9 @@ async function appendTrackingUpdates(req, res, next, updates) {
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
     if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
     if (!trackingAllowed(booking)) {
-      return res.status(409).json({ message: 'Tracking updates are only accepted for confirmed or in-transit bookings' });
+      return res
+        .status(409)
+        .json({ message: 'Tracking updates are only accepted for confirmed or in-transit bookings' });
     }
 
     const query = { _id: booking._id, status: { $in: ['confirmed', 'in_transit'] } };

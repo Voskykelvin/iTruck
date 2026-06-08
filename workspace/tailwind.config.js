@@ -4,22 +4,24 @@ export default {
   theme: {
     extend: {
       colors: {
-        lime: {
-          50: '#f7fee7',
-          100: '#ecfccb',
-          200: '#d9f99d',
-          300: '#bef264',
-          400: '#a3e635',
-          500: '#84cc16',
-          600: '#65a30d',
-          700: '#4d7c0f',
-          800: '#3f6212',
-          900: '#365314'
+        brand: {
+          50: '#f8f5e8',
+          100: '#ede8d0',
+          200: '#cdd5c6',
+          300: '#8fa797',
+          400: '#4d7f65',
+          500: '#0b5a3f',
+          600: '#06402b',
+          700: '#053622',
+          800: '#032d1f',
+          900: '#021f15'
         },
-        ink: '#132205',
-        muted: '#58743a',
+        mustard: '#ffce1b',
+        beige: '#ede8d0',
+        ink: '#07251a',
+        muted: '#5f7168',
         surface: '#ffffff',
-        'surface-2': '#f0fdf4'
+        'surface-2': '#f3eedb'
       },
       fontFamily: {
         main: ['Inter', 'system-ui', 'sans-serif'],

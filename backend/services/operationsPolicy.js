@@ -6,7 +6,13 @@ const {
 } = require('../utils/documentTypes');
 
 const OWNER_REQUIRED_DOCUMENTS = ['owner-kyc', 'driver-id', 'business-registration', 'insurance'];
-const TRUCK_REQUIRED_DOCUMENTS = ['vehicle-photos', 'insurance', 'vehicle-logbook', 'road-license', 'inspection-report'];
+const TRUCK_REQUIRED_DOCUMENTS = [
+  'vehicle-photos',
+  'insurance',
+  'vehicle-logbook',
+  'road-license',
+  'inspection-report'
+];
 const DELIVERY_PROOF_DOCUMENTS = ['pod', 'receiver-confirmation'];
 const DEFAULT_DELIVERY_GEOFENCE_METERS = 100;
 
@@ -44,8 +50,7 @@ function geoDistanceMeters(left, right) {
   const lat1 = toRad(from.lat);
   const lat2 = toRad(to.lat);
   const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
   return Math.round(earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
@@ -66,10 +71,8 @@ function missingApprovedDocuments(documents = [], requiredTypes = [], normalizeT
 function assertOwnerCanBid(owner, truck) {
   if (!owner || owner.role !== 'owner') return;
 
-  const missingOwnerDocuments = missingApprovedDocuments(
-    owner.documents || [],
-    OWNER_REQUIRED_DOCUMENTS,
-    (type) => normalizeProfileDocumentType(type, 'owner')
+  const missingOwnerDocuments = missingApprovedDocuments(owner.documents || [], OWNER_REQUIRED_DOCUMENTS, (type) =>
+    normalizeProfileDocumentType(type, 'owner')
   );
   if (owner.isVerified !== true || missingOwnerDocuments.length) {
     throw new AppError('Complete owner verification before bidding', 403, {
