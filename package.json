@@ -2,6 +2,9 @@
   "name": "itruck",
   "version": "1.0.0",
   "description": "iTruck Africa premium logistics platform",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "start": "npm --prefix backend start",
     "dev": "npm --prefix backend run dev",

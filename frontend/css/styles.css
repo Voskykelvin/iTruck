@@ -199,6 +199,7 @@ html[data-theme='dark'] .navbar {
   width: var(--touch-target);
   height: var(--touch-target);
   place-items: center;
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--ink);
@@ -637,6 +638,7 @@ html[data-theme='dark'] .navbar {
   right: 12px;
   width: 34px;
   height: 34px;
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface-soft);
   color: var(--ink);
