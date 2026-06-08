@@ -5,8 +5,8 @@
   "start_url": "/app/shipper",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#F8FAFC",
-  "theme_color": "#22C55E",
+  "background_color": "#EDE8D0",
+  "theme_color": "#06402B",
   "icons": [
     {
       "src": "/assets/icon-192.png",

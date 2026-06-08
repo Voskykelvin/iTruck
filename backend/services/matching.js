@@ -182,7 +182,8 @@ function buildEstimate(input = {}) {
     lineItems,
     total,
     confidence: missingFields.length ? 'medium' : risk === 'high' ? 'medium' : 'high',
-    recommendedMode: ltl.loadMode === 'ltl' ? 'route-cluster' : distance > 900 || crossBorder ? 'open-bids' : 'instant-match',
+    recommendedMode:
+      ltl.loadMode === 'ltl' ? 'route-cluster' : distance > 900 || crossBorder ? 'open-bids' : 'instant-match',
     routeRisk: risk,
     requiredDocuments: requiredDocuments({ crossBorder, requirements, cargoValue }),
     warnings: missingFields.map((field) => `${field} missing may change carrier pricing`),

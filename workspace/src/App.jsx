@@ -2037,15 +2037,21 @@ function LivePositionCard({ shipment }) {
       <div className="live-position-grid">
         <span>Speed</span>
         <strong>
-          {Number.isFinite(Number(animatedPoint?.speed)) ? `${Number(animatedPoint.speed).toFixed(1)} km/h` : shipment.speed}
+          {Number.isFinite(Number(animatedPoint?.speed))
+            ? `${Number(animatedPoint.speed).toFixed(1)} km/h`
+            : shipment.speed}
         </strong>
         <span>Heading</span>
         <strong>
-          {Number.isFinite(Number(animatedPoint?.heading)) ? `${Math.round(Number(animatedPoint.heading))} deg` : 'Pending'}
+          {Number.isFinite(Number(animatedPoint?.heading))
+            ? `${Math.round(Number(animatedPoint.heading))} deg`
+            : 'Pending'}
         </strong>
         <span>Accuracy</span>
         <strong>
-          {Number.isFinite(Number(animatedPoint?.accuracy)) ? `${Math.round(Number(animatedPoint.accuracy))} m` : 'Pending'}
+          {Number.isFinite(Number(animatedPoint?.accuracy))
+            ? `${Math.round(Number(animatedPoint.accuracy))} m`
+            : 'Pending'}
         </strong>
         <span>Updated</span>
         <strong>{hasPoint ? formatTrackingTime(animatedPoint) : 'No GPS yet'}</strong>
@@ -2247,7 +2253,9 @@ function DriverLiveTracker({ shipment, notify, onBookingUpdate }) {
         <span>Position</span>
         <strong>{lastPoint ? formatCoordinatePair(lastPoint) : 'No GPS yet'}</strong>
         <span>Accuracy</span>
-        <strong>{Number.isFinite(Number(lastPoint?.accuracy)) ? `${Math.round(Number(lastPoint.accuracy))} m` : 'Pending'}</strong>
+        <strong>
+          {Number.isFinite(Number(lastPoint?.accuracy)) ? `${Math.round(Number(lastPoint.accuracy))} m` : 'Pending'}
+        </strong>
         <span>Queued</span>
         <strong>{queuedCount}</strong>
       </div>
