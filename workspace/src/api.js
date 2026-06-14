@@ -202,6 +202,7 @@ export const api = {
   request,
   health: () => request('/health'),
   profile: () => request('/users/profile'),
+  updateProfile: (payload) => request('/users/profile', { method: 'PATCH', body: JSON.stringify(payload) }),
   estimate: (payload) => request('/marketplace/estimate', { method: 'POST', body: JSON.stringify(payload) }),
   listTrucks: () => request('/trucks'),
   fleetTrucks: () => request('/trucks/fleet'),

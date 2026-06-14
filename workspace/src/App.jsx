@@ -3401,6 +3401,52 @@ function OnboardingPage({ notify, user, setUser }) {
   usePollingEffect(role === 'owner', loadFleet, 30000);
 
   const profileDocs = profileDocumentsForRole(role);
+  const missingDocs = missingRequiredProfileDocuments(user, role);
+  const hasProfileBasics = Boolean(user?.firstName && user?.lastName && user?.phone && user?.country);
+  const workspaceQueue =
+    role === 'owner'
+      ? [
+          {
+            label: 'Complete owner details',
+            detail: hasProfileBasics ? 'Ready' : 'Add name, phone, and country',
+            done: hasProfileBasics,
+            path: '/app/profile?complete=details'
+          },
+          {
+            label: 'Upload verification docs',
+            detail: missingDocs.length ? `${missingDocs.length} still needed` : 'Submitted for review',
+            done: !missingDocs.length,
+            path: missingDocs[0] ? `/app/profile?document=${encodeURIComponent(missingDocs[0])}` : '/app/onboarding'
+          },
+          {
+            label: 'Register a vehicle',
+            detail: fleet.length
+              ? `${fleet.length} vehicle record${fleet.length === 1 ? '' : 's'}`
+              : 'Add plate, capacity, routes, and photos',
+            done: fleet.length > 0,
+            path: '/app/vehicles'
+          }
+        ]
+      : [
+          {
+            label: 'Complete shipper details',
+            detail: hasProfileBasics ? 'Ready' : 'Add name, phone, and country',
+            done: hasProfileBasics,
+            path: '/app/profile?complete=details'
+          },
+          {
+            label: 'Upload shipper documents',
+            detail: missingDocs.length ? `${missingDocs.length} still needed` : 'Submitted for review',
+            done: !missingDocs.length,
+            path: missingDocs[0] ? `/app/profile?document=${encodeURIComponent(missingDocs[0])}` : '/app/onboarding'
+          },
+          {
+            label: 'Create first booking',
+            detail: 'Open the booking form when docs are ready',
+            done: false,
+            path: '/app/book'
+          }
+        ];
 
   function openProfileDoc(documentType) {
     pendingDocRef.current = normalizeProfileDocumentType(documentType, role);
@@ -3645,24 +3691,28 @@ function OnboardingPage({ notify, user, setUser }) {
       </div>
 
       <aside className="side-stack">
-        <Panel title="Role Access" eyebrow="Workspace">
+        <Panel title={role === 'owner' ? 'Next Owner Steps' : 'Next Shipper Steps'} eyebrow="Workspace">
           <div className="doc-list compact">
-            {(roleNavigation[role] || roleNavigation.client).map((item) => (
-              <button type="button" key={item.path} onClick={() => navigate(item.path)}>
-                {item.label}
+            {workspaceQueue.map((item) => (
+              <button type="button" key={item.label} onClick={() => navigate(item.path)}>
+                <span className="queue-step-main">
+                  <span>{item.label}</span>
+                  <StatusBadge tone={item.done ? 'success' : 'warn'}>{item.done ? 'Done' : 'Next'}</StatusBadge>
+                </span>
+                <small>{item.detail}</small>
               </button>
             ))}
           </div>
         </Panel>
-        <Panel title={role === 'owner' ? 'Need To Ship?' : 'Own Trucks?'} eyebrow="Optional">
+        <Panel title={role === 'owner' ? 'Wanna Ship?' : 'Own Trucks?'} eyebrow="Optional">
           <div className="verification-card">
             <UserRound size={28} />
             <strong>{role === 'owner' ? 'Create a shipper profile' : 'Create an owner profile'}</strong>
-            <span>Keep each side separate so permissions, documents, and payments stay clean.</span>
+            <span>Run each side separately so permissions, documents, and payments stay clean.</span>
           </div>
           <a className="secondary full icon-label" href="/#signup">
             <UserRound size={18} />
-            <span>{role === 'owner' ? 'Start Shipping' : 'Register Fleet'}</span>
+            <span>{role === 'owner' ? 'Start shipping' : 'Register fleet'}</span>
           </a>
         </Panel>
       </aside>
@@ -5695,9 +5745,18 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
   const [pendingDocument, setPendingDocument] = useState('');
   const pendingDocumentRef = useRef('');
   const documentInputRef = useRef(null);
+  const profileDetailsRef = useRef(null);
   const signedIn = Boolean(user.email);
   const activeUserRole = roleForUser(user);
   const verificationItems = profileDocumentsForRole(activeUserRole);
+  const [profileDraft, setProfileDraft] = useState(() => ({
+    firstName: user.firstName || '',
+    lastName: user.lastName || '',
+    phone: user.phone || '',
+    country: user.country || '',
+    company: user.company || ''
+  }));
+  const [profileSaving, setProfileSaving] = useState(false);
 
   useCurrentUserPolling(signedIn, setUser, 30000);
 
@@ -5705,6 +5764,16 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
     pendingDocumentRef.current = item;
     setPendingDocument(item);
   }, []);
+
+  useEffect(() => {
+    setProfileDraft({
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+      phone: user.phone || '',
+      country: user.country || '',
+      company: user.company || ''
+    });
+  }, [user.company, user.country, user.email, user.firstName, user.lastName, user.phone]);
 
   useEffect(() => {
     const params = new URLSearchParams(route.split('?')[1] || '');
@@ -5730,6 +5799,17 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
     const timer = window.setTimeout(() => documentInputRef.current?.click(), 250);
     return () => window.clearTimeout(timer);
   }, [notify, route, selectPendingDocument, user.email]);
+
+  useEffect(() => {
+    const focusTarget = new URLSearchParams(route.split('?')[1] || '').get('complete');
+    if (focusTarget !== 'details' || !user.email) return;
+
+    const timer = window.setTimeout(() => {
+      profileDetailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      profileDetailsRef.current?.querySelector('input')?.focus();
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [route, user.email]);
 
   // Registration state
   const [regFirstName, setRegFirstName] = useState('');
@@ -5855,6 +5935,30 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
       notify(err.message);
     } finally {
       setUploadingDocument('');
+    }
+  }
+
+  function updateProfileDraft(key, value) {
+    setProfileDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  async function saveProfileDetails(event) {
+    event.preventDefault();
+    setProfileSaving(true);
+    try {
+      const payload = Object.fromEntries(
+        Object.entries(profileDraft).map(([key, value]) => [key, String(value || '').trim()])
+      );
+      const data = await api.updateProfile(payload);
+      if (data.user) {
+        setSession({ user: data.user });
+        setUser(data.user);
+      }
+      notify('Profile details updated');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setProfileSaving(false);
     }
   }
 
@@ -6048,6 +6152,45 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
           </div>
         )}
       </Panel>
+      {signedIn ? (
+        <div ref={profileDetailsRef}>
+          <Panel title="Profile Details" eyebrow="Completion">
+            <form className="modal-form" onSubmit={saveProfileDetails}>
+              <div className="form-grid">
+                <Input
+                  label="First name"
+                  value={profileDraft.firstName}
+                  onChange={(value) => updateProfileDraft('firstName', value)}
+                />
+                <Input
+                  label="Last name"
+                  value={profileDraft.lastName}
+                  onChange={(value) => updateProfileDraft('lastName', value)}
+                />
+                <Input
+                  label="Phone"
+                  value={profileDraft.phone}
+                  onChange={(value) => updateProfileDraft('phone', value)}
+                />
+                <Input
+                  label="Country"
+                  value={profileDraft.country}
+                  onChange={(value) => updateProfileDraft('country', value)}
+                />
+                <Input
+                  label="Company"
+                  value={profileDraft.company}
+                  onChange={(value) => updateProfileDraft('company', value)}
+                />
+              </div>
+              <button className="primary icon-label" type="submit" disabled={profileSaving}>
+                <CheckCircle2 size={18} />
+                <span>{profileSaving ? 'Saving...' : 'Save details'}</span>
+              </button>
+            </form>
+          </Panel>
+        </div>
+      ) : null}
       {signedIn && verificationItems.length ? (
         <Panel title="Verification" eyebrow="Trust">
           <input
@@ -6902,14 +7045,16 @@ function DocumentExpiryBanner({ user }) {
 /* ============================================================
    PROFILE COMPLETENESS SCORE
    ============================================================ */
-function ProfileCompletenessScore({ user }) {
+function ProfileCompletenessScore({ user, role }) {
+  const requiredDocuments = profileDocumentsForRole(role);
+  const missingDocuments = missingRequiredProfileDocuments(user, role);
   const fields = [
     user?.firstName,
     user?.lastName,
     user?.email,
     user?.phone,
     user?.country,
-    (user?.documents || []).some((d) => d.status === 'approved')
+    requiredDocuments.length ? missingDocuments.length === 0 : true
   ];
   const done = fields.filter(Boolean).length;
   const pct = Math.round((done / fields.length) * 100);
@@ -6920,9 +7065,16 @@ function ProfileCompletenessScore({ user }) {
   if (pct === 100) return null;
 
   const missing = [];
+  if (!user?.firstName) missing.push('first name');
+  if (!user?.lastName) missing.push('last name');
   if (!user?.phone) missing.push('phone number');
   if (!user?.country) missing.push('country');
-  if (!(user?.documents || []).some((d) => d.status === 'approved')) missing.push('verified document');
+  if (missingDocuments.length) missing.push(`${missingDocuments.length} verification document`);
+
+  const firstMissingDocument = missingDocuments[0];
+  const nextPath = firstMissingDocument
+    ? `/app/profile?document=${encodeURIComponent(firstMissingDocument)}`
+    : '/app/profile?complete=details';
 
   return (
     <div className="profile-score-wrap">
@@ -6941,9 +7093,9 @@ function ProfileCompletenessScore({ user }) {
         className="ghost"
         type="button"
         style={{ marginLeft: 'auto', minHeight: 34, padding: '0 12px', fontSize: 13 }}
-        onClick={() => navigate('/app/profile')}
+        onClick={() => navigate(nextPath)}
       >
-        Complete →
+        {firstMissingDocument ? 'Upload doc' : 'Complete'}
       </button>
     </div>
   );
@@ -7307,7 +7459,7 @@ function AppShell() {
         {user?.email && activeRole === 'owner' && <DocumentExpiryBanner user={user} />}
 
         {/* Profile completeness score on profile page */}
-        {route.startsWith('/app/profile') && user?.email && <ProfileCompletenessScore user={user} />}
+        {route.startsWith('/app/profile') && user?.email && <ProfileCompletenessScore user={user} role={activeRole} />}
 
         {page}
       </main>
