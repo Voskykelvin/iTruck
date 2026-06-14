@@ -175,7 +175,7 @@ function normalizeTrackingPoint(value = {}) {
 }
 
 function trackingAllowed(booking) {
-  return ['confirmed', 'in_transit'].includes(booking.status);
+  return ['confirmed', 'in_transit', 'delivery_pending'].includes(booking.status);
 }
 
 function pushMemoryTracking(booking, updates) {
@@ -620,6 +620,10 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
       if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
 
+      if (req.body.status === 'delivery_pending') {
+        assertDeliveryGeofence(booking, req.body.location);
+        assertDeliveryProofForDelivery(booking);
+      }
       if (req.body.status) {
         Booking.assertStatusTransition(booking.status, req.body.status);
         booking.status = req.body.status;
@@ -636,6 +640,10 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
     if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
 
+    if (req.body.status === 'delivery_pending') {
+      assertDeliveryGeofence(booking, req.body.location);
+      assertDeliveryProofForDelivery(booking);
+    }
     if (req.body.status === 'delivered') {
       assertDeliveryGeofence(booking, req.body.location);
       assertDeliveryProofForDelivery(booking);
@@ -674,7 +682,7 @@ async function appendTrackingUpdates(req, res, next, updates) {
       if (!trackingAllowed(booking)) {
         return res
           .status(409)
-          .json({ message: 'Tracking updates are only accepted for confirmed or in-transit bookings' });
+          .json({ message: 'Tracking updates are only accepted for active or handover-pending bookings' });
       }
 
       pushMemoryTracking(booking, updates);
@@ -688,10 +696,10 @@ async function appendTrackingUpdates(req, res, next, updates) {
     if (!trackingAllowed(booking)) {
       return res
         .status(409)
-        .json({ message: 'Tracking updates are only accepted for confirmed or in-transit bookings' });
+        .json({ message: 'Tracking updates are only accepted for active or handover-pending bookings' });
     }
 
-    const query = { _id: booking._id, status: { $in: ['confirmed', 'in_transit'] } };
+    const query = { _id: booking._id, status: { $in: ['confirmed', 'in_transit', 'delivery_pending'] } };
     if (req.user.role !== 'admin') query.owner = req.user._id;
 
     const updatedBooking = await Booking.findOneAndUpdate(

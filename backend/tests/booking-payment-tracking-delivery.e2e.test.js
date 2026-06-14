@@ -414,7 +414,7 @@ describe('booking to payment to tracking to delivery flow', () => {
 
     const uploadedCargoPhotos = await request(app)
       .patch(`/api/bookings/${bookingId}/documents/cargo-photos`)
-      .set('Authorization', `Bearer ${clientToken}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .send({
         url: 'https://example.com/cargo-photo-1.webp',
         urls: ['https://example.com/cargo-photo-1.webp', 'https://example.com/cargo-photo-2.webp'],
@@ -430,7 +430,7 @@ describe('booking to payment to tracking to delivery flow', () => {
 
     const uploadedPod = await request(app)
       .patch(`/api/bookings/${bookingId}/documents/pod`)
-      .set('Authorization', `Bearer ${clientToken}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
       .send({
         url: 'https://example.com/pod.pdf',
         fileName: 'pod.pdf',
@@ -441,6 +441,17 @@ describe('booking to payment to tracking to delivery flow', () => {
     expect(uploadedPod.body.booking.documents).toContainEqual(
       expect.objectContaining({ type: 'pod', status: 'pending', url: 'https://example.com/pod.pdf' })
     );
+
+    const handover = await request(app)
+      .patch(`/api/bookings/${bookingId}/status`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        status: 'delivery_pending',
+        location: { lat: 0.3476, lng: 32.5825, speed: 0, heading: 90 }
+      })
+      .expect(200);
+
+    expect(handover.body.booking.status).toBe('delivery_pending');
 
     const approvedPod = await request(app)
       .patch(`/api/admin/bookings/${bookingId}/documents/pod`)
@@ -484,7 +495,7 @@ describe('booking to payment to tracking to delivery flow', () => {
 
     expect(booking.status).toBe('delivered');
     expect(booking.paymentStatus).toBe('released');
-    expect(booking.tracking).toHaveLength(3);
+    expect(booking.tracking).toHaveLength(4);
     expect(booking.documents).toContainEqual(expect.objectContaining({ type: 'cargo-photos', status: 'pending' }));
     expect(booking.documents).toContainEqual(expect.objectContaining({ type: 'pod', status: 'approved' }));
     expect(clientWallet.balance).toBe(3750);

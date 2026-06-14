@@ -1,13 +1,23 @@
 const mongoose = require('mongoose');
 
-const STATUSES = ['pending', 'bidding', 'confirmed', 'in_transit', 'delivered', 'cancelled', 'disputed'];
+const STATUSES = [
+  'pending',
+  'bidding',
+  'confirmed',
+  'in_transit',
+  'delivery_pending',
+  'delivered',
+  'cancelled',
+  'disputed'
+];
 const PAYMENT_STATUSES = ['unpaid', 'pending', 'escrowed', 'release_pending', 'released', 'failed', 'refunded'];
 const LOAD_MODES = ['full-truck', 'ltl'];
 const STATUS_TRANSITIONS = {
   pending: ['bidding', 'cancelled', 'disputed'],
   bidding: ['confirmed', 'cancelled', 'disputed'],
   confirmed: ['in_transit', 'cancelled', 'disputed'],
-  in_transit: ['delivered', 'disputed'],
+  in_transit: ['delivery_pending', 'delivered', 'disputed'],
+  delivery_pending: ['delivered', 'disputed'],
   delivered: [],
   cancelled: [],
   disputed: []

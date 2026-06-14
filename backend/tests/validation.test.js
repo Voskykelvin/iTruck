@@ -193,6 +193,15 @@ test('receiver confirmation document route is available for synced bookings', as
   expect(res.headers['content-type']).toContain('application/pdf');
 });
 
+test('cargo value declaration document route is available for synced bookings', async () => {
+  const res = await request(app)
+    .get('/api/documents/cargo-value-declaration/ITK-2044')
+    .set('Authorization', authHeader());
+
+  expect(res.status).toBe(200);
+  expect(res.headers['content-type']).toContain('application/pdf');
+});
+
 test('marketplace estimate validates required route fields', async () => {
   const res = await request(app).post('/api/marketplace/estimate').send({ vehicleType: 'Lorry' });
 

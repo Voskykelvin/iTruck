@@ -23,7 +23,8 @@ const documentFactories = {
   customs: docs.createCustoms,
   'customs-declaration': docs.createCustoms,
   'receiver-confirmation': docs.createReceiverConfirmation,
-  'packing-list': docs.createPackingList
+  'packing-list': docs.createPackingList,
+  'cargo-value-declaration': docs.createCargoValueDeclaration
 };
 
 function streamPdf(res, filename, doc) {
@@ -266,6 +267,9 @@ router.get('/packing-list/:bookingId', bookingDocumentSchema, validate, (req, re
 );
 router.get('/customs/:bookingId', bookingDocumentSchema, validate, (req, res, next) =>
   renderDocument(req, res, next, 'customs', docs.createCustoms)
+);
+router.get('/cargo-value-declaration/:bookingId', bookingDocumentSchema, validate, (req, res, next) =>
+  renderDocument(req, res, next, 'cargo-value-declaration', docs.createCargoValueDeclaration)
 );
 
 module.exports = router;
