@@ -145,6 +145,25 @@ const documentActions = [
   { label: 'Customs declaration', type: 'customs', mode: 'download' }
 ];
 
+const deliveryProofTypes = ['pod', 'receiver-confirmation'];
+const deliveryEvidenceActions = [
+  {
+    label: 'Cargo photos',
+    type: 'cargo-photos',
+    detail: 'Pickup, loading, seal, and arrival condition photos.'
+  },
+  {
+    label: 'Proof of delivery',
+    type: 'pod',
+    detail: 'Signed POD, delivery note, or receiver dock stamp.'
+  },
+  {
+    label: 'Receiver confirmation',
+    type: 'receiver-confirmation',
+    detail: 'Receiver signature, name, or acceptance confirmation.'
+  }
+];
+
 function documentActionFor(label) {
   const normalized = String(label || '').toLowerCase();
   return (
@@ -311,6 +330,46 @@ function mergeDocumentLists(baseDocuments = [], indexedDocuments = [], targetTyp
   baseDocuments.forEach(addDocument);
   indexedDocuments.forEach(addDocument);
   return Array.from(byType.values());
+}
+
+function bookingDocumentsFrom(record = {}) {
+  return mergeDocumentLists(Array.isArray(record.documents) ? record.documents : [], [], 'booking', record);
+}
+
+function bookingDocumentFor(shipment, type) {
+  const expectedType = normalizeBookingDocumentType(type);
+  return (shipment?.bookingDocuments || []).find((doc) => normalizeBookingDocumentType(doc.type) === expectedType);
+}
+
+function documentHasFile(doc) {
+  return Boolean(doc?.url || (Array.isArray(doc?.urls) && doc.urls.length));
+}
+
+function shipmentDocumentStatus(shipment, type) {
+  const doc = bookingDocumentFor(shipment, type);
+  if (!documentHasFile(doc)) return 'missing';
+  return doc.status || 'pending';
+}
+
+function deliveryProofDocument(shipment, options = {}) {
+  const approvedOnly = options.approvedOnly === true;
+  return deliveryProofTypes
+    .map((type) => bookingDocumentFor(shipment, type))
+    .find((doc) => {
+      if (!documentHasFile(doc)) return false;
+      if (approvedOnly) return doc.status === 'approved';
+      return !['rejected', 'expired'].includes(doc.status);
+    });
+}
+
+function hasDeliveryProof(shipment, options = {}) {
+  return Boolean(deliveryProofDocument(shipment, options));
+}
+
+function hasDestinationCoordinates(shipment) {
+  return [shipment?.destinationCoordinates?.lat, shipment?.destinationCoordinates?.lng].every((value) =>
+    Number.isFinite(Number(value))
+  );
 }
 
 function mergeDocumentIndex(records = [], indexedDocuments = [], targetType) {
@@ -609,6 +668,7 @@ function normalizeBookingShipment(booking) {
   const progress = Number(booking.progress || progressForStatus(booking.status));
   const hasLatestCoordinates = [latest.lat, latest.lng].every((value) => Number.isFinite(Number(value)));
   const latestSpeed = Number(latest.speed);
+  const bookingDocuments = bookingDocumentsFrom(booking);
 
   return {
     id: bookingRef(booking),
@@ -634,6 +694,10 @@ function normalizeBookingShipment(booking) {
     amount: bookingPaymentAmount(booking),
     paymentReference: booking.paymentReference || '',
     documents: booking.estimate?.requiredDocuments || demoDocuments.slice(0, 3),
+    bookingDocuments,
+    destinationCoordinates: booking.destinationCoordinates,
+    deliveryGeofenceMeters: booking.deliveryGeofenceMeters,
+    deliveredAt: booking.deliveredAt,
     bids: Array.isArray(booking.bids) ? booking.bids.map(normalizeBid) : [],
     tracking
   };
@@ -2279,6 +2343,111 @@ function DriverLiveTracker({ shipment, notify, onBookingUpdate }) {
   );
 }
 
+function DeliveryReadinessPanel({ shipment, activeRole, busyType, onUpload, onConfirmDelivery }) {
+  const rawStatus = shipment?.rawStatus || 'pending';
+  const tripStarted = ['in_transit', 'delivered'].includes(rawStatus);
+  const delivered = rawStatus === 'delivered';
+  const destinationNeedsGps = hasDestinationCoordinates(shipment);
+  const gpsReady = !destinationNeedsGps || Boolean(latestTrackingPoint(shipment)) || delivered;
+  const proofDoc = deliveryProofDocument(shipment);
+  const proofStatus = proofDoc?.status || (proofDoc ? 'pending' : 'missing');
+  const proofMeta = documentStatusMeta(proofStatus);
+  const proofReady = Boolean(proofDoc);
+  const approvedProof = hasDeliveryProof(shipment, { approvedOnly: true });
+  const canManageEvidence = ['client', 'admin'].includes(activeRole) && Boolean(shipment?.bookingId);
+  const canConfirm = canManageEvidence && rawStatus === 'in_transit' && proofReady && gpsReady;
+  const releaseReady = delivered && shipment?.paymentStatus === 'escrowed' && approvedProof;
+  const releaseComplete = shipment?.paymentStatus === 'released';
+  const steps = [
+    {
+      label: 'Carrier movement',
+      value: delivered ? 'Delivered' : tripStarted ? 'In transit' : statusLabel(rawStatus),
+      tone: delivered || tripStarted ? 'success' : rawStatus === 'confirmed' ? 'warn' : 'default'
+    },
+    {
+      label: 'Driver location',
+      value: gpsReady ? (destinationNeedsGps ? 'GPS captured' : 'No geofence') : 'GPS needed',
+      tone: gpsReady ? 'success' : 'warn'
+    },
+    {
+      label: 'Delivery proof',
+      value: proofReady ? proofMeta.text : 'POD needed',
+      tone: proofReady ? proofMeta.tone : 'warn'
+    },
+    {
+      label: 'Payment release',
+      value: releaseComplete
+        ? 'Released'
+        : releaseReady
+          ? 'Ready'
+          : approvedProof
+            ? 'After delivery'
+            : 'After approval',
+      tone: releaseComplete || releaseReady ? 'success' : approvedProof ? 'warn' : 'default'
+    }
+  ];
+
+  return (
+    <div className="delivery-readiness">
+      <div className="delivery-readiness-head">
+        <div>
+          <p className="eyebrow">Delivery Closeout</p>
+          <strong>{delivered ? 'Delivery confirmed' : 'Evidence and confirmation'}</strong>
+        </div>
+        <StatusBadge tone={canConfirm || delivered ? 'success' : 'warn'}>
+          {delivered ? 'Closed' : canConfirm ? 'Ready' : 'Open'}
+        </StatusBadge>
+      </div>
+
+      <div className="delivery-steps">
+        {steps.map((step) => (
+          <div className="delivery-step" key={step.label}>
+            <span>{step.label}</span>
+            <StatusBadge tone={step.tone}>{step.value}</StatusBadge>
+          </div>
+        ))}
+      </div>
+
+      <div className="delivery-evidence-list">
+        {deliveryEvidenceActions.map((action) => (
+          <div className="delivery-evidence-item" key={action.type}>
+            <DocumentSlotButton
+              label={action.label}
+              status={shipmentDocumentStatus(shipment, action.type)}
+              busy={busyType === action.type}
+              busyText="Uploading..."
+              disabled={!canManageEvidence || delivered}
+              onClick={() => onUpload(action)}
+              labels={{
+                missing: action.type === 'cargo-photos' ? 'Upload' : 'Required',
+                pending: 'Review',
+                approved: 'Approved'
+              }}
+            />
+            <small>{action.detail}</small>
+          </div>
+        ))}
+      </div>
+
+      {activeRole === 'owner' ? (
+        <p className="muted-note">
+          Driver updates and cargo evidence stay visible here; the shipper confirms delivery after receiver proof is
+          attached.
+        </p>
+      ) : (
+        <button
+          className="primary full"
+          type="button"
+          disabled={!canConfirm || Boolean(busyType)}
+          onClick={onConfirmDelivery}
+        >
+          {delivered ? 'Delivery Confirmed' : 'Confirm Delivery'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function TrackingPage({ notify, route, user }) {
   const activeRole = roleForUser(user);
   const [selected, setSelected] = useState(0);
@@ -2288,7 +2457,10 @@ function TrackingPage({ notify, route, user }) {
   const [ratingBusy, setRatingBusy] = useState(false);
   const [issueModalOpen, setIssueModalOpen] = useState(false);
   const [issueBusy, setIssueBusy] = useState(false);
+  const [deliveryBusyType, setDeliveryBusyType] = useState('');
   const chatInputRef = useRef(null);
+  const deliveryUploadInputRef = useRef(null);
+  const deliveryUploadRef = useRef(null);
 
   const trackingParams = useMemo(() => new URLSearchParams(route.split('?')[1] || ''), [route]);
   const routeShipment = trackingParams.get('shipment');
@@ -2416,9 +2588,69 @@ function TrackingPage({ notify, route, user }) {
     }
   }
 
+  function requestDeliveryEvidenceUpload(action) {
+    if (!shipment?.bookingId) {
+      notify('Open a synced booking before uploading delivery evidence');
+      return;
+    }
+    if (!['client', 'admin'].includes(activeRole)) {
+      notify('The shipper uploads delivery evidence for this booking');
+      return;
+    }
+    if (shipment.rawStatus === 'delivered') {
+      notify('Delivery evidence is locked after delivery confirmation');
+      return;
+    }
+
+    deliveryUploadRef.current = { action, shipment };
+    deliveryUploadInputRef.current?.click();
+  }
+
+  async function uploadDeliveryEvidence(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+
+    const target = deliveryUploadRef.current?.shipment || shipment;
+    const action = deliveryUploadRef.current?.action || deliveryEvidenceActions[0];
+    if (!target?.bookingId) return;
+
+    const documentType = normalizeBookingDocumentType(action.type);
+    setDeliveryBusyType(documentType);
+    try {
+      const data = await api.uploadBookingDocument(target.bookingId, documentType, files);
+      if (data.booking) upsertBookingShipment(data.booking);
+      notify(`${action.label} uploaded for ${target.id}`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setDeliveryBusyType('');
+    }
+  }
+
   async function confirmDelivery() {
     if (!shipment?.bookingId) {
       notify('Delivery confirmation needs a synced booking');
+      return;
+    }
+    if (!['client', 'admin'].includes(activeRole)) {
+      notify('The shipper confirms delivery after receiver proof is attached');
+      return;
+    }
+    if (shipment.rawStatus === 'delivered') {
+      notify('Delivery is already confirmed');
+      return;
+    }
+    if (shipment.rawStatus !== 'in_transit') {
+      notify('Delivery confirmation opens after the carrier marks the shipment in transit');
+      return;
+    }
+    if (!hasDeliveryProof(shipment)) {
+      notify('Upload POD or receiver confirmation before confirming delivery');
+      return;
+    }
+    if (hasDestinationCoordinates(shipment) && !latestTrackingPoint(shipment)) {
+      notify('Driver GPS is required before delivery confirmation');
       return;
     }
 
@@ -2525,139 +2757,153 @@ function TrackingPage({ notify, route, user }) {
           : 'bidding');
 
   return (
-    <section className="tracking-layout">
-      <Panel title="Active Routes" eyebrow="Shipments">
-        <div className="tracking-list">
-          {shipments.map((item, index) => (
-            <button
-              className={index === selected ? 'active' : ''}
-              type="button"
-              key={item.id}
-              onClick={() => setSelected(index)}
-            >
-              <strong>{item.id}</strong>
-              <span>{item.route}</span>
-              <small>
-                {item.progress}% - {item.position}
-              </small>
-            </button>
-          ))}
-        </div>
-      </Panel>
-
-      <section className="map-panel">
-        <div className="map-toolbar">
-          <div>
-            <StatusBadge tone="success">{shipment.status}</StatusBadge>
-            <strong>{shipment.route}</strong>
-          </div>
-          <button className="ghost icon-label" type="button" onClick={shareTrackingLink}>
-            <MessageSquare size={18} />
-            <span>Share</span>
-          </button>
-        </div>
-        <iframe title="Shipment route" src={mapUrl} loading="lazy" />
-        <div className="map-status">
-          <LivePositionCard shipment={shipment} />
-          <small>
-            <Navigation size={14} />
-            ETA {shipment.eta}
-          </small>
-        </div>
-      </section>
-
-      <aside className="tracking-side">
-        <Panel title="Shipment Detail" eyebrow="Control">
-          <div className="facts-grid">
-            <span>Driver</span>
-            <strong>{shipment.driver}</strong>
-            <span>Cargo</span>
-            <strong>{shipment.cargo}</strong>
-            <span>Vehicle</span>
-            <strong>
-              {shipment.vehicle} - {shipment.plate}
-            </strong>
-            <span>Payment</span>
-            <strong>{shipment.payment}</strong>
-          </div>
-          <div className="progress">
-            <span style={{ width: `${shipment.progress}%` }} />
-          </div>
-          {activeRole === 'owner' ? (
-            <DriverLiveTracker shipment={shipment} notify={notify} onBookingUpdate={upsertBookingShipment} />
-          ) : null}
-          <ShipmentTimeline rawStatus={timelineStatus} tracking={shipment.tracking || []} />
-          <div className="doc-list compact">
-            {shipment.documents.map((item) => (
-              <span key={item}>{item}</span>
+    <>
+      <input
+        ref={deliveryUploadInputRef}
+        type="file"
+        accept={documentUploadAccept}
+        multiple
+        onChange={uploadDeliveryEvidence}
+        style={{ display: 'none' }}
+      />
+      <section className="tracking-layout">
+        <Panel title="Active Routes" eyebrow="Shipments">
+          <div className="tracking-list">
+            {shipments.map((item, index) => (
+              <button
+                className={index === selected ? 'active' : ''}
+                type="button"
+                key={item.id}
+                onClick={() => setSelected(index)}
+              >
+                <strong>{item.id}</strong>
+                <span>{item.route}</span>
+                <small>
+                  {item.progress}% - {item.position}
+                </small>
+              </button>
             ))}
           </div>
-          <div className="stack-actions">
-            <button className="primary" type="button" onClick={confirmDelivery}>
-              Confirm Delivery
-            </button>
-            <button
-              className="secondary"
-              type="button"
-              onClick={() => navigate(`/app/tracking?shipment=${encodeURIComponent(shipment.id)}&contact=driver`)}
-            >
-              Contact Driver
-            </button>
-            <button className="ghost" type="button" onClick={() => setIssueModalOpen(true)}>
-              Report Issue
+        </Panel>
+
+        <section className="map-panel">
+          <div className="map-toolbar">
+            <div>
+              <StatusBadge tone="success">{shipment.status}</StatusBadge>
+              <strong>{shipment.route}</strong>
+            </div>
+            <button className="ghost icon-label" type="button" onClick={shareTrackingLink}>
+              <MessageSquare size={18} />
+              <span>Share</span>
             </button>
           </div>
-          <div className="rating-panel">
-            <strong>{ratingTitle}</strong>
-            <span>
-              {shipment.rawStatus === 'delivered'
-                ? 'Ratings are recorded against this completed booking.'
-                : 'Ratings unlock after delivery is confirmed.'}
-            </span>
-            <div className="rating-strip" aria-label={ratingTitle}>
-              {[1, 2, 3, 4, 5].map((score) => (
-                <button
-                  type="button"
-                  key={score}
-                  disabled={ratingBusy || shipment.rawStatus !== 'delivered'}
-                  onClick={() => submitShipmentRating(score)}
-                  aria-label={`${ratingTitle} ${score} out of 5`}
-                >
-                  {score}
-                </button>
+          <iframe title="Shipment route" src={mapUrl} loading="lazy" />
+          <div className="map-status">
+            <LivePositionCard shipment={shipment} />
+            <small>
+              <Navigation size={14} />
+              ETA {shipment.eta}
+            </small>
+          </div>
+        </section>
+
+        <aside className="tracking-side">
+          <Panel title="Shipment Detail" eyebrow="Control">
+            <div className="facts-grid">
+              <span>Driver</span>
+              <strong>{shipment.driver}</strong>
+              <span>Cargo</span>
+              <strong>{shipment.cargo}</strong>
+              <span>Vehicle</span>
+              <strong>
+                {shipment.vehicle} - {shipment.plate}
+              </strong>
+              <span>Payment</span>
+              <strong>{shipment.payment}</strong>
+            </div>
+            <div className="progress">
+              <span style={{ width: `${shipment.progress}%` }} />
+            </div>
+            {activeRole === 'owner' ? (
+              <DriverLiveTracker shipment={shipment} notify={notify} onBookingUpdate={upsertBookingShipment} />
+            ) : null}
+            <ShipmentTimeline rawStatus={timelineStatus} tracking={shipment.tracking || []} />
+            <div className="doc-list compact">
+              {shipment.documents.map((item) => (
+                <span key={item}>{item}</span>
               ))}
             </div>
-          </div>
-        </Panel>
-
-        <Panel title="Driver Chat" eyebrow="In-house Text">
-          <div className="chat-thread">
-            {messages.map((message) => (
-              <ChatBubble message={message} key={message.id} />
-            ))}
-          </div>
-          <form className="chat-compose" onSubmit={sendChatMessage}>
-            <input
-              ref={chatInputRef}
-              value={draftMessage}
-              onChange={(event) => setDraftMessage(event.target.value)}
-              placeholder="Type a message..."
+            <DeliveryReadinessPanel
+              shipment={shipment}
+              activeRole={activeRole}
+              busyType={deliveryBusyType}
+              onUpload={requestDeliveryEvidenceUpload}
+              onConfirmDelivery={confirmDelivery}
             />
-            <button className="primary" type="submit" aria-label="Send message">
-              <Send size={18} />
-            </button>
-          </form>
-        </Panel>
-      </aside>
-      {issueModalOpen ? (
-        <ReportIssueModal
-          shipment={shipment}
-          busy={issueBusy}
-          onClose={() => setIssueModalOpen(false)}
-          onSubmit={reportIssue}
-        />
-      ) : null}
-    </section>
+            <div className="stack-actions">
+              <button
+                className="secondary"
+                type="button"
+                onClick={() => navigate(`/app/tracking?shipment=${encodeURIComponent(shipment.id)}&contact=driver`)}
+              >
+                Contact Driver
+              </button>
+              <button className="ghost" type="button" onClick={() => setIssueModalOpen(true)}>
+                Report Issue
+              </button>
+            </div>
+            <div className="rating-panel">
+              <strong>{ratingTitle}</strong>
+              <span>
+                {shipment.rawStatus === 'delivered'
+                  ? 'Ratings are recorded against this completed booking.'
+                  : 'Ratings unlock after delivery is confirmed.'}
+              </span>
+              <div className="rating-strip" aria-label={ratingTitle}>
+                {[1, 2, 3, 4, 5].map((score) => (
+                  <button
+                    type="button"
+                    key={score}
+                    disabled={ratingBusy || shipment.rawStatus !== 'delivered'}
+                    onClick={() => submitShipmentRating(score)}
+                    aria-label={`${ratingTitle} ${score} out of 5`}
+                  >
+                    {score}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </Panel>
+
+          <Panel title="Driver Chat" eyebrow="In-house Text">
+            <div className="chat-thread">
+              {messages.map((message) => (
+                <ChatBubble message={message} key={message.id} />
+              ))}
+            </div>
+            <form className="chat-compose" onSubmit={sendChatMessage}>
+              <input
+                ref={chatInputRef}
+                value={draftMessage}
+                onChange={(event) => setDraftMessage(event.target.value)}
+                placeholder="Type a message..."
+              />
+              <button className="primary" type="submit" aria-label="Send message">
+                <Send size={18} />
+              </button>
+            </form>
+          </Panel>
+        </aside>
+        {issueModalOpen ? (
+          <ReportIssueModal
+            shipment={shipment}
+            busy={issueBusy}
+            onClose={() => setIssueModalOpen(false)}
+            onSubmit={reportIssue}
+          />
+        ) : null}
+      </section>
+    </>
   );
 }
 
