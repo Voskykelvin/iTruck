@@ -10,6 +10,7 @@ Date: 2026-05-25
 - Freightos user feedback is positive on quote comparison, booking, tracking, chat, and shipment management. Negative feedback clusters around surprise fees, unclear service inclusions, customs/document ambiguity, and hard-to-reach human support when shipments drift.
 - African logistics competitors such as Lori Systems and Kobo360 center their value on vetted transporters, rate certainty, cargo safety, real-time or periodic status updates, wallet/payment release, electronic delivery confirmation, and route/cost optimization.
 - Amitruck and similar East African freight marketplaces validate demand for direct shipper-to-transporter matching, but also show why iTruck needs stricter trust gates, document proof, payment-release discipline, and SME/LTL differentiation instead of being only a bid board.
+- 2026 delivery-proof research reinforced that a digital POD should capture receiver identity/signature or confirmation, timestamp, location/GPS, cargo condition photos, and notes. Sources reviewed: [Project44 POD overview](https://www.project44.com/resources/what-is-a-proof-of-delivery-pod-in-supply-chain/), [ShipBob POD confirmation guide](https://www.shipbob.com/blog/proof-of-delivery-confirmation/), [Planlogi ePOD guide](https://planlogi.com/proof-of-delivery), [Arrivy POD/ePOD guide](https://www.arrivy.com/blog/the-role-of-proof-of-delivery-document/), and [Maersk shipping documentation guidance](https://www.maersk.com/logistics-explained/shipping-documentation/2023/09/27/shipping-documents-us).
 
 ## Codebase Findings
 
@@ -33,6 +34,7 @@ Date: 2026-05-25
 - Added destination geofence checks for delivery completion and POD generation when destination coordinates are available.
 - Added LTL booking fields, shared-capacity estimates, route keys, and a protected marketplace route-clustering endpoint.
 - Added owner-controlled live GPS tracking endpoints, offline telemetry queueing, compressed batch sync, and booking-room realtime tracking updates.
+- Clarified delivery closeout in the app: cargo photos are shipper-uploaded evidence visible to the owner/admin, POD or receiver confirmation gates delivery confirmation, and approved delivery proof gates admin payment release.
 
 ## Regressive Or Deferred
 
