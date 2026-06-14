@@ -52,4 +52,9 @@ test('autoAssign returns a queued assignment record', async () => {
 test('booking status machine rejects skipped transitions', () => {
   expect(() => Booking.assertStatusTransition('pending', 'delivered')).toThrow('Invalid booking status transition');
   expect(() => Booking.assertStatusTransition('bidding', 'confirmed')).not.toThrow();
+  expect(() => Booking.assertStatusTransition('in_transit', 'delivery_pending')).not.toThrow();
+  expect(() => Booking.assertStatusTransition('delivery_pending', 'delivered')).not.toThrow();
+  expect(() => Booking.assertStatusTransition('delivery_pending', 'in_transit')).toThrow(
+    'Invalid booking status transition'
+  );
 });

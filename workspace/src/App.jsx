@@ -142,7 +142,8 @@ const documentActions = [
   { label: 'Receiver confirmation', type: 'receiver-confirmation', mode: 'download' },
   { label: 'Commercial invoice', type: 'invoice', mode: 'download' },
   { label: 'Packing list', type: 'packing-list', mode: 'download' },
-  { label: 'Customs declaration', type: 'customs', mode: 'download' }
+  { label: 'Customs declaration', type: 'customs', mode: 'download' },
+  { label: 'Cargo value declaration', type: 'cargo-value-declaration', mode: 'download' }
 ];
 
 const deliveryProofTypes = ['pod', 'receiver-confirmation'];
@@ -173,6 +174,21 @@ function documentActionFor(label) {
       mode: 'download'
     }
   );
+}
+
+function liveDocumentActionFor(label) {
+  const definition = documentActionFor(label);
+  if (['cargo-photos', 'pod', 'receiver-confirmation'].includes(definition.type)) {
+    return { ...definition, mode: 'upload' };
+  }
+  return definition;
+}
+
+function handoverDocumentActionsFor(shipment = {}) {
+  return [
+    ...(shipment.documents || []).map(liveDocumentActionFor),
+    ...deliveryEvidenceActions.map((item) => ({ ...item, mode: 'upload' }))
+  ].filter((definition, index, list) => list.findIndex((item) => item.type === definition.type) === index);
 }
 
 function routeFromLocation() {
@@ -656,6 +672,7 @@ function normalizeNotificationRecord(record = {}) {
 
 function progressForStatus(status = 'pending') {
   if (status === 'delivered') return 100;
+  if (status === 'delivery_pending') return 88;
   if (status === 'in_transit') return 64;
   if (status === 'confirmed') return 38;
   if (status === 'bidding') return 18;
@@ -870,7 +887,7 @@ function documentSlotBackground(status = 'missing') {
   if (status === 'approved') return 'rgba(132, 204, 22, 0.07)';
   if (status === 'pending') return 'rgba(245, 158, 11, 0.06)';
   if (status === 'rejected' || status === 'expired') return 'rgba(239, 68, 68, 0.05)';
-  return '#f8fafc';
+  return 'var(--document-slot-missing-bg)';
 }
 
 function DocumentSlotButton({
@@ -901,6 +918,7 @@ function DocumentSlotButton({
         borderRadius: 'var(--radius)',
         border: '1px solid var(--line)',
         background: documentSlotBackground(status),
+        color: 'var(--ink)',
         cursor: isDisabled ? 'default' : 'pointer',
         transition: 'border-color 0.15s, background 0.15s',
         ...style
@@ -2135,7 +2153,7 @@ function DriverLiveTracker({ shipment, notify, onBookingUpdate }) {
   const lastSentAtRef = useRef(0);
   const offlineNoticeRef = useRef(false);
   const bookingId = shipment?.bookingId;
-  const canTrack = Boolean(bookingId && ['confirmed', 'in_transit'].includes(shipment?.rawStatus));
+  const canTrack = Boolean(bookingId && ['confirmed', 'in_transit', 'delivery_pending'].includes(shipment?.rawStatus));
 
   const applyBooking = useCallback(
     (booking) => {
@@ -2343,9 +2361,10 @@ function DriverLiveTracker({ shipment, notify, onBookingUpdate }) {
   );
 }
 
-function DeliveryReadinessPanel({ shipment, activeRole, busyType, onUpload, onConfirmDelivery }) {
+function DeliveryReadinessPanel({ shipment, activeRole, busyType, onUpload, onConfirmDelivery, onEndTrip }) {
   const rawStatus = shipment?.rawStatus || 'pending';
-  const tripStarted = ['in_transit', 'delivered'].includes(rawStatus);
+  const deliveryPending = rawStatus === 'delivery_pending';
+  const tripStarted = ['in_transit', 'delivery_pending', 'delivered'].includes(rawStatus);
   const delivered = rawStatus === 'delivered';
   const destinationNeedsGps = hasDestinationCoordinates(shipment);
   const gpsReady = !destinationNeedsGps || Boolean(latestTrackingPoint(shipment)) || delivered;
@@ -2354,14 +2373,25 @@ function DeliveryReadinessPanel({ shipment, activeRole, busyType, onUpload, onCo
   const proofMeta = documentStatusMeta(proofStatus);
   const proofReady = Boolean(proofDoc);
   const approvedProof = hasDeliveryProof(shipment, { approvedOnly: true });
-  const canManageEvidence = ['client', 'admin'].includes(activeRole) && Boolean(shipment?.bookingId);
-  const canConfirm = canManageEvidence && rawStatus === 'in_transit' && proofReady && gpsReady;
+  const canManageEvidence = ['owner', 'client', 'admin'].includes(activeRole) && Boolean(shipment?.bookingId);
+  const canEndTrip = activeRole === 'owner' && rawStatus === 'in_transit' && proofReady && gpsReady;
+  const canConfirm =
+    ['client', 'admin'].includes(activeRole) &&
+    ['in_transit', 'delivery_pending'].includes(rawStatus) &&
+    proofReady &&
+    gpsReady;
   const releaseReady = delivered && shipment?.paymentStatus === 'escrowed' && approvedProof;
   const releaseComplete = shipment?.paymentStatus === 'released';
   const steps = [
     {
       label: 'Carrier movement',
-      value: delivered ? 'Delivered' : tripStarted ? 'In transit' : statusLabel(rawStatus),
+      value: delivered
+        ? 'Delivered'
+        : deliveryPending
+          ? 'Awaiting acceptance'
+          : tripStarted
+            ? 'In transit'
+            : statusLabel(rawStatus),
       tone: delivered || tripStarted ? 'success' : rawStatus === 'confirmed' ? 'warn' : 'default'
     },
     {
@@ -2375,14 +2405,18 @@ function DeliveryReadinessPanel({ shipment, activeRole, busyType, onUpload, onCo
       tone: proofReady ? proofMeta.tone : 'warn'
     },
     {
-      label: 'Payment release',
+      label: 'Shipper confirmation',
       value: releaseComplete
-        ? 'Released'
+        ? 'Closed'
         : releaseReady
-          ? 'Ready'
-          : approvedProof
-            ? 'After delivery'
-            : 'After approval',
+          ? 'Payment ready'
+          : delivered
+            ? 'Confirmed'
+            : deliveryPending
+              ? 'Pending'
+              : approvedProof
+                ? 'After arrival'
+                : 'After proof',
       tone: releaseComplete || releaseReady ? 'success' : approvedProof ? 'warn' : 'default'
     }
   ];
@@ -2430,10 +2464,26 @@ function DeliveryReadinessPanel({ shipment, activeRole, busyType, onUpload, onCo
       </div>
 
       {activeRole === 'owner' ? (
-        <p className="muted-note">
-          Driver updates and cargo evidence stay visible here; the shipper confirms delivery after receiver proof is
-          attached.
-        </p>
+        <>
+          <p className="muted-note">
+            Upload POD or receiver confirmation, then end the trip when the truck is at the delivery point. The shipper
+            still performs final delivery confirmation.
+          </p>
+          <button
+            className="primary full"
+            type="button"
+            disabled={!canEndTrip || Boolean(busyType)}
+            onClick={onEndTrip}
+          >
+            {busyType === 'end-trip'
+              ? 'Ending trip...'
+              : delivered
+                ? 'Trip Closed'
+                : deliveryPending
+                  ? 'Awaiting Shipper Confirmation'
+                  : 'End Trip'}
+          </button>
+        </>
       ) : (
         <button
           className="primary full"
@@ -2593,8 +2643,8 @@ function TrackingPage({ notify, route, user }) {
       notify('Open a synced booking before uploading delivery evidence');
       return;
     }
-    if (!['client', 'admin'].includes(activeRole)) {
-      notify('The shipper uploads delivery evidence for this booking');
+    if (!['owner', 'client', 'admin'].includes(activeRole)) {
+      notify('This profile cannot upload delivery evidence for this booking');
       return;
     }
     if (shipment.rawStatus === 'delivered') {
@@ -2604,6 +2654,31 @@ function TrackingPage({ notify, route, user }) {
 
     deliveryUploadRef.current = { action, shipment };
     deliveryUploadInputRef.current?.click();
+  }
+
+  async function downloadTrackingDocument(definition) {
+    if (!shipment?.bookingId) {
+      notify('Open a synced booking before downloading documents');
+      return;
+    }
+
+    setDeliveryBusyType(definition.type);
+    try {
+      await api.downloadDocument(definition.type, shipment.bookingId);
+      notify(`${definition.label} downloaded`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setDeliveryBusyType('');
+    }
+  }
+
+  function handleTrackingDocument(definition) {
+    if (definition.mode === 'upload') {
+      requestDeliveryEvidenceUpload(definition);
+      return;
+    }
+    downloadTrackingDocument(definition);
   }
 
   async function uploadDeliveryEvidence(event) {
@@ -2641,8 +2716,8 @@ function TrackingPage({ notify, route, user }) {
       notify('Delivery is already confirmed');
       return;
     }
-    if (shipment.rawStatus !== 'in_transit') {
-      notify('Delivery confirmation opens after the carrier marks the shipment in transit');
+    if (!['in_transit', 'delivery_pending'].includes(shipment.rawStatus)) {
+      notify('Delivery confirmation opens after the carrier starts or ends the trip');
       return;
     }
     if (!hasDeliveryProof(shipment)) {
@@ -2662,6 +2737,48 @@ function TrackingPage({ notify, route, user }) {
       notify('Delivery confirmed');
     } catch (err) {
       notify(err.message);
+    }
+  }
+
+  async function endTrip() {
+    if (!shipment?.bookingId) {
+      notify('End trip needs a synced booking');
+      return;
+    }
+    if (activeRole !== 'owner') {
+      notify('Only the carrier profile can end the trip');
+      return;
+    }
+    if (shipment.rawStatus === 'delivery_pending') {
+      notify('Trip is already awaiting shipper confirmation');
+      return;
+    }
+    if (shipment.rawStatus !== 'in_transit') {
+      notify('Start live tracking before ending the trip');
+      return;
+    }
+    if (!hasDeliveryProof(shipment)) {
+      notify('Upload POD or receiver confirmation before ending the trip');
+      return;
+    }
+    if (hasDestinationCoordinates(shipment) && !latestTrackingPoint(shipment)) {
+      notify('Driver GPS is required before ending the trip');
+      return;
+    }
+
+    setDeliveryBusyType('end-trip');
+    try {
+      const location = latestTrackingPoint(shipment);
+      const data = await api.updateBookingStatus(shipment.bookingId, {
+        status: 'delivery_pending',
+        ...(location ? { location } : {})
+      });
+      upsertBookingShipment(data.booking);
+      notify('Trip ended. Waiting for shipper delivery confirmation.');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setDeliveryBusyType('');
     }
   }
 
@@ -2755,6 +2872,7 @@ function TrackingPage({ notify, route, user }) {
         : shipment.progress >= 38
           ? 'confirmed'
           : 'bidding');
+  const liveDocumentDefinitions = handoverDocumentActionsFor(shipment);
 
   return (
     <>
@@ -2829,8 +2947,29 @@ function TrackingPage({ notify, route, user }) {
             ) : null}
             <ShipmentTimeline rawStatus={timelineStatus} tracking={shipment.tracking || []} />
             <div className="doc-list compact">
-              {shipment.documents.map((item) => (
-                <span key={item}>{item}</span>
+              {liveDocumentDefinitions.map((definition) => (
+                <DocumentSlotButton
+                  key={definition.type}
+                  label={definition.label}
+                  status={definition.mode === 'upload' ? shipmentDocumentStatus(shipment, definition.type) : 'missing'}
+                  busy={deliveryBusyType === definition.type}
+                  busyText={definition.mode === 'upload' ? 'Uploading...' : 'Opening...'}
+                  disabled={
+                    deliveryBusyType === definition.type ||
+                    (definition.mode === 'upload' && shipment.rawStatus === 'delivered')
+                  }
+                  labels={{
+                    missing: definition.mode === 'upload' ? 'Upload' : 'Download',
+                    pending: 'Review',
+                    approved: 'Ready'
+                  }}
+                  onClick={() => handleTrackingDocument(definition)}
+                  title={
+                    definition.mode === 'upload'
+                      ? `Upload ${definition.label.toLowerCase()}`
+                      : `Download ${definition.label.toLowerCase()}`
+                  }
+                />
               ))}
             </div>
             <DeliveryReadinessPanel
@@ -2839,6 +2978,7 @@ function TrackingPage({ notify, route, user }) {
               busyType={deliveryBusyType}
               onUpload={requestDeliveryEvidenceUpload}
               onConfirmDelivery={confirmDelivery}
+              onEndTrip={endTrip}
             />
             <div className="stack-actions">
               <button
@@ -3998,7 +4138,7 @@ function BidsPage({ notify, user }) {
   );
 }
 
-function DocumentsPage({ notify, user }) {
+function DocumentsPage({ notify, user, setUser }) {
   const role = roleForUser(user);
   const [shipments, setShipments] = useState([]);
   const [fleet, setFleet] = useState([]);
@@ -4007,6 +4147,7 @@ function DocumentsPage({ notify, user }) {
   const fileInputRef = useRef(null);
   const socketRef = useRef(null);
   const bookingIdsRef = useRef([]);
+  const profileDocs = profileDocumentsForRole(role);
 
   const refreshDocuments = useCallback(async () => {
     try {
@@ -4084,7 +4225,13 @@ function DocumentsPage({ notify, user }) {
 
     setBusy(`${pending.targetId}-${pending.documentType}`);
     try {
-      if (pending.targetType === 'truck') {
+      if (pending.targetType === 'profile') {
+        const data = await api.uploadProfileDocument(pending.documentType, file);
+        if (data.user) {
+          setSession({ user: data.user });
+          setUser(data.user);
+        }
+      } else if (pending.targetType === 'truck') {
         if (pending.documentType === 'vehicle-photos') {
           const data = await api.uploadTruckPhoto(pending.targetId, file);
           if (data.truck) {
@@ -4117,6 +4264,39 @@ function DocumentsPage({ notify, user }) {
     }
   }
 
+  function renderShipmentDocumentCards() {
+    return shipments.map((shipment) => (
+      <article className="quote-card" key={shipment.id}>
+        <StatusBadge>{shipment.status}</StatusBadge>
+        <h3>{shipment.id}</h3>
+        <p>{shipment.route}</p>
+        <div className="doc-list compact">
+          {handoverDocumentActionsFor(shipment).map((definition) => (
+            <DocumentSlotButton
+              key={definition.type}
+              label={definition.label}
+              status={definition.mode === 'upload' ? shipmentDocumentStatus(shipment, definition.type) : 'missing'}
+              busy={busy === `${shipment.bookingId}-${definition.type}`}
+              busyText={definition.mode === 'upload' ? 'Uploading...' : 'Opening...'}
+              disabled={busy === `${shipment.bookingId}-${definition.type}` || !shipment.bookingId}
+              labels={{
+                missing: definition.mode === 'upload' ? 'Upload' : 'Download',
+                pending: 'Review',
+                approved: 'Ready'
+              }}
+              onClick={() =>
+                definition.mode === 'upload'
+                  ? openUpload('shipment', shipment.bookingId, definition.type)
+                  : downloadDoc(definition, shipment)
+              }
+              style={{ margin: '4px 0' }}
+            />
+          ))}
+        </div>
+      </article>
+    ));
+  }
+
   return (
     <section className="workspace-layout">
       <input
@@ -4127,6 +4307,42 @@ function DocumentsPage({ notify, user }) {
         style={{ display: 'none' }}
       />
       <div className="stack">
+        {profileDocs.length ? (
+          <Panel title={`${roleName(role)} Profile Documents`} eyebrow="Account Verification">
+            <div className="doc-list">
+              {profileDocs.map((item) => {
+                const slug = normalizeProfileDocumentType(item, role);
+                const existingDoc = findProfileDocument(user.documents || [], item, role);
+                const docStatus = existingDoc ? existingDoc.status : 'missing';
+                const isBusy = busy === `profile-${slug}`;
+
+                return (
+                  <DocumentSlotButton
+                    key={item}
+                    label={item}
+                    status={docStatus}
+                    busy={isBusy}
+                    disabled={docStatus === 'approved'}
+                    labels={{
+                      approved: 'Verified',
+                      pending: 'Under Review',
+                      rejected: 'Rejected - Re-upload',
+                      expired: 'Expired - Re-upload',
+                      missing: 'Upload'
+                    }}
+                    onClick={() => openUpload('profile', 'profile', slug)}
+                    title={docStatus === 'approved' ? `${item} already verified` : `Click to upload ${item}`}
+                    style={{ margin: '4px 0' }}
+                  />
+                );
+              })}
+            </div>
+            <p className="muted-note">
+              These belong to your {roleName(role).toLowerCase()} profile. They stay separate from shipment and vehicle
+              handover files.
+            </p>
+          </Panel>
+        ) : null}
         <Panel title={role === 'owner' ? 'Fleet Documents' : 'Shipment Documents'} eyebrow="Admin Review">
           <div className="cards-grid">
             {role === 'owner'
@@ -4176,29 +4392,7 @@ function DocumentsPage({ notify, user }) {
                     </div>
                   </article>
                 ))
-              : shipments.map((shipment) => (
-                  <article className="quote-card" key={shipment.id}>
-                    <StatusBadge>{shipment.status}</StatusBadge>
-                    <h3>{shipment.id}</h3>
-                    <p>{shipment.route}</p>
-                    <div className="doc-list compact">
-                      {documentActions.map((definition) => (
-                        <button
-                          type="button"
-                          key={definition.label}
-                          disabled={busy === `${shipment.bookingId}-${definition.type}`}
-                          onClick={() =>
-                            definition.mode === 'upload'
-                              ? openUpload('shipment', shipment.bookingId, definition.type)
-                              : downloadDoc(definition, shipment)
-                          }
-                        >
-                          {busy === `${shipment.bookingId}-${definition.type}` ? 'Working...' : definition.label}
-                        </button>
-                      ))}
-                    </div>
-                  </article>
-                ))}
+              : renderShipmentDocumentCards()}
             {role === 'owner' && !fleet.length ? (
               <EmptyState
                 title="No vehicles yet"
@@ -4210,6 +4404,19 @@ function DocumentsPage({ notify, user }) {
             ) : null}
           </div>
         </Panel>
+        {role === 'owner' ? (
+          <Panel title="Job Handover Documents" eyebrow="Shipment Evidence">
+            <div className="cards-grid">
+              {renderShipmentDocumentCards()}
+              {!shipments.length ? (
+                <EmptyState
+                  title="No job documents"
+                  detail="Accepted jobs will show waybills, cargo evidence, POD, and receiver confirmation here."
+                />
+              ) : null}
+            </div>
+          </Panel>
+        ) : null}
       </div>
       <aside className="side-stack">
         <Panel title="Verification" eyebrow="Account">
@@ -6774,6 +6981,7 @@ const TIMELINE_STEPS = [
   { key: 'bidding', label: 'Bidding' },
   { key: 'confirmed', label: 'Confirmed' },
   { key: 'in_transit', label: 'In Transit' },
+  { key: 'delivery_pending', label: 'Awaiting Acceptance' },
   { key: 'delivered', label: 'Delivered' }
 ];
 

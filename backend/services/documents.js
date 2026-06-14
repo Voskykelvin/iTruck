@@ -187,6 +187,29 @@ function createCustoms(booking) {
   ]);
 }
 
+function createCargoValueDeclaration(booking) {
+  return createDocument('Cargo Value Declaration', booking, [
+    {
+      heading: 'Declared Cargo Value',
+      items: [
+        ['Cargo', booking.cargo || 'General cargo'],
+        ['Declared value', booking.cargoValue || booking.declaredValue || 'Not declared'],
+        ['Currency', booking.currency || 'USD'],
+        ['Insurance basis', booking.insuranceBasis || 'Declared by shipper']
+      ]
+    },
+    {
+      heading: 'Handover Notes',
+      items: [
+        ['Pickup', booking.pickup || 'Pickup pending'],
+        ['Destination', booking.destination || 'Destination pending'],
+        ['Receiver', booking.receiverName || booking.receiver || 'Receiver pending'],
+        ['Condition exceptions', booking.conditionExceptions || 'None recorded']
+      ]
+    }
+  ]);
+}
+
 module.exports = {
   createWaybill,
   createPOD,
@@ -194,5 +217,6 @@ module.exports = {
   createInvoice,
   createPackingList,
   createCustoms,
+  createCargoValueDeclaration,
   toBuffer
 };

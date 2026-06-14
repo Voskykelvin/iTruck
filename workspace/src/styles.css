@@ -27,6 +27,7 @@
   --dim: #8a9a90;
   --line: rgba(6, 64, 43, 0.14);
   --line-strong: rgba(6, 64, 43, 0.24);
+  --document-slot-missing-bg: #f8fafc;
   --navy: #05291d;
   --red: #b91c1c;
   --amber: #a16207;
@@ -2576,6 +2577,7 @@ input[type='radio'] {
   --dim: #928c79;
   --line: rgba(237, 232, 208, 0.14);
   --line-strong: rgba(237, 232, 208, 0.24);
+  --document-slot-missing-bg: var(--surface-2);
   --navy: #02100b;
   --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 14px 34px rgba(0, 0, 0, 0.4);
@@ -2635,8 +2637,58 @@ input[type='radio'] {
   color: var(--ink);
 }
 
+[data-theme='dark'] .primary {
+  border-color: rgba(255, 206, 27, 0.18);
+  background: linear-gradient(180deg, var(--brand-mid) 0%, var(--brand) 100%);
+  color: #ffffff;
+}
+
+[data-theme='dark'] .primary:hover {
+  background: var(--brand-mid);
+  color: #ffffff;
+}
+
+[data-theme='dark'] .secondary {
+  border-color: var(--mustard-border);
+  background: rgba(255, 206, 27, 0.16);
+  color: var(--ink);
+}
+
 [data-theme='dark'] .secondary:hover {
   background: rgba(255, 206, 27, 0.22);
+}
+
+[data-theme='dark'] .vehicle-picks button,
+[data-theme='dark'] .service-grid label,
+[data-theme='dark'] .ack-row,
+[data-theme='dark'] .bid-review-note,
+[data-theme='dark'] .bid-option,
+[data-theme='dark'] .delivery-readiness,
+[data-theme='dark'] .delivery-step,
+[data-theme='dark'] .map-toolbar,
+[data-theme='dark'] .premium-upload-zone,
+[data-theme='dark'] .rating-strip button {
+  border-color: var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+[data-theme='dark'] .vehicle-picks button.active,
+[data-theme='dark'] .service-grid label:has(input:checked),
+[data-theme='dark'] .ack-row:has(input:checked),
+[data-theme='dark'] .tracking-list button.active,
+[data-theme='dark'] .rating-strip button.active {
+  border-color: var(--mustard-border);
+  background: rgba(255, 206, 27, 0.18);
+  color: var(--ink);
+}
+
+[data-theme='dark'] .premium-upload-zone:hover {
+  background: var(--surface-3);
+}
+
+[data-theme='dark'] .chat-message.me p {
+  color: var(--ink);
 }
 
 [data-theme='dark'] .badge {
