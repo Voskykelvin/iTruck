@@ -62,6 +62,14 @@ test('delivery proof policy allows pending proof for delivery but approved proof
   expect(() => assertDeliveryProofForPaymentRelease(booking)).not.toThrow();
 });
 
+test('delivery proof policy accepts generated POD records for trip closeout', () => {
+  const booking = {
+    documents: [{ type: 'pod', status: 'approved', generatedAt: new Date() }]
+  };
+
+  expect(() => assertDeliveryProofForDelivery(booking)).not.toThrow();
+});
+
 test('delivery geofence allows nearby driver positions and rejects distant ones', () => {
   const destinationCoordinates = { lat: -1.2921, lng: 36.8219 };
   const booking = {

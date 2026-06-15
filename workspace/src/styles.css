@@ -1659,11 +1659,7 @@ input[type='radio'] {
 .delivery-readiness {
   display: grid;
   gap: 12px;
-  margin-top: 14px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: #f7fbf2;
+  margin: 0;
 }
 
 .delivery-readiness-head,
@@ -1712,6 +1708,38 @@ input[type='radio'] {
 .delivery-evidence-item small {
   color: var(--muted);
   font-size: 12px;
+}
+
+.closeout-document {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #f7fbf2;
+}
+
+.closeout-document svg {
+  margin-top: 2px;
+  color: var(--brand);
+}
+
+.closeout-document strong,
+.closeout-document span {
+  display: block;
+  min-width: 0;
+}
+
+.closeout-document strong {
+  color: var(--ink);
+}
+
+.closeout-document span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .load-row > div:last-child {
@@ -2289,17 +2317,17 @@ input[type='radio'] {
   }
 
   .tracking-layout {
-    grid-template-columns: 290px minmax(420px, 1fr) 340px;
-    gap: 18px;
+    grid-template-columns: minmax(210px, 250px) minmax(0, 1fr) minmax(280px, 320px);
+    gap: 14px;
   }
 
   .map-panel {
     position: relative;
-    min-height: 640px;
+    min-height: 580px;
   }
 
   .map-panel iframe {
-    height: 640px;
+    height: 580px;
   }
 
   .map-toolbar {
@@ -2618,6 +2646,7 @@ input[type='radio'] {
 [data-theme='dark'] .doc-list > :is(span, button),
 [data-theme='dark'] .decision-grid span,
 [data-theme='dark'] .facts-grid span,
+[data-theme='dark'] .closeout-document,
 [data-theme='dark'] .toggle-row {
   background: var(--surface-2);
   color: var(--ink);
@@ -2663,7 +2692,6 @@ input[type='radio'] {
 [data-theme='dark'] .ack-row,
 [data-theme='dark'] .bid-review-note,
 [data-theme='dark'] .bid-option,
-[data-theme='dark'] .delivery-readiness,
 [data-theme='dark'] .delivery-step,
 [data-theme='dark'] .map-toolbar,
 [data-theme='dark'] .premium-upload-zone,
