@@ -115,9 +115,9 @@ function deliveryProofDocuments(booking = {}, options = {}) {
   const approvedOnly = options.approvedOnly === true;
   return (booking.documents || []).filter((doc) => {
     const type = normalizeBookingDocumentType(doc.type);
-    const hasFile = Boolean(doc.url || (Array.isArray(doc.urls) && doc.urls.length));
+    const hasProofRecord = Boolean(doc.url || (Array.isArray(doc.urls) && doc.urls.length) || doc.generatedAt);
     const usableStatus = approvedOnly ? doc.status === 'approved' : !['rejected', 'expired'].includes(doc.status);
-    return DELIVERY_PROOF_DOCUMENTS.includes(type) && hasFile && usableStatus;
+    return DELIVERY_PROOF_DOCUMENTS.includes(type) && hasProofRecord && usableStatus;
   });
 }
 

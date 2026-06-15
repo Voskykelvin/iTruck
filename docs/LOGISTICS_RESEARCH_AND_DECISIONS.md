@@ -11,6 +11,7 @@ Date: 2026-05-25
 - African logistics competitors such as Lori Systems and Kobo360 center their value on vetted transporters, rate certainty, cargo safety, real-time or periodic status updates, wallet/payment release, electronic delivery confirmation, and route/cost optimization.
 - Amitruck and similar East African freight marketplaces validate demand for direct shipper-to-transporter matching, but also show why iTruck needs stricter trust gates, document proof, payment-release discipline, and SME/LTL differentiation instead of being only a bid board.
 - 2026 delivery-proof research reinforced that a digital POD should capture receiver identity/signature or confirmation, timestamp, location/GPS, cargo condition photos, and notes. Sources reviewed: [Project44 POD overview](https://www.project44.com/resources/what-is-a-proof-of-delivery-pod-in-supply-chain/), [ShipBob POD confirmation guide](https://www.shipbob.com/blog/proof-of-delivery-confirmation/), [Planlogi ePOD guide](https://planlogi.com/proof-of-delivery), [Arrivy POD/ePOD guide](https://www.arrivy.com/blog/the-role-of-proof-of-delivery-document/), and [Maersk shipping documentation guidance](https://www.maersk.com/logistics-explained/shipping-documentation/2023/09/27/shipping-documents-us).
+- 2026 tracking-page UX review reinforced progressive disclosure for non-technical users: keep the default screen focused on current location/ETA, delivery stage, courier/carrier identity, proof status, and the next action; move secondary tools like full document lists, chat, ratings, and issue workflows behind explicit actions. Sources reviewed: [NN/g progressive disclosure](https://www.nngroup.com/articles/progressive-disclosure/), [Baymard order tracking examples](https://baymard.com/ecommerce-design-examples/63-order-tracking-page), [ShipBob POD guide](https://www.shipbob.com/blog/proof-of-delivery-confirmation/), [Pitney Bowes POD guide](https://www.pitneybowes.com/us/blog/proof-of-delivery-guide.html), and [nShift last-mile delivery features](https://nshift.com/blog/last-mile-delivery-management-system-features).
 
 ## Codebase Findings
 
@@ -35,6 +36,9 @@ Date: 2026-05-25
 - Added LTL booking fields, shared-capacity estimates, route keys, and a protected marketplace route-clustering endpoint.
 - Added owner-controlled live GPS tracking endpoints, offline telemetry queueing, compressed batch sync, and booking-room realtime tracking updates.
 - Clarified delivery closeout in the app: cargo photos are shipper-uploaded evidence visible to the owner/admin, POD or receiver confirmation gates delivery confirmation, and approved delivery proof gates admin payment release.
+- Simplified the tracking right rail so the default page now separates shipment status, generated trip documents, delivery closeout, support, and chat. Chat appears only after Contact is chosen, ratings only appear after delivery, and the contact action is role-aware: owners contact shippers, while shippers contact drivers.
+- Reduced tracking-page document clutter to two default operational documents: auto-generated waybill and auto-generated delivery proof/receiver confirmation. Generated POD/receiver-confirmation records now count as delivery proof for closeout, while the full document workbench remains available on the Documents page.
+- Changed the profile completion prompt so missing verification documents open the Documents page instead of keeping document work inside Settings.
 
 ## Regressive Or Deferred
 

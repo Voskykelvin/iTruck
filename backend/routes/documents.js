@@ -165,6 +165,21 @@ async function cachedDocumentUrl(req, record, type, create, payload) {
   return url;
 }
 
+async function markEmbeddedDocumentGenerated(record, documentType) {
+  if (!record) return null;
+
+  const generatedAt = new Date();
+  record.documents = record.documents || [];
+  const existing = record.documents.find((item) => normalizeBookingDocumentType(item.type) === documentType);
+  const update = { type: documentType, generatedAt, status: 'approved' };
+
+  if (existing) Object.assign(existing, update);
+  else record.documents.push(update);
+
+  await record.save();
+  return generatedAt;
+}
+
 async function renderDocument(req, res, next, type, create) {
   try {
     const loaded = await loadBooking(req, res);
@@ -176,6 +191,7 @@ async function renderDocument(req, res, next, type, create) {
     if (cachedUrl) return res.redirect(302, cachedUrl);
 
     if (loaded.record) {
+      const generatedAt = await markEmbeddedDocumentGenerated(loaded.record, documentType);
       await recordGeneratedDocument({
         targetType: 'booking',
         targetId: loaded.record._id,
@@ -183,7 +199,7 @@ async function renderDocument(req, res, next, type, create) {
         userId: req.user._id,
         uploadedBy: req.user._id,
         bookingId: loaded.record._id,
-        patch: { generatedAt: new Date() },
+        patch: { generatedAt },
         metadata: {
           cached: false,
           client: loaded.record.client,
