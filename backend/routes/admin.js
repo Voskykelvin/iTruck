@@ -4,6 +4,8 @@ const Truck = require('../models/Truck');
 const Booking = require('../models/Booking');
 const Transaction = require('../models/Transaction');
 const AuditLog = require('../models/AuditLog');
+const Document = require('../models/Document');
+const RefreshToken = require('../models/RefreshToken');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
@@ -13,6 +15,7 @@ const {
   documentReviewSchema,
   notifySchema,
   truckVerificationSchema,
+  userDeletionSchema,
   userStatusSchema,
   userVerificationSchema
 } = require('../validators/admin');
@@ -31,6 +34,7 @@ const demoBookings = [
   ['ITK-1002', 'Port lane to regional warehouse', 'Bidding', 'Offers pending'],
   ['ITK-1003', 'Distribution center to receiver', 'Delivered', 'POD ready']
 ];
+const activeBookingStatuses = ['pending', 'bidding', 'confirmed', 'in_transit', 'delivery_pending', 'disputed'];
 
 async function recordAudit(req, action, targetType, targetId, metadata = {}) {
   if (!mongoReady()) return null;
@@ -179,6 +183,101 @@ router.patch('/users/:id/status', userStatusSchema, validate, async (req, res, n
 
     await recordAudit(req, 'user.status.updated', 'user', user._id, { isActive: user.isActive });
     res.json({ user });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/users/:id', userDeletionSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    const reason = req.body.reason;
+    const category = req.body.category || 'other';
+
+    if (String(req.params.id) === String(req.user._id)) {
+      return res.status(409).json({ message: 'Admins cannot delete their own profile' });
+    }
+
+    if (!mongoReady()) {
+      const index = demoUsers.findIndex((item) => item._id === req.params.id);
+      if (index < 0) return res.status(404).json({ message: 'User not found' });
+
+      const target = demoUsers[index];
+      const remainingAdmins = demoUsers.filter(
+        (item) => item.role === 'admin' && item._id !== target._id && item.isActive !== false
+      ).length;
+      if (target.role === 'admin' && remainingAdmins === 0) {
+        return res.status(409).json({ message: 'Keep at least one active admin profile' });
+      }
+
+      const removedTrucks = demoTrucks.filter((truck) => String(truck.owner) === String(target._id)).length;
+      for (let truckIndex = demoTrucks.length - 1; truckIndex >= 0; truckIndex -= 1) {
+        if (String(demoTrucks[truckIndex].owner) === String(target._id)) demoTrucks.splice(truckIndex, 1);
+      }
+      const [deleted] = demoUsers.splice(index, 1);
+      const { password: _password, ...deletedUser } = deleted;
+      return res.json({ deletedUser, removed: { users: 1, trucks: removedTrucks }, reason, category, mode: 'memory' });
+    }
+
+    const user = await User.findById(req.params.id).select('-password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (user.role === 'admin') {
+      const remainingAdmins = await User.countDocuments({
+        _id: { $ne: user._id },
+        role: 'admin',
+        isActive: { $ne: false }
+      });
+      if (remainingAdmins === 0) return res.status(409).json({ message: 'Keep at least one active admin profile' });
+    }
+
+    const ownedTrucks = await Truck.find({ owner: user._id }).select('_id');
+    const ownedTruckIds = ownedTrucks.map((truck) => truck._id);
+    const dependencyClauses = [{ client: user._id }, { owner: user._id }, { 'bids.owner': user._id }];
+    if (ownedTruckIds.length) dependencyClauses.push({ truck: { $in: ownedTruckIds } });
+
+    const activeBookings = await Booking.countDocuments({
+      status: { $in: activeBookingStatuses },
+      $or: dependencyClauses
+    });
+    if (activeBookings > 0) {
+      return res.status(409).json({
+        message: `Resolve ${activeBookings} active booking${activeBookings === 1 ? '' : 's'} before deleting this profile`,
+        activeBookings
+      });
+    }
+
+    const [documentResult, truckResult, tokenResult] = await Promise.all([
+      Document.deleteMany({
+        $or: [
+          { targetType: 'user', target: user._id },
+          ...(ownedTruckIds.length ? [{ targetType: 'truck', target: { $in: ownedTruckIds } }] : [])
+        ]
+      }),
+      Truck.deleteMany({ owner: user._id }),
+      RefreshToken.deleteMany({ user: user._id })
+    ]);
+
+    await User.deleteOne({ _id: user._id });
+    await recordAudit(req, 'user.deleted', 'user', user._id, {
+      reason,
+      category,
+      email: user.email,
+      role: user.role,
+      removedTrucks: truckResult.deletedCount || 0,
+      removedDocuments: documentResult.deletedCount || 0,
+      removedSessions: tokenResult.deletedCount || 0
+    });
+
+    res.json({
+      deletedUser: user,
+      removed: {
+        users: 1,
+        trucks: truckResult.deletedCount || 0,
+        documents: documentResult.deletedCount || 0,
+        sessions: tokenResult.deletedCount || 0
+      }
+    });
   } catch (err) {
     next(err);
   }
