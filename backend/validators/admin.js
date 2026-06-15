@@ -11,6 +11,15 @@ const userVerificationSchema = [
   body('isVerified').isBoolean().withMessage('isVerified must be true or false').toBoolean()
 ];
 
+const userDeletionSchema = [
+  liveMongoIdParam('id'),
+  body('reason').trim().isLength({ min: 8, max: 500 }).withMessage('Deletion reason must be 8-500 characters'),
+  body('category')
+    .optional({ checkFalsy: true })
+    .isIn(['duplicate', 'suspicious', 'spam', 'requested', 'other'])
+    .withMessage('Deletion category is invalid')
+];
+
 const truckVerificationSchema = [
   liveMongoIdParam('id'),
   body('isVerified').isBoolean().withMessage('isVerified must be true or false').toBoolean()
@@ -33,6 +42,7 @@ const documentReviewSchema = [
 module.exports = {
   documentReviewSchema,
   notifySchema,
+  userDeletionSchema,
   truckVerificationSchema,
   userStatusSchema,
   userVerificationSchema

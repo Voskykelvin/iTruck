@@ -336,6 +336,11 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ isActive })
     }),
+  adminDeleteUser: (userId, payload) =>
+    request(`/admin/users/${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+      body: JSON.stringify(payload)
+    }),
   adminVerifyUser: (userId, isVerified) =>
     request(`/admin/users/${encodeURIComponent(userId)}/verification`, {
       method: 'PATCH',

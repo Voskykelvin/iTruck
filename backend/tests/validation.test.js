@@ -621,3 +621,34 @@ test('admin can update user verification state', async () => {
   expect(approved.status).toBe(200);
   expect(approved.body.user.isVerified).toBe(true);
 });
+
+test('admin profile deletion requires a reason and blocks self deletion', async () => {
+  const missingReason = await request(app)
+    .delete('/api/admin/users/demo-client-secondary')
+    .set('Authorization', authHeader({ id: 'demo-admin', role: 'admin' }))
+    .send({ category: 'duplicate' });
+
+  expect(missingReason.status).toBe(422);
+
+  const selfDelete = await request(app)
+    .delete('/api/admin/users/demo-admin')
+    .set('Authorization', authHeader({ id: 'demo-admin', role: 'admin' }))
+    .send({ reason: 'Testing admin self deletion guard', category: 'suspicious' });
+
+  expect(selfDelete.status).toBe(409);
+  expect(selfDelete.body.message).toContain('cannot delete');
+
+  const deleted = await request(app)
+    .delete('/api/admin/users/demo-client-secondary')
+    .set('Authorization', authHeader({ id: 'demo-admin', role: 'admin' }))
+    .send({ reason: 'Duplicate shipper profile cleanup', category: 'duplicate' });
+
+  expect(deleted.status).toBe(200);
+  expect(deleted.body.deletedUser.email).toBe('shipper.two@example.com');
+
+  const users = await request(app)
+    .get('/api/admin/users')
+    .set('Authorization', authHeader({ id: 'demo-admin', role: 'admin' }));
+
+  expect(users.body.users.some((user) => user._id === 'demo-client-secondary')).toBe(false);
+});

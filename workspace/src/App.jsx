@@ -5051,6 +5051,36 @@ function AdminPage({ notify }) {
     return Boolean(plate && plateGroups[plate]?.length > 1);
   }
 
+  function normalizedPhone(user) {
+    return String(user?.phone || '').replace(/\D/g, '');
+  }
+
+  const profileGroups = adminData.users
+    .filter((user) => user.role !== 'admin')
+    .reduce((groups, user) => {
+      const phone = normalizedPhone(user);
+      const nameKey = [user?.firstName, user?.lastName, user?.country, user?.role]
+        .map((item) =>
+          String(item || '')
+            .trim()
+            .toLowerCase()
+        )
+        .filter(Boolean)
+        .join(':');
+      const keys = [
+        phone.length >= 6 ? `Phone ${phone}` : '',
+        nameKey ? `Name ${nameKey.replaceAll(':', ' / ')}` : ''
+      ].filter(Boolean);
+
+      return keys.reduce(
+        (nextGroups, key) => ({
+          ...nextGroups,
+          [key]: [...(nextGroups[key] || []), user]
+        }),
+        groups
+      );
+    }, {});
+
   const kycUsers = adminData.users.filter(
     (user) => user.role !== 'admin' && (!user.isVerified || needsDocumentReview(user))
   );
@@ -5072,6 +5102,7 @@ function AdminPage({ notify }) {
   );
   const highValueBookings = adminData.bookings.filter((booking) => bookingAmount(booking) >= 5000);
   const duplicatePlateGroups = Object.entries(plateGroups).filter(([, trucks]) => trucks.length > 1);
+  const duplicateProfileGroups = Object.entries(profileGroups).filter(([, users]) => users.length > 1);
   const expiredDocumentReviews = [
     ...adminData.users.flatMap((user) =>
       documentList(user)
@@ -5093,8 +5124,8 @@ function AdminPage({ notify }) {
   const riskItems = [
     {
       key: 'duplicates',
-      label: 'Duplicate listing checks',
-      count: duplicatePlateGroups.length
+      label: 'Duplicate profile and listing checks',
+      count: duplicatePlateGroups.length + duplicateProfileGroups.length
     },
     {
       key: 'payments',
@@ -5139,9 +5170,18 @@ function AdminPage({ notify }) {
       key: 'risk',
       label: 'Risk',
       count:
-        duplicatePlateGroups.length + highValueBookings.length + expiredDocumentReviews.length + delayedBookings.length,
+        duplicatePlateGroups.length +
+        duplicateProfileGroups.length +
+        highValueBookings.length +
+        expiredDocumentReviews.length +
+        delayedBookings.length,
       tone:
-        duplicatePlateGroups.length || highValueBookings.length || expiredDocumentReviews.length ? 'warn' : 'default'
+        duplicatePlateGroups.length ||
+        duplicateProfileGroups.length ||
+        highValueBookings.length ||
+        expiredDocumentReviews.length
+          ? 'warn'
+          : 'default'
     }
   ];
 
@@ -5218,6 +5258,32 @@ function AdminPage({ notify }) {
     await withAdminAction(`profile-${recordId(user)}-hold`, async () => {
       await api.adminVerifyUser(recordId(user), false);
       notify(`${personName(user)} held for review`);
+      await loadAdminData();
+    });
+  }
+
+  async function deleteProfile(user, category = 'suspicious') {
+    const key = reviewNoteKey('user', user);
+    const reason = String(reviewNotes[key] || '').trim();
+
+    if (reason.length < 8) {
+      notify(`Add a deletion reason for ${personName(user)}`);
+      return;
+    }
+
+    if (!window.confirm(`Delete ${personName(user)}? This cannot be undone.`)) return;
+
+    await withAdminAction(`profile-${recordId(user)}-delete`, async () => {
+      const data = await api.adminDeleteUser(recordId(user), { reason, category });
+      const removed = data.removed || {};
+      notify(
+        `${personName(user)} deleted${removed.trucks ? ` with ${removed.trucks} linked vehicle${removed.trucks === 1 ? '' : 's'}` : ''}`
+      );
+      setReviewNotes((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
       await loadAdminData();
     });
   }
@@ -5445,6 +5511,14 @@ function AdminPage({ notify }) {
                   >
                     Hold
                   </button>
+                  <button
+                    className="ghost danger-action"
+                    type="button"
+                    disabled={busyAction === `profile-${recordId(user)}-delete`}
+                    onClick={() => deleteProfile(user, missing.length ? 'suspicious' : 'duplicate')}
+                  >
+                    Delete Profile
+                  </button>
                 </div>
               </div>
               <label className="field review-note">
@@ -5581,22 +5655,43 @@ function AdminPage({ notify }) {
 
     return (
       <div className="admin-review-list">
-        {approvedUsers.map((user) => (
-          <article className="admin-review-row compact" key={recordId(user)}>
-            <div className="admin-review-summary">
-              <div>
-                <StatusBadge tone="success">Approved</StatusBadge>
-                <h3>{personName(user)}</h3>
-                <div className="admin-review-meta">
-                  <span>{roleLabel(user.role)}</span>
-                  <span>{user.email}</span>
-                  <span>{user.phone || 'Phone pending'}</span>
+        {approvedUsers.map((user) => {
+          const key = reviewNoteKey('user', user);
+          return (
+            <article className="admin-review-row compact" key={recordId(user)}>
+              <div className="admin-review-summary">
+                <div>
+                  <StatusBadge tone="success">Approved</StatusBadge>
+                  <h3>{personName(user)}</h3>
+                  <div className="admin-review-meta">
+                    <span>{roleLabel(user.role)}</span>
+                    <span>{user.email}</span>
+                    <span>{user.phone || 'Phone pending'}</span>
+                  </div>
+                </div>
+                <div className="admin-action-row">
+                  <button
+                    className="ghost danger-action"
+                    type="button"
+                    disabled={busyAction === `profile-${recordId(user)}-delete`}
+                    onClick={() => deleteProfile(user, 'duplicate')}
+                  >
+                    Delete Profile
+                  </button>
                 </div>
               </div>
-            </div>
-            {renderDocumentArchive(user, expectedProfileDocuments(user))}
-          </article>
-        ))}
+              <label className="field review-note">
+                <span>Deletion reason</span>
+                <textarea
+                  value={reviewNotes[key] || ''}
+                  onChange={(event) => updateReviewNote(key, event.target.value)}
+                  placeholder="Why should this profile be removed?"
+                />
+              </label>
+              {renderDocumentArchive(user, expectedProfileDocuments(user))}
+            </article>
+          );
+        })}
       </div>
     );
   }
@@ -5692,11 +5787,50 @@ function AdminPage({ notify }) {
   }
 
   function renderDuplicateReview() {
-    if (!duplicatePlateGroups.length)
-      return <EmptyState title="No duplicate plates" detail="Plate conflicts will appear here." />;
+    if (!duplicateProfileGroups.length && !duplicatePlateGroups.length)
+      return (
+        <EmptyState title="No duplicate profiles or plates" detail="Profile and vehicle conflicts will appear here." />
+      );
 
     return (
       <div className="admin-review-list">
+        {duplicateProfileGroups.map(([groupKey, users]) => (
+          <article className="admin-review-row" key={groupKey}>
+            <StatusBadge tone="danger">{users.length} profiles</StatusBadge>
+            <h3>{groupKey}</h3>
+            <div className="admin-documents">
+              {users.map((user) => {
+                const key = reviewNoteKey('user', user);
+                return (
+                  <div className="admin-document-row" key={recordId(user)}>
+                    <div className="admin-document-main">
+                      <strong>{personName(user)}</strong>
+                      <small>
+                        {roleLabel(user.role)} - {user.email}
+                      </small>
+                      <label className="field review-note compact-review-note">
+                        <span>Deletion reason</span>
+                        <textarea
+                          value={reviewNotes[key] || ''}
+                          onChange={(event) => updateReviewNote(key, event.target.value)}
+                          placeholder="Why should this duplicate profile be removed?"
+                        />
+                      </label>
+                    </div>
+                    <button
+                      className="ghost danger-action"
+                      type="button"
+                      disabled={busyAction === `profile-${recordId(user)}-delete`}
+                      onClick={() => deleteProfile(user, 'duplicate')}
+                    >
+                      Delete Profile
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </article>
+        ))}
         {duplicatePlateGroups.map(([plate, trucks]) => (
           <article className="admin-review-row" key={plate}>
             <StatusBadge tone="danger">{trucks.length} listings</StatusBadge>
@@ -5818,12 +5952,14 @@ function AdminPage({ notify }) {
           ))}
         </div>
         {duplicatePlateGroups.length ||
+        duplicateProfileGroups.length ||
         highValueBookings.length ||
         expiredDocumentReviews.length ||
         delayedBookings.length ? (
           <div className="admin-review-row compact">
             <StatusBadge tone="warn">Open risk work</StatusBadge>
             <div className="admin-review-meta">
+              <span>{duplicateProfileGroups.length} duplicate profile groups</span>
               <span>{duplicatePlateGroups.length} duplicate plate groups</span>
               <span>{highValueBookings.length} high-value bookings</span>
               <span>{expiredDocumentReviews.length} expired documents</span>
