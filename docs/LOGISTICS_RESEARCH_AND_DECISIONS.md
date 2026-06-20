@@ -2,6 +2,14 @@
 
 Date: 2026-05-25
 
+## Backend Proposal Review — 2026-06-20
+
+- Retained the existing atomic wallet debit and withdrawal implementation. It already performs the balance check and decrement in one filtered MongoDB update, includes idempotency records, and is integrated with booking escrow and payment release rules.
+- Hardened M-Pesa and MTN MoMo callback authentication. Live mode now fails closed when a callback secret is missing, secret comparisons are timing-safe, and generated provider callback URLs carry the configured token.
+- Hardened M-Pesa reconciliation with merchant-reference checks, required receipt/amount metadata, amount matching, and atomic pending-to-final transaction updates so duplicate callbacks cannot regress completed payments.
+- Kept the existing single-write batch GPS design instead of adding a duplicate tracking collection. Incoming batches are now ordered by recorded time and atomically update both the bounded route history and a cached `lastKnownLocation`.
+- Kept the centralized Express error boundary and enriched it with structured validation details plus request method, IP, and request ID logging context.
+
 ## Research Inputs
 
 - Uber Freight app and shipper pages emphasize instant booking, upfront pricing, facility details, POD upload, real-time tracking, 24/7 support, carrier ratings, multi-stop shipment support, and one workspace for quote/book/track/pay.

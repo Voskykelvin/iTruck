@@ -22,6 +22,8 @@ const logger = pino({
       'req.body.pin',
       'req.body.mpesaPassword',
       'req.body.deviceId',
+      'req.query.token',
+      'req.query.secret',
       'res.headers["set-cookie"]',
       'password',
       'token',

@@ -58,6 +58,17 @@ Optional payment webhook settings:
 ```text
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
+MPESA_CONSUMER_KEY=...
+MPESA_CONSUMER_SECRET=...
+MPESA_SHORTCODE=...
+MPESA_PASSKEY=...
+MPESA_CALLBACK_URL=https://your-backend-domain.com/api/payments/webhooks/mpesa/stk
+MPESA_WEBHOOK_SECRET=<random-callback-secret>
+MTN_MOMO_SUBSCRIPTION_KEY=...
+MTN_MOMO_API_USER=...
+MTN_MOMO_API_KEY=...
+MTN_MOMO_CALLBACK_URL=https://your-backend-domain.com/api/payments/webhooks/mtn/request-to-pay
+MTN_MOMO_WEBHOOK_SECRET=<random-callback-secret>
 ```
 
 Stripe webhook notifications should point to:
@@ -67,6 +78,8 @@ https://your-backend-domain.com/api/webhooks/stripe
 ```
 
 The Stripe webhook route uses raw request bodies and rejects requests without a valid `stripe-signature`.
+M-Pesa and MTN callback URLs include the configured callback token, and live mode rejects missing or invalid tokens.
+The bundled Nginx access log omits query strings so callback tokens are not written to proxy logs.
 
 Check them before deploy:
 
@@ -131,6 +144,6 @@ These services are deployment-ready structurally but not yet business-live:
 
 - Email templates currently log/queue through the stub service.
 - SMS/OTP currently uses simple generated OTP helpers.
-- Payment providers include wallet behavior, payment-release gates, and provider shells. Stripe webhook signature verification is wired, but real Stripe/M-Pesa/MTN reconciliation still needs integration before live money movement.
+- Payment providers include wallet behavior, payment-release gates, Stripe verification, and M-Pesa/MTN initiation plus reconciliation. Real credentials, provider certification, callback delivery monitoring, refunds/disputes, and payout execution still need live validation before money movement.
 - LTL currently has booking, estimate, and cluster foundations; full dispatch allocation and multi-stop sequencing still need product workflows.
 - Tracking currently has production ingestion, owner workspace capture, offline queueing, and realtime booking events. Google Maps JavaScript markers, route polylines, and ETA calculation remain the next map upgrade.

@@ -299,6 +299,43 @@ test('mobile money escrow initiation validates input and supports memory fallbac
   expect(queued.body.transaction.status).toBe('pending');
 });
 
+test('mobile money callbacks fail closed in live mode', async () => {
+  const originalValues = {
+    APP_MODE: process.env.APP_MODE,
+    LIVE_MODE: process.env.LIVE_MODE,
+    MPESA_WEBHOOK_SECRET: process.env.MPESA_WEBHOOK_SECRET,
+    MPESA_CALLBACK_SECRET: process.env.MPESA_CALLBACK_SECRET,
+    MPESA_CALLBACK_TOKEN: process.env.MPESA_CALLBACK_TOKEN
+  };
+
+  process.env.APP_MODE = 'live';
+  delete process.env.LIVE_MODE;
+  delete process.env.MPESA_WEBHOOK_SECRET;
+  delete process.env.MPESA_CALLBACK_SECRET;
+  delete process.env.MPESA_CALLBACK_TOKEN;
+
+  try {
+    const unconfigured = await request(app).post('/api/payments/webhooks/mpesa/stk').send({});
+    expect(unconfigured.status).toBe(503);
+    expect(unconfigured.body.message).toContain('authentication is not configured');
+
+    process.env.MPESA_WEBHOOK_SECRET = 'test-callback-secret';
+    const invalid = await request(app).post('/api/payments/webhooks/mpesa/stk?token=wrong-secret').send({});
+    expect(invalid.status).toBe(401);
+
+    const authenticated = await request(app)
+      .post('/api/payments/webhooks/mpesa/stk?token=test-callback-secret')
+      .send({});
+    expect(authenticated.status).toBe(503);
+    expect(authenticated.body.message).toContain('Database connection offline');
+  } finally {
+    Object.entries(originalValues).forEach(([key, value]) => {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    });
+  }
+});
+
 test('non-admin users cannot release booking payments', async () => {
   const res = await request(app)
     .post('/api/payments/bookings/ITK-2044/release')
@@ -339,14 +376,21 @@ test('tracking updates are owner scoped and validate coordinate payloads', async
     .set('Authorization', authHeader({ id: 'demo-owner-primary', role: 'owner' }))
     .send({
       updates: [
-        { lat: -1.2922, lng: 36.822, speed: 65, heading: 271 },
-        { lat: -1.2923, lng: 36.8221, speed: 66, heading: 272 }
+        { lat: -1.2923, lng: 36.8221, speed: 66, heading: 272, timestamp: '2026-06-20T10:02:00.000Z' },
+        { lat: -1.2922, lng: 36.822, speed: 65, heading: 271, timestamp: '2026-06-20T10:01:00.000Z' }
       ]
     });
 
   expect(batch.status).toBe(200);
   expect(batch.body.accepted).toBe(2);
   expect(batch.body.booking.tracking.slice(-2).map((point) => point.lat)).toEqual([-1.2922, -1.2923]);
+  expect(batch.body.booking.lastKnownLocation).toEqual(
+    expect.objectContaining({
+      lat: -1.2923,
+      lng: 36.8221,
+      recordedAt: '2026-06-20T10:02:00.000Z'
+    })
+  );
 });
 
 test('clients cannot submit carrier bids through workflow routes', async () => {

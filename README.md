@@ -45,7 +45,7 @@ Implemented:
 
 Still in progress before full business launch:
 
-- Real payment-provider reconciliation for Stripe, M-Pesa, MTN MoMo, and owner payouts.
+- Production certification, live-account validation, refund/dispute handling, and owner payout execution for Stripe, M-Pesa, and MTN MoMo.
 - Real SMS and email delivery providers.
 - Production Google Maps JavaScript integration for custom live route markers, route polylines, and ETA calculation.
 - Deeper admin workflows for bid awards, dispute handling, document review, and payment release.
@@ -192,6 +192,8 @@ POST   /api/workflow/messages
 POST   /api/workflow/reports
 
 POST   /api/webhooks/stripe
+POST   /api/payments/webhooks/mpesa/stk
+POST   /api/payments/webhooks/mtn/request-to-pay/:referenceId?
 ```
 
 ## Local Development
@@ -420,6 +422,15 @@ STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 MPESA_CONSUMER_KEY=
 MPESA_CONSUMER_SECRET=
+MPESA_SHORTCODE=
+MPESA_PASSKEY=
+MPESA_CALLBACK_URL=https://your-domain.example/api/payments/webhooks/mpesa/stk
+MPESA_WEBHOOK_SECRET=
+MTN_MOMO_SUBSCRIPTION_KEY=
+MTN_MOMO_API_USER=
+MTN_MOMO_API_KEY=
+MTN_MOMO_CALLBACK_URL=https://your-domain.example/api/payments/webhooks/mtn/request-to-pay
+MTN_MOMO_WEBHOOK_SECRET=
 AFRICASTALKING_USERNAME=
 AFRICASTALKING_API_KEY=
 SMTP_HOST=
@@ -454,12 +465,14 @@ The backend includes several protections that are important before exposing the 
 - Mongoose indexes on high-traffic query fields.
 - Cloudinary-only uploads in live mode.
 - Stripe webhook signature verification using raw request bodies.
+- Fail-closed M-Pesa/MTN callback authentication in live mode with token redaction in application and bundled Nginx logs.
+- Atomic M-Pesa pending-to-final reconciliation with merchant reference, receipt, and amount checks.
 - Pino structured logging.
 
 Security work still recommended before public scale:
 
 - Full audit logs for admin actions.
-- Real provider webhooks for M-Pesa and MTN MoMo with signature validation.
+- Provider sandbox/live certification, callback delivery monitoring, refund/dispute reconciliation, and payout execution.
 - More request schemas across every write route.
 - Fine-grained authorization on each booking, document, and payment transition.
 - Secret rotation and environment-specific deployment credentials.

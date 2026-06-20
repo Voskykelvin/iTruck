@@ -97,18 +97,29 @@ function hasAllEnv(keys) {
   return keys.every((key) => Boolean(process.env[key]));
 }
 
+function hasAnyEnv(keys) {
+  return keys.some((key) => Boolean(process.env[key]));
+}
+
 function goLiveIntegrationStatus() {
   const stripeReady = hasAllEnv(['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']);
-  const mpesaReady = hasAllEnv([
-    'MPESA_CONSUMER_KEY',
-    'MPESA_CONSUMER_SECRET',
-    'MPESA_SHORTCODE',
-    'MPESA_PASSKEY',
-    'MPESA_CALLBACK_URL'
-  ]);
+  const mpesaReady =
+    hasAllEnv([
+      'MPESA_CONSUMER_KEY',
+      'MPESA_CONSUMER_SECRET',
+      'MPESA_SHORTCODE',
+      'MPESA_PASSKEY',
+      'MPESA_CALLBACK_URL'
+    ]) && hasAnyEnv(['MPESA_WEBHOOK_SECRET', 'MPESA_CALLBACK_SECRET', 'MPESA_CALLBACK_TOKEN']);
   const mtnReady =
-    hasAllEnv(['MTN_MOMO_SUBSCRIPTION_KEY', 'MTN_MOMO_API_USER', 'MTN_MOMO_API_KEY', 'MTN_MOMO_CALLBACK_URL']) ||
-    hasAllEnv(['MOMO_SUBSCRIBER_KEY', 'MOMO_USER_ID', 'MOMO_API_KEY', 'MOMO_CALLBACK_URL']);
+    (hasAllEnv(['MTN_MOMO_SUBSCRIPTION_KEY', 'MTN_MOMO_API_USER', 'MTN_MOMO_API_KEY', 'MTN_MOMO_CALLBACK_URL']) ||
+      hasAllEnv(['MOMO_SUBSCRIBER_KEY', 'MOMO_USER_ID', 'MOMO_API_KEY', 'MOMO_CALLBACK_URL'])) &&
+    hasAnyEnv([
+      'MTN_MOMO_WEBHOOK_SECRET',
+      'MOMO_WEBHOOK_SECRET',
+      'MTN_MOMO_CALLBACK_SECRET',
+      'MTN_MOMO_CALLBACK_TOKEN'
+    ]);
   const smsReady =
     Boolean(process.env.SMS_PROVIDER_MODULE) || hasAllEnv(['AFRICASTALKING_API_KEY', 'AFRICASTALKING_USERNAME']);
   const emailReady =
@@ -121,7 +132,7 @@ function goLiveIntegrationStatus() {
     {
       name: 'payments',
       configured: stripeReady || mpesaReady || mtnReady,
-      hint: 'configure Stripe webhook secrets, M-Pesa credentials, or MTN MoMo credentials'
+      hint: 'configure Stripe, or mobile-money credentials plus a callback authentication secret'
     },
     {
       name: 'sms',

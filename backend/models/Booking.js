@@ -119,6 +119,15 @@ const bookingSchema = new mongoose.Schema(
         timestamp: { type: Date, default: Date.now }
       }
     ],
+    lastKnownLocation: {
+      lat: { type: Number, min: -90, max: 90 },
+      lng: { type: Number, min: -180, max: 180 },
+      speed: { type: Number, min: 0, max: 180 },
+      heading: { type: Number, min: 0, max: 360 },
+      accuracy: { type: Number, min: 0, max: 10000 },
+      recordedAt: Date,
+      ingestedAt: Date
+    },
     documents: [
       {
         type: {
@@ -169,6 +178,7 @@ bookingSchema.index({ 'bids.owner': 1, createdAt: -1 });
 bookingSchema.index({ 'documents.type': 1 });
 bookingSchema.index({ loadMode: 1, routeKey: 1, status: 1, pickupDate: 1 });
 bookingSchema.index({ consolidationEligible: 1, routeKey: 1, status: 1 });
+bookingSchema.index({ 'lastKnownLocation.recordedAt': -1 });
 
 bookingSchema.statics.STATUSES = STATUSES;
 bookingSchema.statics.PAYMENT_STATUSES = PAYMENT_STATUSES;

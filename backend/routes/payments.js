@@ -1,5 +1,6 @@
 const express = require('express');
-const { mongoReady, requireDatabase } = require('../config/runtime');
+const crypto = require('crypto');
+const { isLiveMode, mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const asyncHandler = require('../config/asyncHandler');
@@ -21,18 +22,25 @@ function idempotencyKey(req) {
   return req.get('Idempotency-Key') || req.body.idempotencyKey || '';
 }
 
-function webhookSecret(req, ...keys) {
-  const expected = keys.map((key) => process.env[key]).find(Boolean);
-  if (!expected) return true;
-
-  const provided =
-    req.get('x-itruck-webhook-secret') || req.get('x-webhook-secret') || req.query.token || req.query.secret || '';
-  return provided === expected;
+function secretsMatch(provided, expected) {
+  const providedBuffer = Buffer.from(String(provided || ''));
+  const expectedBuffer = Buffer.from(String(expected || ''));
+  return providedBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(providedBuffer, expectedBuffer);
 }
 
 function requireWebhookSecret(...keys) {
   return (req, res, next) => {
-    if (webhookSecret(req, ...keys)) return next();
+    const expected = keys.map((key) => process.env[key]).find(Boolean);
+    if (!expected) {
+      if (isLiveMode()) {
+        return res.status(503).json({ message: 'Payment webhook authentication is not configured' });
+      }
+      return next();
+    }
+
+    const provided =
+      req.get('x-itruck-webhook-secret') || req.get('x-webhook-secret') || req.query.token || req.query.secret || '';
+    if (secretsMatch(provided, expected)) return next();
     return res.status(401).json({ message: 'Invalid webhook secret' });
   };
 }
@@ -135,7 +143,7 @@ async function notifyEscrowIfCompleted(req, result, providerLabel) {
 
 router.post(
   ['/webhooks/mpesa/stk', '/mpesa/callback'],
-  requireWebhookSecret('MPESA_WEBHOOK_SECRET', 'MPESA_CALLBACK_SECRET'),
+  requireWebhookSecret('MPESA_WEBHOOK_SECRET', 'MPESA_CALLBACK_SECRET', 'MPESA_CALLBACK_TOKEN'),
   asyncHandler(async (req, res) => {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) return res.json({ received: true, matched: false, mode: 'memory' });
@@ -148,7 +156,12 @@ router.post(
 
 router.post(
   ['/webhooks/mtn/request-to-pay/:referenceId?', '/mtn/callback/:referenceId?', '/momo/callback/:referenceId?'],
-  requireWebhookSecret('MTN_MOMO_WEBHOOK_SECRET', 'MOMO_WEBHOOK_SECRET', 'MTN_MOMO_CALLBACK_SECRET'),
+  requireWebhookSecret(
+    'MTN_MOMO_WEBHOOK_SECRET',
+    'MOMO_WEBHOOK_SECRET',
+    'MTN_MOMO_CALLBACK_SECRET',
+    'MTN_MOMO_CALLBACK_TOKEN'
+  ),
   asyncHandler(async (req, res) => {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) return res.json({ received: true, matched: false, mode: 'memory' });
