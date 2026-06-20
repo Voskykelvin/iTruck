@@ -52,10 +52,12 @@ test('booking indexes cover client owner status dashboards', () => {
   expect(hasIndex(Booking, { paymentStatus: 1, updatedAt: -1 })).toBe(true);
   expect(hasIndex(Booking, { loadMode: 1, routeKey: 1, status: 1, pickupDate: 1 })).toBe(true);
   expect(hasIndex(Booking, { consolidationEligible: 1, routeKey: 1, status: 1 })).toBe(true);
+  expect(hasIndex(Booking, { 'lastKnownLocation.recordedAt': -1 })).toBe(true);
   expect(Booking.schema.path('paymentStatus')).toBeDefined();
   expect(Booking.schema.path('loadMode')).toBeDefined();
   expect(Booking.schema.path('destinationCoordinates.lat')).toBeDefined();
   expect(Booking.schema.path('deliveryGeofenceMeters')).toBeDefined();
+  expect(Booking.schema.path('lastKnownLocation.recordedAt')).toBeDefined();
 });
 
 test('truck indexes and schema fields support verified fleet operations', () => {

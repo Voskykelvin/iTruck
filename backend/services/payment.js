@@ -45,14 +45,51 @@ function publicBaseUrl() {
   return trimTrailingSlash(value);
 }
 
-function providerCallbackUrl(provider) {
+function providerCallbackSecret(provider) {
   if (provider === 'mpesa') {
-    return envValue('MPESA_CALLBACK_URL') || `${publicBaseUrl()}/api/payments/webhooks/mpesa/stk`;
+    return envValue('MPESA_WEBHOOK_SECRET', 'MPESA_CALLBACK_SECRET', 'MPESA_CALLBACK_TOKEN');
   }
-  return (
-    envValue('MTN_MOMO_CALLBACK_URL', 'MOMO_CALLBACK_URL') ||
-    `${publicBaseUrl()}/api/payments/webhooks/mtn/request-to-pay`
+  return envValue(
+    'MTN_MOMO_WEBHOOK_SECRET',
+    'MOMO_WEBHOOK_SECRET',
+    'MTN_MOMO_CALLBACK_SECRET',
+    'MTN_MOMO_CALLBACK_TOKEN'
   );
+}
+
+function authenticateProviderCallback(url, provider) {
+  const secret = providerCallbackSecret(provider);
+  if (!secret) return url;
+
+  const callback = new URL(url);
+  if (!callback.searchParams.has('token') && !callback.searchParams.has('secret')) {
+    callback.searchParams.set('token', secret);
+  }
+  return callback.toString();
+}
+
+function providerCallbackUrl(provider, referenceId) {
+  const configured =
+    provider === 'mpesa' ? envValue('MPESA_CALLBACK_URL') : envValue('MTN_MOMO_CALLBACK_URL', 'MOMO_CALLBACK_URL');
+  let callback =
+    configured ||
+    (provider === 'mpesa'
+      ? `${publicBaseUrl()}/api/payments/webhooks/mpesa/stk`
+      : `${publicBaseUrl()}/api/payments/webhooks/mtn/request-to-pay`);
+
+  if (provider === 'mtn' && referenceId) {
+    if (callback.includes(':referenceId')) {
+      callback = callback.replace(':referenceId', encodeURIComponent(referenceId));
+    } else {
+      const parsed = new URL(callback);
+      if (!parsed.pathname.endsWith(`/${referenceId}`)) {
+        parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}/${encodeURIComponent(referenceId)}`;
+      }
+      callback = parsed.toString();
+    }
+  }
+
+  return authenticateProviderCallback(callback, provider);
 }
 
 function mpesaTimestamp(date = new Date()) {
@@ -467,7 +504,7 @@ class MpesaService {
       PartyA: formattedPhone,
       PartyB: shortcode,
       PhoneNumber: formattedPhone,
-      CallBackURL: callbackUrl || providerCallbackUrl('mpesa'),
+      CallBackURL: authenticateProviderCallback(callbackUrl || providerCallbackUrl('mpesa'), 'mpesa'),
       AccountReference: String(accountReference || 'ITRUCK').slice(0, 12),
       TransactionDesc: String(description || 'iTruck escrow').slice(0, 60)
     };
@@ -550,10 +587,7 @@ class MTNMoMoService {
   }
 
   callbackUrl(referenceId) {
-    const base = providerCallbackUrl('mtn');
-    if (base.includes(':referenceId')) return base.replace(':referenceId', encodeURIComponent(referenceId));
-    if (base.endsWith(`/${referenceId}`)) return base;
-    return `${trimTrailingSlash(base)}/${encodeURIComponent(referenceId)}`;
+    return providerCallbackUrl('mtn', referenceId);
   }
 
   async requestToPay({ amount, phone, externalId, payerMessage, payeeNote, callbackUrl }) {
@@ -578,7 +612,7 @@ class MTNMoMoService {
         Authorization: `Bearer ${token}`,
         'X-Reference-Id': referenceId,
         'X-Target-Environment': this.targetEnvironment(),
-        'X-Callback-Url': callbackUrl || this.callbackUrl(referenceId),
+        'X-Callback-Url': authenticateProviderCallback(callbackUrl || this.callbackUrl(referenceId), 'mtn'),
         'Ocp-Apim-Subscription-Key': this.subscriptionKey('collection'),
         'Content-Type': 'application/json'
       },
@@ -1217,12 +1251,50 @@ class PaymentReconciliationService {
       return { received: true, matched: false };
     }
 
+    if (transaction.status && transaction.status !== 'pending') {
+      const booking = await updateBookingFromTransaction(transaction, transaction.status);
+      return {
+        received: true,
+        matched: true,
+        duplicate: true,
+        status: transaction.status,
+        booking
+      };
+    }
+
     const successful = Number(callback.ResultCode) === 0;
     const callbackItems = mpesaCallbackMetadata(callback.CallbackMetadata);
     const receipt = callbackItems.MpesaReceiptNumber || callbackItems.ReceiptNumber;
-    const amount = firstPositiveAmount([callbackItems.Amount, transaction.amount]);
+    const callbackAmount = Number(callbackItems.Amount);
+    const amount = successful ? callbackAmount : Number(transaction.amount);
+    const transactionMetadata = metadataObject(transaction.metadata);
+
+    if (
+      transactionMetadata.merchantRequestId &&
+      callback.MerchantRequestID &&
+      transactionMetadata.merchantRequestId !== callback.MerchantRequestID
+    ) {
+      throw appError('M-Pesa callback merchant reference does not match the payment request', 409);
+    }
+
+    if (successful && (!receipt || !Number.isFinite(callbackAmount) || callbackAmount <= 0)) {
+      throw appError('M-Pesa success callback is missing receipt or amount metadata', 400);
+    }
+
+    if (
+      successful &&
+      Number.isFinite(Number(transaction.amount)) &&
+      Math.abs(callbackAmount - Number(transaction.amount)) > 0.01
+    ) {
+      logger.error(
+        { checkoutRequestId, callbackAmount, expectedAmount: transaction.amount },
+        'M-Pesa callback amount did not match the pending transaction'
+      );
+      throw appError('M-Pesa callback amount does not match the pending transaction', 409);
+    }
+
     const metadata = {
-      ...metadataObject(transaction.metadata),
+      ...transactionMetadata,
       mpesaReceipt: receipt,
       callbackResultCode: callback.ResultCode,
       callbackResultDesc: callback.ResultDesc,
@@ -1230,20 +1302,33 @@ class PaymentReconciliationService {
       reconciledAt: new Date().toISOString()
     };
     const reference = successful && receipt ? mobileMoneyReference('mpesa', receipt) : transaction.reference;
+    const status = successful ? 'completed' : 'failed';
+    const updated = await Transaction.findOneAndUpdate(
+      { _id: transaction._id, status: 'pending' },
+      { $set: { status, reference, metadata } },
+      { new: true }
+    );
 
-    const updated = await saveTransaction(transaction, {
-      status: successful ? 'completed' : 'failed',
-      reference,
-      metadata
-    });
-    const booking = await updateBookingFromTransaction(updated || transaction, successful ? 'completed' : 'failed', {
-      amount
-    });
+    if (!updated) {
+      const current = await Transaction.findOne({ _id: transaction._id });
+      const resolved = current || transaction;
+      const booking = await updateBookingFromTransaction(resolved, resolved.status || status, { amount });
+      return {
+        received: true,
+        matched: true,
+        duplicate: true,
+        status: resolved.status || status,
+        booking
+      };
+    }
+
+    const booking = await updateBookingFromTransaction(updated, status, { amount });
 
     return {
       received: true,
       matched: true,
-      status: successful ? 'completed' : 'failed',
+      duplicate: false,
+      status,
       booking
     };
   }

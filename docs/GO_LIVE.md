@@ -47,8 +47,10 @@
 
 - Use sandbox keys until the full payment flow is tested.
 - Point Stripe webhooks to `/api/webhooks/stripe` and configure `STRIPE_WEBHOOK_SECRET`.
-- Verify M-Pesa and MTN webhook signatures before enabling those providers.
-- Add transaction reconciliation before releasing owner payouts.
+- Point M-Pesa callbacks to `/api/payments/webhooks/mpesa/stk` and configure `MPESA_WEBHOOK_SECRET`.
+- Point MTN MoMo callbacks to `/api/payments/webhooks/mtn/request-to-pay` and configure `MTN_MOMO_WEBHOOK_SECRET`.
+- Mobile-money callback URLs automatically include the configured secret as a token; live mode rejects callbacks when authentication is missing or invalid.
+- Validate transaction reconciliation against provider sandbox and live callback retries before releasing owner payouts.
 - Confirm admin payment release is blocked until booking delivery, collected escrow funds, and approved POD or receiver confirmation are present.
 - Send an `Idempotency-Key` header on payment, withdrawal, and release requests so client retries cannot duplicate charges or ledger entries.
 

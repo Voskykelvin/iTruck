@@ -1,6 +1,7 @@
 process.env.REDIS_URL = '';
 
 const { errorHandler } = require('../middleware/security');
+const { redactUrlSecrets } = require('../utils/redactUrl');
 
 const originalEnv = { ...process.env };
 
@@ -56,4 +57,10 @@ test('error handler hides unexpected production server errors', () => {
     status: 'error',
     message: 'An unexpected internal server error occurred.'
   });
+});
+
+test('callback secrets are removed from logged URLs', () => {
+  expect(redactUrlSecrets('/api/payments/webhooks/mpesa/stk?token=secret-value&mode=live')).toBe(
+    '/api/payments/webhooks/mpesa/stk?token=[redacted]&mode=live'
+  );
 });

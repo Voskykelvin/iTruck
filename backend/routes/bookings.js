@@ -174,12 +174,37 @@ function normalizeTrackingPoint(value = {}) {
   return point;
 }
 
+function orderedTrackingUpdates(updates = []) {
+  return [...updates].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+}
+
+function lastKnownLocation(point, ingestedAt = new Date()) {
+  if (!point) return undefined;
+  const location = {
+    lat: point.lat,
+    lng: point.lng,
+    recordedAt: point.timestamp || ingestedAt,
+    ingestedAt
+  };
+  ['speed', 'heading', 'accuracy'].forEach((key) => {
+    if (point[key] !== undefined) location[key] = point[key];
+  });
+  return location;
+}
+
+function recordLatestLocation(booking, point, ingestedAt = new Date()) {
+  const location = lastKnownLocation(point, ingestedAt);
+  if (location) booking.lastKnownLocation = location;
+  return location;
+}
+
 function trackingAllowed(booking) {
   return ['confirmed', 'in_transit', 'delivery_pending'].includes(booking.status);
 }
 
 function pushMemoryTracking(booking, updates) {
   booking.tracking = [...(booking.tracking || []), ...updates].slice(-1000);
+  recordLatestLocation(booking, updates[updates.length - 1]);
   return booking;
 }
 
@@ -530,7 +555,11 @@ router.patch(
 
       assertDeliveryGeofence(booking, req.body.location);
       assertDeliveryProofForDelivery(booking);
-      if (req.body.location) booking.tracking.push(req.body.location);
+      if (req.body.location) {
+        const location = normalizeTrackingPoint(req.body.location);
+        booking.tracking.push(location);
+        recordLatestLocation(booking, location);
+      }
       booking.transitionTo('delivered');
       booking.deliveredAt = new Date();
       await booking.save();
@@ -629,8 +658,10 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
         booking.status = req.body.status;
       }
       if (req.body.location) {
+        const location = normalizeTrackingPoint(req.body.location);
         booking.tracking = booking.tracking || [];
-        booking.tracking.push({ ...req.body.location, timestamp: new Date().toISOString() });
+        booking.tracking.push(location);
+        recordLatestLocation(booking, location);
       }
       emitBooking(req, booking._id, 'status-update', booking);
       return res.json({ booking, mode: 'memory' });
@@ -649,7 +680,11 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
       assertDeliveryProofForDelivery(booking);
     }
     if (req.body.status) booking.transitionTo(req.body.status);
-    if (req.body.location) booking.tracking.push(req.body.location);
+    if (req.body.location) {
+      const location = normalizeTrackingPoint(req.body.location);
+      booking.tracking.push(location);
+      recordLatestLocation(booking, location);
+    }
     await booking.save();
 
     await notifications.notifyBookingParties(
@@ -673,6 +708,7 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
 
 async function appendTrackingUpdates(req, res, next, updates) {
   try {
+    const orderedUpdates = orderedTrackingUpdates(updates);
     if (requireDatabase(req, res)) return;
 
     if (!mongoReady()) {
@@ -685,9 +721,9 @@ async function appendTrackingUpdates(req, res, next, updates) {
           .json({ message: 'Tracking updates are only accepted for active or handover-pending bookings' });
       }
 
-      pushMemoryTracking(booking, updates);
-      emitTracking(req, booking, updates);
-      return res.json({ booking, updates, accepted: updates.length, mode: 'memory' });
+      pushMemoryTracking(booking, orderedUpdates);
+      emitTracking(req, booking, orderedUpdates);
+      return res.json({ booking, updates: orderedUpdates, accepted: orderedUpdates.length, mode: 'memory' });
     }
 
     const booking = await Booking.findById(req.params.id);
@@ -701,16 +737,21 @@ async function appendTrackingUpdates(req, res, next, updates) {
 
     const query = { _id: booking._id, status: { $in: ['confirmed', 'in_transit', 'delivery_pending'] } };
     if (req.user.role !== 'admin') query.owner = req.user._id;
+    const ingestedAt = new Date();
+    const latest = orderedUpdates[orderedUpdates.length - 1];
 
     const updatedBooking = await Booking.findOneAndUpdate(
       query,
-      { $push: { tracking: { $each: updates, $slice: -1000 } } },
+      {
+        $push: { tracking: { $each: orderedUpdates, $slice: -1000 } },
+        $set: { lastKnownLocation: lastKnownLocation(latest, ingestedAt) }
+      },
       { new: true, runValidators: true }
     );
     if (!updatedBooking) return res.status(409).json({ message: 'Tracking update could not be applied' });
 
-    emitTracking(req, updatedBooking, updates);
-    return res.json({ booking: updatedBooking, updates, accepted: updates.length });
+    emitTracking(req, updatedBooking, orderedUpdates);
+    return res.json({ booking: updatedBooking, updates: orderedUpdates, accepted: orderedUpdates.length });
   } catch (err) {
     return next(err);
   }

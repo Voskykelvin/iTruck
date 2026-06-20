@@ -1,6 +1,7 @@
 const rateLimit = require('express-rate-limit');
 const AppError = require('../utils/AppError');
 const logger = require('../config/logger');
+const { redactUrlSecrets } = require('../utils/redactUrl');
 
 function redisStore(prefix) {
   if (!process.env.REDIS_URL) return undefined;
@@ -47,8 +48,11 @@ function handleDuplicateKey(err) {
 }
 
 function handleValidationError(err) {
-  const messages = Object.values(err.errors || {}).map((error) => error.message);
-  return new AppError(`Validation failed: ${messages.join('. ')}`, 422);
+  const errors = Object.values(err.errors || {}).map((error) => ({
+    field: error.path,
+    message: error.message
+  }));
+  return new AppError(`Validation failed: ${errors.map((error) => error.message).join('. ')}`, 422, { errors });
 }
 
 function normalizeError(err) {
@@ -76,7 +80,18 @@ function errorHandler(err, req, res, _next) {
   if (error.details && exposeMessage) payload.details = error.details;
 
   const log = status >= 500 ? logger.error.bind(logger) : logger.warn.bind(logger);
-  log({ err: error, status, path: req.originalUrl, operational: Boolean(error.isOperational) }, 'Request failed');
+  log(
+    {
+      err: error,
+      status,
+      path: redactUrlSecrets(req.originalUrl),
+      method: req.method,
+      ip: req.ip,
+      requestId: req.id,
+      operational: Boolean(error.isOperational)
+    },
+    'Request failed'
+  );
   res.status(status).json(payload);
 }
 

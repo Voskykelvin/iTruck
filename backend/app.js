@@ -11,6 +11,7 @@ const logger = require('./config/logger');
 const { apiLimiter, authLimiter, errorHandler } = require('./middleware/security');
 const { stripeRouter } = require('./routes/webhooks');
 const AppError = require('./utils/AppError');
+const { redactUrlSecrets } = require('./utils/redactUrl');
 
 const app = express();
 const frontendDir = path.join(__dirname, '../frontend');
@@ -63,6 +64,17 @@ app.use(cors(corsOptions()));
 app.use(
   pinoHttp({
     logger,
+    serializers: {
+      req(req) {
+        return {
+          method: req.method,
+          url: redactUrlSecrets(req.url),
+          host: req.headers?.host,
+          remoteAddress: req.remoteAddress,
+          remotePort: req.remotePort
+        };
+      }
+    },
     autoLogging:
       process.env.NODE_ENV === 'test'
         ? false

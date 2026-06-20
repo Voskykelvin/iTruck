@@ -36,6 +36,7 @@ const Idempotency = require('../models/Idempotency');
 const {
   checkIdempotency,
   generateIdempotencyKey,
+  MpesaService,
   MobileMoneyPaymentService,
   PaymentReconciliationService,
   runWithIdempotency,
@@ -359,6 +360,59 @@ test('mobile money initiation reserves booking and stores provider references', 
   expect(result).toEqual(expect.objectContaining({ success: true, providerReference: 'checkout-1' }));
 });
 
+test('mpesa initiation authenticates the generated callback URL', async () => {
+  const originalValues = {
+    MPESA_CONSUMER_KEY: process.env.MPESA_CONSUMER_KEY,
+    MPESA_CONSUMER_SECRET: process.env.MPESA_CONSUMER_SECRET,
+    MPESA_SHORTCODE: process.env.MPESA_SHORTCODE,
+    MPESA_PASSKEY: process.env.MPESA_PASSKEY,
+    MPESA_CALLBACK_URL: process.env.MPESA_CALLBACK_URL,
+    MPESA_WEBHOOK_SECRET: process.env.MPESA_WEBHOOK_SECRET
+  };
+
+  process.env.MPESA_CONSUMER_KEY = 'consumer-key';
+  process.env.MPESA_CONSUMER_SECRET = 'consumer-secret';
+  process.env.MPESA_SHORTCODE = '174379';
+  process.env.MPESA_PASSKEY = 'passkey';
+  process.env.MPESA_CALLBACK_URL = 'https://api.example.com/api/payments/webhooks/mpesa/stk';
+  process.env.MPESA_WEBHOOK_SECRET = 'callback-secret';
+
+  const response = (payload) => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify(payload)
+  });
+  const fetchImpl = jest
+    .fn()
+    .mockResolvedValueOnce(response({ access_token: 'access-token' }))
+    .mockResolvedValueOnce(
+      response({
+        MerchantRequestID: 'merchant-callback',
+        CheckoutRequestID: 'checkout-callback',
+        CustomerMessage: 'Success'
+      })
+    );
+
+  try {
+    await new MpesaService({ fetchImpl }).initiateStkPush({
+      amount: 1260,
+      phone: '0712345678',
+      accountReference: 'ITRUCK',
+      description: 'Escrow payment'
+    });
+
+    const requestPayload = JSON.parse(fetchImpl.mock.calls[1][1].body);
+    expect(requestPayload.CallBackURL).toBe(
+      'https://api.example.com/api/payments/webhooks/mpesa/stk?token=callback-secret'
+    );
+  } finally {
+    Object.entries(originalValues).forEach(([key, value]) => {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    });
+  }
+});
+
 test('idempotency keys are deterministic and do not depend on wall-clock time', () => {
   const payload = { userId: 'user-1', bookingId: 'booking-1', amount: 1200, provider: 'mpesa' };
 
@@ -483,19 +537,25 @@ test('mpesa callback completes transaction and marks booking escrowed', async ()
     provider: 'mpesa',
     providerEventId: 'checkout-1',
     amount: 1260,
+    status: 'pending',
     reference: 'mpesa:checkout-1',
-    metadata: {},
-    save: jest.fn(function save() {
-      return Promise.resolve(this);
-    })
+    metadata: { merchantRequestId: 'merchant-1' }
+  };
+  const completedTransaction = {
+    ...transaction,
+    status: 'completed',
+    reference: 'mpesa:RCP123',
+    metadata: { ...transaction.metadata, mpesaReceipt: 'RCP123' }
   };
   Transaction.findOne.mockResolvedValue(transaction);
+  Transaction.findOneAndUpdate.mockResolvedValue(completedTransaction);
   Booking.findByIdAndUpdate.mockResolvedValue({ _id: 'booking-1', paymentStatus: 'escrowed' });
 
   const service = new PaymentReconciliationService();
   const result = await service.reconcileMpesaCallback({
     Body: {
       stkCallback: {
+        MerchantRequestID: 'merchant-1',
         CheckoutRequestID: 'checkout-1',
         ResultCode: 0,
         ResultDesc: 'Accepted',
@@ -509,9 +569,17 @@ test('mpesa callback completes transaction and marks booking escrowed', async ()
     }
   });
 
-  expect(transaction.status).toBe('completed');
-  expect(transaction.reference).toBe('mpesa:RCP123');
-  expect(transaction.save).toHaveBeenCalled();
+  expect(Transaction.findOneAndUpdate).toHaveBeenCalledWith(
+    { _id: 'tx-mpesa', status: 'pending' },
+    {
+      $set: expect.objectContaining({
+        status: 'completed',
+        reference: 'mpesa:RCP123',
+        metadata: expect.objectContaining({ mpesaReceipt: 'RCP123' })
+      })
+    },
+    { new: true }
+  );
   expect(Booking.findByIdAndUpdate).toHaveBeenCalledWith(
     'booking-1',
     {
@@ -524,6 +592,73 @@ test('mpesa callback completes transaction and marks booking escrowed', async ()
     { new: true }
   );
   expect(result).toEqual(expect.objectContaining({ received: true, matched: true, status: 'completed' }));
+});
+
+test('mpesa callback rejects a successful payment with the wrong amount', async () => {
+  Transaction.findOne.mockResolvedValue({
+    _id: 'tx-mpesa-mismatch',
+    booking: 'booking-1',
+    provider: 'mpesa',
+    providerEventId: 'checkout-mismatch',
+    amount: 1260,
+    status: 'pending',
+    reference: 'mpesa:checkout-mismatch',
+    metadata: { merchantRequestId: 'merchant-mismatch' }
+  });
+
+  const service = new PaymentReconciliationService();
+  await expect(
+    service.reconcileMpesaCallback({
+      Body: {
+        stkCallback: {
+          MerchantRequestID: 'merchant-mismatch',
+          CheckoutRequestID: 'checkout-mismatch',
+          ResultCode: 0,
+          ResultDesc: 'Accepted',
+          CallbackMetadata: {
+            Item: [
+              { Name: 'Amount', Value: 1250 },
+              { Name: 'MpesaReceiptNumber', Value: 'RCP-MISMATCH' }
+            ]
+          }
+        }
+      }
+    })
+  ).rejects.toThrow('amount does not match');
+
+  expect(Transaction.findOneAndUpdate).not.toHaveBeenCalled();
+  expect(Booking.findByIdAndUpdate).not.toHaveBeenCalled();
+});
+
+test('mpesa callback does not regress an already completed transaction', async () => {
+  const transaction = {
+    _id: 'tx-mpesa-complete',
+    booking: 'booking-1',
+    provider: 'mpesa',
+    providerEventId: 'checkout-complete',
+    amount: 1260,
+    status: 'completed',
+    reference: 'mpesa:RCP-COMPLETE',
+    metadata: { mpesaReceipt: 'RCP-COMPLETE' }
+  };
+  Transaction.findOne.mockResolvedValue(transaction);
+  Booking.findByIdAndUpdate.mockResolvedValue({ _id: 'booking-1', paymentStatus: 'escrowed' });
+
+  const service = new PaymentReconciliationService();
+  const result = await service.reconcileMpesaCallback({
+    Body: {
+      stkCallback: {
+        CheckoutRequestID: 'checkout-complete',
+        ResultCode: 1,
+        ResultDesc: 'Late duplicate failure'
+      }
+    }
+  });
+
+  expect(Transaction.findOneAndUpdate).not.toHaveBeenCalled();
+  expect(result).toEqual(
+    expect.objectContaining({ received: true, matched: true, duplicate: true, status: 'completed' })
+  );
 });
 
 test('mtn momo callback records failures against the booking', async () => {

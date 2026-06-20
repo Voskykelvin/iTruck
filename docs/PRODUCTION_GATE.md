@@ -75,6 +75,9 @@ Then verify:
 - LTL booking creation stores cargo weight, reserved capacity, consolidation eligibility, and route key metadata.
 - `GET /api/marketplace/clusters` returns authenticated lane-level LTL consolidation summaries without exposing individual shipper records.
 - Stripe webhook signature verification succeeds and reconciles a test payment into a booking payment status.
+- M-Pesa/MTN callback endpoints reject missing or invalid callback tokens and accept the configured token.
+- A repeated or out-of-order M-Pesa callback cannot regress a completed payment, and amount mismatches remain unreconciled.
+- Application and bundled Nginx request logs redact or omit mobile-money callback tokens.
 - Admin payment release is blocked until delivery, escrowed funds, and approved POD or receiver confirmation are present.
 - Admin payment release credits the owner wallet once and records an audit log.
 - Repeating a payment, withdrawal, or release request with the same `Idempotency-Key` does not create duplicate ledger entries.
