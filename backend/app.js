@@ -12,11 +12,20 @@ const { apiLimiter, authLimiter, errorHandler } = require('./middleware/security
 const { stripeRouter } = require('./routes/webhooks');
 const AppError = require('./utils/AppError');
 const { redactUrlSecrets } = require('./utils/redactUrl');
+const { isLiveMode } = require('./config/runtime');
 
 const app = express();
 const frontendDir = path.join(__dirname, '../frontend');
 const reactAppIndex = path.join(frontendDir, 'app/index.html');
 const legacyIndex = path.join(frontendDir, 'index.html');
+const localUploadsDir = path.join(__dirname, 'uploads');
+const localUploads = express.static(localUploadsDir, {
+  fallthrough: false,
+  maxAge: '1h',
+  setHeaders(response) {
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+  }
+});
 const legacyRouteMap = {
   '/pages/dashboard-client.html': '/app/shipper',
   '/pages/dashboard-owner.html': '/app/owner',
@@ -53,13 +62,14 @@ function corsOptions() {
   return {
     origin(origin, callback) {
       if (!origin || origins.includes(origin)) return callback(null, true);
-      callback(new Error('Origin is not allowed by CORS'));
+      callback(AppError.forbidden('Origin is not allowed by CORS'));
     },
     credentials: true
   };
 }
 
 app.use(helmet({ contentSecurityPolicy: false }));
+app.set('trust proxy', isLiveMode() ? 1 : false);
 app.use(cors(corsOptions()));
 app.use(
   pinoHttp({
@@ -84,6 +94,10 @@ app.use(
   })
 );
 app.use('/api/webhooks/stripe', apiLimiter, express.raw({ type: 'application/json', limit: '2mb' }), stripeRouter);
+app.use('/api/uploads/local', (req, res, next) => {
+  if (isLiveMode()) return next(AppError.notFound('Local uploads are disabled in live mode.'));
+  return localUploads(req, res, next);
+});
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());

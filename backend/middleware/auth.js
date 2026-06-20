@@ -4,13 +4,18 @@ const { demoModeEnabled, mongoReady } = require('../config/runtime');
 const { demoUsers, safeUser } = require('../data/demo-users');
 
 async function protect(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return res.status(401).json({ message: 'Authentication required' });
+
+  let decoded;
   try {
-    const header = req.headers.authorization || '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-    if (!token) return res.status(401).json({ message: 'Authentication required' });
+    decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+  } catch (_err) {
+    return res.status(401).json({ message: 'Invalid or expired token' });
+  }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
-
+  try {
     if (!mongoReady()) {
       if (!demoModeEnabled()) {
         return res
@@ -27,8 +32,8 @@ async function protect(req, res, next) {
     if (req.user.isActive === false) return res.status(403).json({ message: 'Account is disabled' });
 
     next();
-  } catch (_err) {
-    res.status(401).json({ message: 'Invalid or expired token' });
+  } catch (err) {
+    next(err);
   }
 }
 

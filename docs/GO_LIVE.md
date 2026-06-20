@@ -60,7 +60,7 @@
 2. Set `LIVE_MODE=true` and `DEMO_MODE=false`.
 3. Set `workspace/.env` with `VITE_DEMO_MODE=false`.
 4. Run `npm run live:check`.
-5. Run `npm --prefix workspace install` and `npm run app:build`.
+5. Run `npm ci --include=dev --prefix workspace` and `npm run app:build`.
 6. Run `npm --prefix backend install` and `npm test`.
 7. Start with `NODE_ENV=production npm start`.
 8. Confirm `/api/health`, `/app`, login, booking, marketplace, and admin routes.

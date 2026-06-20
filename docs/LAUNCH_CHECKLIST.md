@@ -3,6 +3,7 @@
 ## Critical Path to First Deploy (Do These First)
 
 ### Prep (30 mins)
+
 - [ ] Get production MongoDB URI (MongoDB Atlas cloud or self-hosted)
   - Format: `mongodb+srv://username:password@cluster.mongodb.net/itruck`
   - Test locally first: `mongosh "your-uri"`
@@ -10,6 +11,7 @@
   - Example: `itruck.onrender.com` or `api.itruck.africa`
 
 ### Environment Setup (10 mins)
+
 - [ ] Copy `.env.production` template
 - [ ] Fill in these 3 fields minimum:
   ```
@@ -21,6 +23,7 @@
 - [ ] Verify `.env` has JWT_SECRET configured
 
 ### Deploy (5 mins via Render)
+
 - [ ] Push code to GitHub
 - [ ] Create Render Web Service
 - [ ] Connect GitHub repo
@@ -28,6 +31,7 @@
 - [ ] Click Deploy
 
 ### Test (15 mins)
+
 - [ ] Visit `https://your-domain/app` and confirm the React app loads
 - [ ] Visit `https://your-domain/api/health` and confirm it returns `200`
 - [ ] Try register shipper and confirm it works
@@ -41,13 +45,20 @@
 ## Before You Go Live to Real Users
 
 ### Security
+
 - [ ] HTTPS working (auto on Render)
 - [ ] No console errors on frontend (check browser DevTools)
 - [ ] No auth tokens in logs
 - [ ] Database backups enabled
+- [ ] Production dependency audits pass for backend and workspace
+- [ ] Socket connections reject unauthenticated clients and unauthorized booking-room joins
 
 ### Functionality
+
 - [ ] Truck registration works (photo upload to Cloudinary)
+- [ ] Renamed or MIME-spoofed uploads are rejected
+- [ ] Documents cannot be approved without uploaded or generated evidence
+- [ ] Public truck endpoints do not expose owner identity, registration, chassis, or document records
 - [ ] Booking creation works
 - [ ] Owner bidding is blocked until owner and truck verification documents are approved
 - [ ] POD or receiver confirmation upload works before delivery completion
@@ -62,11 +73,13 @@
 - [ ] Admin dashboard loads
 
 ### Operations
+
 - [ ] Understand how to view logs (Render dashboard)
 - [ ] Know how to scale (Render: upgrade plan)
 - [ ] Have rollback plan (keep git tag, can redeploy old version)
 
 ### Communication
+
 - [ ] Privacy policy live
 - [ ] Terms of service live
 - [ ] Support email active
@@ -74,11 +87,15 @@
 
 ---
 
-## Optional Phase 2 (After You Have Users)
+## Provider And Phase 2 Work
 
-These can wait, use demo/fallback until ready:
-- [ ] Stripe payment integration
-- [ ] M-Pesa mobile money
+Payment adapter code exists, but real-money launch still requires provider credentials,
+sandbox/live certification, callback monitoring, refund/dispute handling, and owner payout
+execution.
+
+- [ ] Certify Stripe payment and webhook flows with a live account
+- [ ] Certify M-Pesa and MTN MoMo collection/callback flows
+- [ ] Implement and certify owner payouts, refunds, and disputes
 - [ ] SMS notifications (Africa's Talking)
 - [ ] Email confirmations (SendGrid)
 - [ ] Google Maps JavaScript markers, route polylines, and ETA
@@ -90,6 +107,7 @@ These can wait, use demo/fallback until ready:
 ## Support
 
 Issues during deploy?
+
 1. Check `DEPLOYMENT_GUIDE.md` troubleshooting section
 2. Run `npm test` locally to confirm code is solid
 3. Verify env vars are set correctly in Render dashboard

@@ -32,8 +32,8 @@ const userSchema = new mongoose.Schema(
     documents: [userDocumentSchema],
     pushSubscription: Object,
     lastLogin: Date,
-    passwordResetToken: String,
-    passwordResetExpires: Date
+    passwordResetToken: { type: String, select: false },
+    passwordResetExpires: { type: Date, select: false }
   },
   { timestamps: true }
 );

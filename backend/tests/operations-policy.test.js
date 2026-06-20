@@ -8,18 +8,18 @@ const {
 } = require('../services/operationsPolicy');
 
 const ownerDocs = [
-  { type: 'owner-kyc', status: 'approved' },
-  { type: 'driver-id', status: 'approved' },
-  { type: 'business-registration', status: 'approved' },
-  { type: 'insurance', status: 'approved' }
+  { type: 'owner-kyc', status: 'approved', url: 'https://example.com/owner-kyc.pdf' },
+  { type: 'driver-id', status: 'approved', url: 'https://example.com/driver-id.pdf' },
+  { type: 'business-registration', status: 'approved', url: 'https://example.com/business-registration.pdf' },
+  { type: 'insurance', status: 'approved', url: 'https://example.com/owner-insurance.pdf' }
 ];
 
 const truckDocs = [
-  { type: 'vehicle-photos', status: 'approved' },
-  { type: 'insurance', status: 'approved' },
-  { type: 'vehicle-logbook', status: 'approved' },
-  { type: 'road-license', status: 'approved' },
-  { type: 'inspection-report', status: 'approved' }
+  { type: 'vehicle-photos', status: 'approved', url: 'https://example.com/vehicle.webp' },
+  { type: 'insurance', status: 'approved', url: 'https://example.com/truck-insurance.pdf' },
+  { type: 'vehicle-logbook', status: 'approved', url: 'https://example.com/logbook.pdf' },
+  { type: 'road-license', status: 'approved', url: 'https://example.com/license.pdf' },
+  { type: 'inspection-report', status: 'approved', url: 'https://example.com/inspection.pdf' }
 ];
 
 test('owner bidding policy requires approved owner and truck documents', () => {
@@ -46,6 +46,10 @@ test('document readiness reports missing approved document types', () => {
     'insurance',
     'logbook'
   ]);
+});
+
+test('approved verification status without document evidence is still incomplete', () => {
+  expect(missingApprovedDocuments([{ type: 'insurance', status: 'approved' }], ['insurance'])).toEqual(['insurance']);
 });
 
 test('delivery proof policy allows pending proof for delivery but approved proof for release', () => {

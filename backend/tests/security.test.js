@@ -2,6 +2,7 @@ process.env.REDIS_URL = '';
 
 const { errorHandler } = require('../middleware/security');
 const { redactUrlSecrets } = require('../utils/redactUrl');
+const { corsOptions } = require('../app');
 
 const originalEnv = { ...process.env };
 
@@ -63,4 +64,13 @@ test('callback secrets are removed from logged URLs', () => {
   expect(redactUrlSecrets('/api/payments/webhooks/mpesa/stk?token=secret-value&mode=live')).toBe(
     '/api/payments/webhooks/mpesa/stk?token=[redacted]&mode=live'
   );
+});
+
+test('disallowed cors origins produce a forbidden error', (done) => {
+  process.env.ALLOWED_ORIGINS = 'https://itruck.example';
+  corsOptions().origin('https://attacker.example', (err) => {
+    expect(err.statusCode).toBe(403);
+    expect(err.message).toContain('not allowed');
+    done();
+  });
 });

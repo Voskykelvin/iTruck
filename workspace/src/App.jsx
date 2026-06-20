@@ -2119,7 +2119,7 @@ function useAnimatedTrackingPoint(targetPoint) {
 
     frameId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameId);
-  }, [targetPoint?.lat, targetPoint?.lng, targetPoint?.speed, targetPoint?.timestamp]);
+  }, [targetPoint]);
 
   return animated;
 }
@@ -2316,13 +2316,6 @@ function DriverLiveTracker({ shipment, notify, onBookingUpdate }) {
     );
     notify('Live tracking started');
   }, [applyBooking, bookingId, canTrack, notify, requestWakeLock, sendOrQueue, shipment?.rawStatus]);
-
-  useEffect(() => {
-    const point = latestTrackingPoint(shipment);
-    setLastPoint(point);
-    lastPointRef.current = point;
-    lastSentAtRef.current = 0;
-  }, [shipment?.bookingId]);
 
   useEffect(() => () => stopTracking(false), [shipment?.bookingId, stopTracking]);
 
@@ -2763,6 +2756,8 @@ function TrackingPage({ notify, route, user }) {
 
     setIssueBusy(true);
     try {
+      const upload = issue.photos?.length ? await api.uploadCargo(issue.photos) : { urls: [] };
+      const evidenceUrls = upload.urls || [];
       await api.reportIssue({
         booking: shipment.bookingId,
         bookingId: shipment.bookingId,
@@ -2770,7 +2765,8 @@ function TrackingPage({ notify, route, user }) {
         message: issue.description || `Issue reported for ${shipment.route}`,
         issueType: issue.issueType || 'other',
         severity: issue.severity || 'normal',
-        photoCount: Number(issue.photoCount || 0),
+        evidenceUrls,
+        photoCount: evidenceUrls.length,
         status: 'submitted'
       });
       setIssueModalOpen(false);
@@ -2780,7 +2776,10 @@ function TrackingPage({ notify, route, user }) {
         bookingId: shipment.bookingId,
         shipmentId: shipment.id,
         route: shipment.route,
-        ...issue,
+        issueType: issue.issueType,
+        description: issue.description,
+        severity: issue.severity,
+        photoNames: Array.from(issue.photos || []).map((file) => file.name),
         status: 'local'
       });
       notify(err.message || 'Issue report queued for operations');
@@ -2923,7 +2922,12 @@ function TrackingPage({ notify, route, user }) {
               <span style={{ width: `${shipment.progress}%` }} />
             </div>
             {activeRole === 'owner' ? (
-              <DriverLiveTracker shipment={shipment} notify={notify} onBookingUpdate={upsertBookingShipment} />
+              <DriverLiveTracker
+                key={shipment.bookingId || shipment.id}
+                shipment={shipment}
+                notify={notify}
+                onBookingUpdate={upsertBookingShipment}
+              />
             ) : null}
             <ShipmentTimeline rawStatus={timelineStatus} tracking={shipment.tracking || []} />
           </Panel>
@@ -4578,26 +4582,15 @@ function PaymentsPage({ notify, user }) {
 
     setTopupBusy(true);
     try {
-      let transaction = {
-        id: `topup-${Date.now()}`,
-        type: 'topup',
+      const transaction = await api.creditWallet({
         amount: value,
-        status: role === 'admin' ? 'credited' : 'queued',
-        createdAt: new Date().toISOString(),
-        method
-      };
-
-      if (role === 'admin') {
-        transaction = await api.creditWallet({
-          amount: value,
-          description: `${method} wallet top-up`
-        });
-      }
-
-      setWalletBalance((current) => Number(current || 0) + value);
+        description: `${method} admin wallet adjustment`
+      });
+      const nextBalance = Number(transaction?.metadata?.walletBalance);
+      if (Number.isFinite(nextBalance)) setWalletBalance(nextBalance);
       recordTransaction(transaction);
       setTopupOpen(false);
-      notify(role === 'admin' ? 'Wallet credited' : 'Top-up request queued');
+      notify('Admin wallet credited');
     } catch (err) {
       notify(err.message);
     } finally {
@@ -4614,16 +4607,29 @@ function PaymentsPage({ notify, user }) {
           <MetricCard icon={PackageCheck} label="Shipments" value={shipments.length} detail="Billing records" />
           <MetricCard icon={FileText} label="Escrow" value={escrowedCount} detail={`${payableCount} ready to fund`} />
         </section>
-        <Panel title="Wallet Top-Up" eyebrow="Funding">
-          <div className="result-bar">
-            <span>Available balance</span>
-            <strong>{money(walletBalance)}</strong>
-          </div>
-          <button className="primary full icon-label" type="button" onClick={() => setTopupOpen(true)}>
-            <CreditCard size={18} />
-            <span>Top Up Wallet</span>
-          </button>
-        </Panel>
+        {role === 'admin' ? (
+          <Panel title="Admin Wallet Adjustment" eyebrow="Funding">
+            <div className="result-bar">
+              <span>Available balance</span>
+              <strong>{money(walletBalance)}</strong>
+            </div>
+            <button className="primary full icon-label" type="button" onClick={() => setTopupOpen(true)}>
+              <CreditCard size={18} />
+              <span>Credit Admin Wallet</span>
+            </button>
+          </Panel>
+        ) : (
+          <Panel title="Booking Funding" eyebrow="Funding">
+            <div className="result-bar">
+              <span>Available wallet balance</span>
+              <strong>{money(walletBalance)}</strong>
+            </div>
+            <p className="muted-note">
+              Direct wallet top-ups are not enabled yet. Fund an eligible shipment with M-Pesa or MTN MoMo from its
+              escrow row.
+            </p>
+          </Panel>
+        )}
         <Panel title="Shipment Escrow" eyebrow="Bookings">
           <div className="bid-options payment-list">
             {shipments.length ? (
@@ -4731,7 +4737,7 @@ function PaymentsPage({ notify, user }) {
           )}
         </Panel>
       </div>
-      {topupOpen ? (
+      {role === 'admin' && topupOpen ? (
         <WalletTopupModal
           balance={walletBalance}
           busy={topupBusy}
@@ -6790,28 +6796,28 @@ function GlobalSearch({ shipments = [], trucks = [], onClose, onNavigate }) {
 function ReportIssueModal({ shipment, onClose, onSubmit, busy }) {
   const [issueType, setIssueType] = useState('delay');
   const [description, setDescription] = useState('');
-  const [severity, setSeverity] = useState('medium');
-  const [photoCount, setPhotoCount] = useState(0);
+  const [severity, setSeverity] = useState('normal');
+  const [photos, setPhotos] = useState([]);
   const fileRef = useRef(null);
 
   const issueTypes = ['delay', 'damage', 'wrong cargo', 'driver behavior', 'route deviation', 'other'];
 
   function handleFileChange(e) {
-    setPhotoCount((c) => c + (e.target.files?.length || 0));
+    setPhotos((current) => [...current, ...Array.from(e.target.files || [])].slice(0, 5));
     e.target.value = '';
   }
 
   function handleSubmit(e) {
     e.preventDefault();
     if (!description.trim()) return;
-    onSubmit({ issueType, description, severity, photoCount });
+    onSubmit({ issueType, description, severity, photos });
   }
 
   return (
     <div className="modal-overlay">
-      <div className="modal-card">
+      <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="report-issue-title">
         <div className="modal-card-head">
-          <h3>Report Issue</h3>
+          <h3 id="report-issue-title">Report Issue</h3>
           <button type="button" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
@@ -6842,7 +6848,7 @@ function ReportIssueModal({ shipment, onClose, onSubmit, busy }) {
             <div className="severity-grid">
               {[
                 ['low', 'Low'],
-                ['medium', 'Medium'],
+                ['normal', 'Normal'],
                 ['high', 'High']
               ].map(([val, label]) => (
                 <button
@@ -6883,9 +6889,9 @@ function ReportIssueModal({ shipment, onClose, onSubmit, busy }) {
                 <Image size={16} />
                 <span>Add photos</span>
               </button>
-              {photoCount > 0 && (
+              {photos.length > 0 && (
                 <span className="attached-count">
-                  {photoCount} photo{photoCount === 1 ? '' : 's'} attached
+                  {photos.length} photo{photos.length === 1 ? '' : 's'} attached
                 </span>
               )}
             </div>
@@ -6935,9 +6941,9 @@ function MobileMoneyEscrowModal({ shipment, busy, onClose, onSubmit }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal-card">
+      <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="mobile-escrow-title">
         <div className="modal-card-head">
-          <h3>Mobile Money Escrow</h3>
+          <h3 id="mobile-escrow-title">Mobile Money Escrow</h3>
           <button type="button" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
@@ -7002,9 +7008,9 @@ function WalletTopupModal({ balance, onClose, onTopup, busy, transactions = [] }
 
   return (
     <div className="modal-overlay">
-      <div className="modal-card">
+      <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="wallet-adjustment-title">
         <div className="modal-card-head">
-          <h3>Top Up Wallet</h3>
+          <h3 id="wallet-adjustment-title">Admin Wallet Adjustment</h3>
           <button type="button" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
@@ -7835,7 +7841,11 @@ function AppShell() {
         />
       )}
 
-      {toast ? <div className="toast">{toast}</div> : null}
+      {toast ? (
+        <div className="toast" role="status" aria-live="polite">
+          {toast}
+        </div>
+      ) : null}
       <ServiceWorkerUpdateToast />
     </div>
   );

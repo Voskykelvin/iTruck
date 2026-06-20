@@ -197,7 +197,10 @@ class ITruckAPI {
   }
 
   adminVerifyUser(userId, isActive) {
-    return this.adminSetUserActive(userId, isActive);
+    return this.request(`/admin/users/${userId}/verification`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isVerified: isActive })
+    });
   }
 
   adminVerifyTruck(truckId, isVerified) {
@@ -263,7 +266,8 @@ class ITruckAPI {
     if (!res.ok) throw new Error('Document download failed');
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
+    if (opened) opened.opener = null;
     setTimeout(() => URL.revokeObjectURL(url), 60000);
     return true;
   }

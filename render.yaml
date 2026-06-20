@@ -15,7 +15,9 @@ services:
         value: "true"
       - key: DEMO_MODE
         value: "false"
-      - key: JWT_EXPIRES
+      - key: JWT_ACCESS_EXPIRES
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES
         value: 7d
       - key: MONGODB_URI
         sync: false

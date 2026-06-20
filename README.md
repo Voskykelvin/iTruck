@@ -35,13 +35,14 @@ Implemented:
 - Request validation on important write routes.
 - Helmet, CORS, NoSQL sanitization, HTTP parameter pollution protection, and rate limiting.
 - Optional Redis-backed Socket.io adapter and Redis-backed rate limiter for horizontal scaling.
+- Authenticated Socket.io connections with booking-room authorization.
 - Cloudinary upload integration with live-mode enforcement.
 - Pino structured logging.
 - PDF document generation for waybill, POD, invoice, and customs documents.
 - Owner-scoped live tracking ingestion with single-point and batch GPS endpoints, Socket.io booking-room updates, offline driver telemetry queueing, and compressed sync.
 - PWA manifest, install icons, service worker caching, and offline fallback page.
 - Dockerfile, docker-compose setup, Nginx config, Render config, and GitHub Actions checks.
-- Jest/Supertest backend tests.
+- Jest/Supertest backend tests, including security and authorization regressions.
 
 Still in progress before full business launch:
 
@@ -213,7 +214,7 @@ From the repository root:
 ```bash
 npm install
 npm --prefix backend install
-npm --prefix workspace install
+npm --prefix workspace install --include=dev
 ```
 
 ### Environment Setup
@@ -403,7 +404,6 @@ MONGODB_URI=mongodb+srv://USER:PASSWORD@HOST/itruck
 JWT_SECRET=replace-with-at-least-32-random-characters
 JWT_ACCESS_EXPIRES=15m
 JWT_REFRESH_EXPIRES=7d
-JWT_EXPIRES=7d
 FRONTEND_URL=https://your-domain.example
 APP_URL=https://your-domain.example
 ALLOWED_ORIGINS=https://your-domain.example
@@ -460,10 +460,13 @@ The backend includes several protections that are important before exposing the 
 - Protected routes with JWT authentication.
 - Role restrictions for owner and admin operations.
 - Refresh token persistence and logout revocation support.
+- Refresh-session revocation after password changes.
 - Production error masking.
 - Atomic wallet debit logic to avoid double-spend race conditions.
 - Mongoose indexes on high-traffic query fields.
 - Cloudinary-only uploads in live mode.
+- Upload file-signature validation and evidence requirements before document approval.
+- Public truck response redaction for owner identity, registration, chassis, and document records.
 - Stripe webhook signature verification using raw request bodies.
 - Fail-closed M-Pesa/MTN callback authentication in live mode with token redaction in application and bundled Nginx logs.
 - Atomic M-Pesa pending-to-final reconciliation with merchant reference, receipt, and amount checks.
@@ -471,10 +474,10 @@ The backend includes several protections that are important before exposing the 
 
 Security work still recommended before public scale:
 
-- Full audit logs for admin actions.
+- Full audit logs for all high-risk admin actions.
 - Provider sandbox/live certification, callback delivery monitoring, refund/dispute reconciliation, and payout execution.
 - More request schemas across every write route.
-- Fine-grained authorization on each booking, document, and payment transition.
+- Broader fine-grained authorization coverage across remaining workflow transitions.
 - Secret rotation and environment-specific deployment credentials.
 
 ## Deployment
@@ -500,7 +503,7 @@ Typical managed-host flow:
 Render-compatible settings:
 
 ```text
-Build Command: npm install && npm --prefix backend install && npm --prefix workspace install && npm run app:build
+Build Command: npm ci && npm ci --prefix backend && npm ci --include=dev --prefix workspace && npm run app:build
 Start Command: npm start
 Health Check Path: /api/health
 ```
@@ -610,13 +613,13 @@ This reconstruction was built from the original project reference material and t
 
 Highest-value next engineering tasks:
 
-1. Connect real payment providers and reconciliation.
+1. Certify payment-provider collections, callbacks, refunds, disputes, and owner payouts.
 2. Replace email/SMS stubs with production providers.
-3. Complete bid award, payment release, and dispute workflows.
-4. Add full document upload and review states for KYC, insurance, logbooks, cargo photos, and proof of delivery.
+3. Complete bid award, counteroffer, and dispute workflows.
+4. Split the React application into route-level features and add frontend tests.
 5. Add production maps with live vehicle positions.
-6. Add admin audit logging.
-7. Expand tests around authorization, wallet transactions, uploads, and booking state transitions.
+6. Expand audit logging across every high-risk admin transition.
+7. Add transactional protection around remaining multi-record financial workflows.
 
 Highest-value go-to-market tasks:
 

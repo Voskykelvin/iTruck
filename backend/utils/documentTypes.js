@@ -40,7 +40,7 @@ function normalizeBookingDocumentType(value) {
 
 function isDocumentUrl(value) {
   const text = String(value || '').trim();
-  if (/^\/api\/uploads\/local\/[a-z0-9-]+$/i.test(text)) return true;
+  if (/^\/api\/uploads\/local\/[a-z0-9-]+(?:\.[a-z0-9]+)?$/i.test(text)) return true;
 
   try {
     const url = new URL(text);

@@ -2,6 +2,7 @@ const express = require('express');
 const { protect } = require('../middleware/auth');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const Booking = require('../models/Booking');
+const Truck = require('../models/Truck');
 const Document = require('../models/Document');
 const docs = require('../services/documents');
 const { recordGeneratedDocument, syncEmbeddedDocumentRecords } = require('../services/documentRecords');
@@ -101,6 +102,29 @@ function bookingVisibleTo(user, booking) {
     );
   }
   return false;
+}
+
+async function visibleDocumentFilter(user) {
+  if (user.role === 'admin') return {};
+
+  const bookingQuery =
+    user.role === 'client' ? { client: user._id } : { $or: [{ owner: user._id }, { 'bids.owner': user._id }] };
+  const [bookings, trucks] = await Promise.all([
+    Booking.find(bookingQuery).select('_id').limit(500),
+    user.role === 'owner' ? Truck.find({ owner: user._id }).select('_id').limit(500) : []
+  ]);
+  const bookingIds = bookings.map((booking) => booking._id);
+  const truckIds = trucks.map((truck) => truck._id);
+
+  return {
+    $or: [
+      { user: user._id },
+      { uploadedBy: user._id },
+      { targetType: 'user', target: user._id },
+      ...(bookingIds.length ? [{ booking: { $in: bookingIds } }] : []),
+      ...(truckIds.length ? [{ truck: { $in: truckIds } }] : [])
+    ]
+  };
 }
 
 async function loadBooking(req, res) {
@@ -221,8 +245,7 @@ router.get('/', documentListSchema, validate, async (req, res, next) => {
     if (!mongoReady()) return res.json({ documents: [], mode: 'memory' });
 
     const sync = await syncEmbeddedDocumentRecords(req.user);
-    const filter = {};
-    if (req.user.role !== 'admin') filter.$or = [{ user: req.user._id }, { uploadedBy: req.user._id }];
+    const filter = await visibleDocumentFilter(req.user);
     if (req.query.targetType) filter.targetType = req.query.targetType;
     if (req.query.status) filter.status = req.query.status;
     if (req.query.source) filter.source = req.query.source;

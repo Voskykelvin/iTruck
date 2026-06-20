@@ -5,6 +5,7 @@ const API_BASE = configuredApiBase.includes('your-domain.example') ? '/api' : co
 const DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
 const documentUploadTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
 const imageUploadTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+let refreshPromise = null;
 
 function token() {
   return localStorage.getItem('itruck_token') || '';
@@ -54,7 +55,7 @@ function apiErrorMessage(data, fallback) {
   return message || details || messageFromValue(data) || fallback;
 }
 
-async function tryRefresh() {
+async function refreshSession() {
   try {
     const response = await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
@@ -68,6 +69,15 @@ async function tryRefresh() {
   } catch (_err) {
     return false;
   }
+}
+
+async function tryRefresh() {
+  if (!refreshPromise) {
+    refreshPromise = refreshSession().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
 }
 
 async function request(path, options = {}, retry = true) {
@@ -268,7 +278,10 @@ export const api = {
   workflow: (query) => request(`/workflow${query || ''}`),
   listMessages: (bookingId) => request(`/workflow/messages?booking=${encodeURIComponent(bookingId)}`),
   sendMessage: (payload) => request('/workflow/messages', { method: 'POST', body: JSON.stringify(payload) }),
-  listNotifications: (limit = 20) => request(`/notifications?limit=${encodeURIComponent(limit)}`),
+  listNotifications: (options = 20) => {
+    const limit = typeof options === 'object' ? options.limit : options;
+    return request(`/notifications?limit=${encodeURIComponent(limit || 20)}`);
+  },
   notificationCount: () => request('/notifications/count'),
   markNotificationRead: (id) => request(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' }),
   listDocuments: (params = {}) => request(`/documents${queryString(params)}`),
@@ -405,5 +418,10 @@ export function clearSession() {
 }
 
 export function currentUser() {
-  return JSON.parse(localStorage.getItem('itruck_user') || '{}');
+  try {
+    return JSON.parse(localStorage.getItem('itruck_user') || '{}');
+  } catch (_err) {
+    clearSession();
+    return {};
+  }
 }

@@ -75,6 +75,24 @@ function filterTrucks(trucks, query) {
   });
 }
 
+function publicTruck(record) {
+  const truck = record?.toObject ? record.toObject() : { ...record };
+  const {
+    owner: _owner,
+    documents: _documents,
+    registrationNumber: _registrationNumber,
+    chassisNumber: _chassisNumber,
+    archivedBy: _archivedBy,
+    archiveReason: _archiveReason,
+    ...visible
+  } = truck;
+
+  return {
+    ...visible,
+    documentStatus: truck.isVerified ? 'Docs verified' : 'Docs pending'
+  };
+}
+
 function upsertDocument(documents = [], type, patch) {
   const documentType = normalizeTruckDocumentType(type);
   const existing = documents.find((item) => normalizeTruckDocumentType(item.type) === documentType);
@@ -112,7 +130,7 @@ router.get('/', listTrucksSchema, validate, async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
-      return res.json({ trucks: filterTrucks(memoryTrucks, req.query), mode: 'memory' });
+      return res.json({ trucks: filterTrucks(memoryTrucks, req.query).map(publicTruck), mode: 'memory' });
     }
 
     const q = {};
@@ -123,7 +141,8 @@ router.get('/', listTrucksSchema, validate, async (req, res, next) => {
     if (req.query.minCapacity !== undefined)
       q.capacityTonnes = { ...(q.capacityTonnes || {}), $gte: req.query.minCapacity };
     if (req.query.maxPrice !== undefined) q.pricePerKm = { $lte: req.query.maxPrice };
-    res.json({ trucks: await Truck.find(q).limit(req.query.limit || 50) });
+    const trucks = await Truck.find(q).limit(req.query.limit || 50);
+    res.json({ trucks: trucks.map(publicTruck) });
   } catch (err) {
     next(err);
   }
@@ -171,12 +190,12 @@ router.get('/:id', truckIdSchema, validate, async (req, res, next) => {
           !item.archivedAt && String(item._id || item.id || item.plateNumber || item.plate) === String(req.params.id)
       );
       if (!truck) return res.status(404).json({ message: 'Truck not found' });
-      return res.json({ truck, mode: 'memory' });
+      return res.json({ truck: publicTruck(truck), mode: 'memory' });
     }
 
     const truck = await Truck.findOne(activeTruckFilter({ _id: req.params.id }));
     if (!truck) return res.status(404).json({ message: 'Truck not found' });
-    res.json({ truck });
+    res.json({ truck: publicTruck(truck) });
   } catch (err) {
     next(err);
   }

@@ -95,7 +95,7 @@ Manual settings:
 
 ```text
 Runtime: Node
-Build Command: npm install && npm --prefix backend install && npm --prefix workspace install && npm run app:build
+Build Command: npm ci && npm ci --prefix backend && npm ci --include=dev --prefix workspace && npm run app:build
 Start Command: npm start
 Health Check Path: /api/health
 ```

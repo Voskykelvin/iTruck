@@ -3166,7 +3166,7 @@ input[type='radio'] {
   color: #b91c1c;
 }
 
-.severity-btn.medium.active {
+.severity-btn.normal.active {
   border-color: rgba(255, 206, 27, 0.42);
   background: rgba(255, 206, 27, 0.12);
   color: var(--amber);
@@ -3998,4 +3998,28 @@ input[type='radio'] {
 
 [data-theme='dark'] .notif-item.unread {
   background: rgba(255, 206, 27, 0.16);
+}
+
+.app-crash-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.app-crash-card {
+  width: min(560px, 100%);
+  display: grid;
+  gap: 16px;
+  padding: clamp(28px, 6vw, 48px);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.app-crash-card h1,
+.app-crash-card p {
+  margin: 0;
 }
