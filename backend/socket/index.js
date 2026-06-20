@@ -1,8 +1,44 @@
-module.exports = function attachSocket(server) {
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+const Booking = require('../models/Booking');
+const User = require('../models/User');
+const logger = require('../config/logger');
+const { mongoReady } = require('../config/runtime');
+const socketRoles = new Set(['admin', 'client', 'owner']);
+
+function socketUserFromToken(token) {
+  if (!token) throw new Error('Authentication required');
+
+  const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+  if (!decoded.id || !socketRoles.has(decoded.role)) throw new Error('Invalid token claims');
+
+  return { _id: decoded.id, role: decoded.role };
+}
+
+function bookingRoomQuery(user, bookingId) {
+  if (!user?._id) return null;
+  if (user.role === 'admin') return { _id: bookingId };
+  if (user.role === 'client') return { _id: bookingId, client: user._id };
+  if (user.role === 'owner') {
+    return {
+      _id: bookingId,
+      $or: [{ owner: user._id }, { 'bids.owner': user._id }]
+    };
+  }
+  return null;
+}
+
+async function canJoinBookingRoom(user, bookingId) {
+  if (!user?._id) return false;
+  if (!mongoReady()) return true;
+  if (!mongoose.Types.ObjectId.isValid(bookingId)) return false;
+
+  const query = bookingRoomQuery(user, bookingId);
+  return query ? Boolean(await Booking.exists(query)) : false;
+}
+
+function attachSocket(server) {
   const { Server } = require('socket.io');
-  const jwt = require('jsonwebtoken');
-  const logger = require('../config/logger');
-  const { isLiveMode } = require('../config/runtime');
 
   const rawOrigins = process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || '*';
   const origins = rawOrigins
@@ -25,19 +61,27 @@ module.exports = function attachSocket(server) {
 
   io.use((socket, next) => {
     const token = tokenFromHandshake(socket);
-    if (!token) {
-      if (isLiveMode()) return next(new Error('Authentication required'));
-      return next();
-    }
 
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
-      socket.user = { _id: decoded.id, role: decoded.role };
-      return next();
+      socket.user = socketUserFromToken(token);
     } catch (err) {
       logger.warn({ err }, 'Socket authentication failed');
-      return next(new Error('Invalid token'));
+      return next(new Error(err.message === 'Authentication required' ? err.message : 'Invalid token'));
     }
+
+    if (!mongoReady()) return next();
+
+    return User.findById(socket.user._id)
+      .select('_id role isActive')
+      .then((user) => {
+        if (!user || user.isActive === false) return next(new Error('Account unavailable'));
+        socket.user = { _id: user._id, role: user.role };
+        return next();
+      })
+      .catch((err) => {
+        logger.error({ err, userId: socket.user?._id }, 'Socket user lookup failed');
+        return next(new Error('Authentication unavailable'));
+      });
   });
 
   if (process.env.REDIS_URL) {
@@ -61,9 +105,21 @@ module.exports = function attachSocket(server) {
     socket.emit('connected', { id: socket.id });
     if (socket.user?._id) socket.join('user:' + socket.user._id);
 
-    socket.on('join-booking', (id) => {
-      if (!validRoomId(id)) return;
-      socket.join('booking:' + id);
+    socket.on('join-booking', async (id, acknowledge = () => {}) => {
+      if (!validRoomId(id)) return acknowledge({ ok: false, error: 'Invalid booking id' });
+
+      try {
+        if (!(await canJoinBookingRoom(socket.user, id))) {
+          logger.warn({ socketId: socket.id, userId: socket.user?._id, bookingId: id }, 'Socket room access denied');
+          return acknowledge({ ok: false, error: 'Forbidden' });
+        }
+
+        await socket.join('booking:' + id);
+        return acknowledge({ ok: true });
+      } catch (err) {
+        logger.error({ err, socketId: socket.id, userId: socket.user?._id, bookingId: id }, 'Socket room join failed');
+        return acknowledge({ ok: false, error: 'Unable to join booking room' });
+      }
     });
 
     socket.on('update-location', () => {
@@ -90,4 +146,9 @@ module.exports = function attachSocket(server) {
   };
 
   return io;
-};
+}
+
+module.exports = attachSocket;
+module.exports.bookingRoomQuery = bookingRoomQuery;
+module.exports.canJoinBookingRoom = canJoinBookingRoom;
+module.exports.socketUserFromToken = socketUserFromToken;

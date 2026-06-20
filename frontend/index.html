@@ -37,7 +37,7 @@
       <section class="hero">
         <div class="particles" id="particles"></div>
         <div class="hero-copy">
-          <p class="eyebrow">Pan-African Logistics Network</p>
+          <p class="eyebrow">African Freight Operations</p>
           <h1>Move freight across Africa with confidence.</h1>
           <p class="hero-text">
             Book verified trucks, compare clear prices, and follow your shipment from pickup to delivery in one simple
@@ -54,7 +54,7 @@
             <span>GPS proof</span>
           </div>
           <div class="hero-stats">
-            <div><strong data-target="120">0</strong><span>Verified Trucks</span></div>
+            <div><strong data-target="120">0</strong><span>Pilot Fleet Target</span></div>
             <div><strong data-target="12">0</strong><span>Priority Trade Lanes</span></div>
             <div><strong data-target="97">0</strong><span>% On-Time Target</span></div>
           </div>
@@ -73,7 +73,7 @@
             <ul>
               <li>Accept bookings 24/7</li>
               <li>Route visibility across Africa</li>
-              <li>Instant payment on delivery</li>
+              <li>Controlled payment release</li>
             </ul>
             <button class="primary-btn" data-open-modal="owner">Register Your Fleet</button>
           </article>
@@ -147,8 +147,7 @@
             <strong>02</strong>
             <h3>Clear payment steps</h3>
             <p>
-              Clients can choose wallet, card, M-Pesa, MTN MoMo, Airtel Money, or cash workflows with a clear record of
-              each payment.
+              Clients can use wallet, card, M-Pesa, or MTN MoMo workflows with a clear record of each payment stage.
             </p>
           </article>
           <article>
@@ -294,12 +293,19 @@
     </footer>
 
     <div class="modal-overlay" id="modalOverlay">
-      <form class="modal" id="modal-owner" data-auth-form="owner">
-        <button type="button" class="close" data-close-modal>x</button>
-        <h2>Register Fleet</h2>
-        <input name="firstName" placeholder="First name" required />
-        <input name="lastName" placeholder="Last name" required />
-        <input name="email" type="email" placeholder="Email" required />
+      <form
+        class="modal"
+        id="modal-owner"
+        data-auth-form="owner"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="owner-title"
+      >
+        <button type="button" class="close" data-close-modal aria-label="Close registration">x</button>
+        <h2 id="owner-title">Register Fleet</h2>
+        <input name="firstName" placeholder="First name" autocomplete="given-name" required />
+        <input name="lastName" placeholder="Last name" autocomplete="family-name" required />
+        <input name="email" type="email" placeholder="Email" autocomplete="email" required />
         <label class="phone-field">
           <span>Phone</span>
           <span class="phone-row">
@@ -315,7 +321,7 @@
               <option value="+251">+251 Ethiopia</option>
               <option value="+243">+243 DRC Congo</option>
             </select>
-            <input name="phone" placeholder="700 000 000" required />
+            <input name="phone" placeholder="700 000 000" autocomplete="tel" required />
           </span>
         </label>
         <select name="country" data-country-select required>
@@ -330,55 +336,85 @@
           <option value="Ethiopia">Ethiopia</option>
           <option value="DRC Congo">DRC Congo</option>
         </select>
-        <input name="password" type="password" placeholder="Password" required />
-        <button class="primary-btn" type="submit">Create Owner Account</button>
-      </form>
-      <form class="modal" id="modal-client" data-auth-form="client">
-        <button type="button" class="close" data-close-modal>x</button>
-        <h2>Book as Shipper</h2>
-        <input name="firstName" placeholder="First name" required />
-        <input name="lastName" placeholder="Last name" required />
-        <input name="email" type="email" placeholder="Email" required />
-        <label class="phone-field">
-          <span>Phone</span>
-          <span class="phone-row">
-            <select name="countryCode" data-country-code aria-label="Country dial code" required>
-              <option value="+254" selected>+254 Kenya</option>
-              <option value="+234">+234 Nigeria</option>
-              <option value="+27">+27 South Africa</option>
-              <option value="+256">+256 Uganda</option>
-              <option value="+255">+255 Tanzania</option>
-              <option value="+233">+233 Ghana</option>
-              <option value="+20">+20 Egypt</option>
-              <option value="+212">+212 Morocco</option>
-              <option value="+251">+251 Ethiopia</option>
-              <option value="+243">+243 DRC Congo</option>
-            </select>
-            <input name="phone" placeholder="700 000 000" required />
-          </span>
-        </label>
-        <select name="country" data-country-select required>
-          <option value="Kenya" selected>Kenya</option>
-          <option value="Nigeria">Nigeria</option>
-          <option value="South Africa">South Africa</option>
-          <option value="Uganda">Uganda</option>
-          <option value="Tanzania">Tanzania</option>
-          <option value="Ghana">Ghana</option>
-          <option value="Egypt">Egypt</option>
-          <option value="Morocco">Morocco</option>
-          <option value="Ethiopia">Ethiopia</option>
-          <option value="DRC Congo">DRC Congo</option>
-        </select>
-        <input name="password" type="password" placeholder="Password" required />
-        <button class="accent-btn" type="submit">Create Client Account</button>
-      </form>
-      <form class="modal" id="modal-login" data-login-form>
-        <button type="button" class="close" data-close-modal>x</button>
-        <h2>Log In</h2>
-        <input name="email" type="email" placeholder="Email" required /><input
+        <input
           name="password"
           type="password"
           placeholder="Password"
+          autocomplete="new-password"
+          minlength="8"
+          required
+        />
+        <button class="primary-btn" type="submit">Create Owner Account</button>
+      </form>
+      <form
+        class="modal"
+        id="modal-client"
+        data-auth-form="client"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="client-title"
+      >
+        <button type="button" class="close" data-close-modal aria-label="Close registration">x</button>
+        <h2 id="client-title">Book as Shipper</h2>
+        <input name="firstName" placeholder="First name" autocomplete="given-name" required />
+        <input name="lastName" placeholder="Last name" autocomplete="family-name" required />
+        <input name="email" type="email" placeholder="Email" autocomplete="email" required />
+        <label class="phone-field">
+          <span>Phone</span>
+          <span class="phone-row">
+            <select name="countryCode" data-country-code aria-label="Country dial code" required>
+              <option value="+254" selected>+254 Kenya</option>
+              <option value="+234">+234 Nigeria</option>
+              <option value="+27">+27 South Africa</option>
+              <option value="+256">+256 Uganda</option>
+              <option value="+255">+255 Tanzania</option>
+              <option value="+233">+233 Ghana</option>
+              <option value="+20">+20 Egypt</option>
+              <option value="+212">+212 Morocco</option>
+              <option value="+251">+251 Ethiopia</option>
+              <option value="+243">+243 DRC Congo</option>
+            </select>
+            <input name="phone" placeholder="700 000 000" autocomplete="tel" required />
+          </span>
+        </label>
+        <select name="country" data-country-select required>
+          <option value="Kenya" selected>Kenya</option>
+          <option value="Nigeria">Nigeria</option>
+          <option value="South Africa">South Africa</option>
+          <option value="Uganda">Uganda</option>
+          <option value="Tanzania">Tanzania</option>
+          <option value="Ghana">Ghana</option>
+          <option value="Egypt">Egypt</option>
+          <option value="Morocco">Morocco</option>
+          <option value="Ethiopia">Ethiopia</option>
+          <option value="DRC Congo">DRC Congo</option>
+        </select>
+        <input
+          name="password"
+          type="password"
+          placeholder="Password"
+          autocomplete="new-password"
+          minlength="8"
+          required
+        />
+        <button class="accent-btn" type="submit">Create Client Account</button>
+      </form>
+      <form
+        class="modal"
+        id="modal-login"
+        data-login-form
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="login-title"
+      >
+        <button type="button" class="close" data-close-modal aria-label="Close login">x</button>
+        <h2 id="login-title">Log In</h2>
+        <input name="email" type="email" placeholder="Email" autocomplete="email" required /><input
+          name="password"
+          type="password"
+          placeholder="Password"
+          autocomplete="current-password"
+          minlength="8"
           required
         /><button class="primary-btn" type="submit">Log In</button>
       </form>

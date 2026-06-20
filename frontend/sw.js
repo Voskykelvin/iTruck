@@ -1,4 +1,4 @@
-const CACHE = 'itruck-v5-offline';
+const CACHE = 'itruck-v6-offline';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -30,8 +30,10 @@ function cacheFirst(request) {
   return caches.match(request).then((cached) => {
     if (cached) return cached;
     return fetch(request).then((response) => {
-      const copy = response.clone();
-      caches.open(CACHE).then((cache) => cache.put(request, copy));
+      if (response.ok) {
+        const copy = response.clone();
+        caches.open(CACHE).then((cache) => cache.put(request, copy));
+      }
       return response;
     });
   });
@@ -40,8 +42,10 @@ function cacheFirst(request) {
 function networkFirst(request, fallbackPath = '/offline.html') {
   return fetch(request)
     .then((response) => {
-      const copy = response.clone();
-      caches.open(CACHE).then((cache) => cache.put(request, copy));
+      if (response.ok) {
+        const copy = response.clone();
+        caches.open(CACHE).then((cache) => cache.put(request, copy));
+      }
       return response;
     })
     .catch(() => caches.match(request).then((cached) => cached || caches.match(fallbackPath)));

@@ -58,6 +58,11 @@ test('booking indexes cover client owner status dashboards', () => {
   expect(Booking.schema.path('destinationCoordinates.lat')).toBeDefined();
   expect(Booking.schema.path('deliveryGeofenceMeters')).toBeDefined();
   expect(Booking.schema.path('lastKnownLocation.recordedAt')).toBeDefined();
+  expect(
+    new Booking({
+      documents: [{ type: 'pod', status: 'approved', generatedAt: new Date() }]
+    }).validateSync()
+  ).toBeUndefined();
 });
 
 test('truck indexes and schema fields support verified fleet operations', () => {
@@ -146,6 +151,11 @@ test('profile and truck embedded documents accept uploaded document records', ()
       documents: [{ ...uploadedDocument, type: 'insurance' }]
     }).validateSync()
   ).toBeUndefined();
+});
+
+test('password reset fields are excluded from user queries by default', () => {
+  expect(User.schema.path('passwordResetToken').options.select).toBe(false);
+  expect(User.schema.path('passwordResetExpires').options.select).toBe(false);
 });
 
 test('new models enforce their required fields without a database connection', () => {

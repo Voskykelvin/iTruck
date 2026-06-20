@@ -58,6 +58,18 @@ function labelFromType(type) {
 function upsertDocument(documents = [], type, patch, normalizeType = (value) => value) {
   const documentType = normalizeType(type);
   const existing = documents.find((item) => normalizeType(item.type) === documentType);
+  const evidence = patch.url || existing?.url || existing?.generatedAt || existing?.urls?.length;
+  if (!existing && !patch.url) {
+    const err = new Error('Document not found. Upload the document before review.');
+    err.status = 404;
+    throw err;
+  }
+  if (patch.status === 'approved' && !evidence) {
+    const err = new Error('Document evidence is required before approval');
+    err.status = 409;
+    throw err;
+  }
+
   if (existing) {
     existing.type = documentType;
     existing.status = patch.status;
@@ -95,7 +107,7 @@ router.get('/stats', async (req, res, next) => {
       Truck.countDocuments(),
       Booking.countDocuments(),
       Transaction.aggregate([
-        { $match: { status: 'completed' } },
+        { $match: { status: 'completed', type: 'payment' } },
         { $group: { _id: null, total: { $sum: '$amount' } } }
       ])
     ]);

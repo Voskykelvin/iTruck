@@ -23,7 +23,11 @@ function sameId(left, right) {
 function approvedDocumentTypes(documents = [], normalizeType = (value) => value) {
   return new Set(
     documents
-      .filter((doc) => doc?.status === 'approved')
+      .filter(
+        (doc) =>
+          doc?.status === 'approved' &&
+          Boolean(doc.url || (Array.isArray(doc.urls) && doc.urls.length) || doc.generatedAt)
+      )
       .map((doc) => normalizeType(doc.type))
       .filter(Boolean)
   );

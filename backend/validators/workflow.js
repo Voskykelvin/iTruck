@@ -1,5 +1,6 @@
 const { body, query } = require('express-validator');
 const { liveMongoIdBody, optionalString, optionalPositiveNumber, pagination } = require('./common');
+const { isDocumentUrl } = require('../utils/documentTypes');
 
 const workflowStatuses = [
   'submitted',
@@ -22,7 +23,15 @@ const createLoadRequestSchema = [
   optionalString('cargo', 1000),
   optionalString('vehicleType', 80),
   optionalPositiveNumber('budget'),
-  body('status').optional({ checkFalsy: true }).isIn(workflowStatuses).withMessage('Status is invalid')
+  body().custom((_, { req }) => {
+    const booking = req.body?.booking || req.body?.bookingId || req.body?.shipmentId;
+    if (booking || (req.body?.pickup && req.body?.destination && req.body?.cargo)) return true;
+    throw new Error('Provide a bookingId or pickup, destination, and cargo');
+  }),
+  body('status')
+    .optional({ checkFalsy: true })
+    .isIn(['submitted', 'open', 'matched', 'cancelled'])
+    .withMessage('Status is invalid')
 ];
 
 const submitWorkflowBidSchema = [
@@ -48,10 +57,18 @@ const createReportSchema = [
   liveMongoIdBody(['booking', 'bookingId', 'shipmentId']),
   body().custom((_, { req }) => {
     const text = String(req.body?.text || req.body?.message || req.body?.description || '').trim();
+    if (!text) throw new Error('Report message is required');
     if (text.length > 2000) throw new Error('Report message is too long');
     return true;
   }),
   body('severity').optional({ checkFalsy: true }).isIn(['low', 'normal', 'high']).withMessage('Severity is invalid'),
+  body('evidenceUrls')
+    .optional({ checkFalsy: true })
+    .isArray({ max: 5 })
+    .withMessage('evidenceUrls must contain at most 5 files')
+    .bail()
+    .custom((urls) => urls.every(isDocumentUrl))
+    .withMessage('evidenceUrls must contain valid upload URLs'),
   body('status')
     .optional({ checkFalsy: true })
     .isIn(['submitted', 'reviewing', 'resolved', 'dismissed'])

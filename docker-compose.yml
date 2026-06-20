@@ -6,11 +6,11 @@ services:
     depends_on: [mongo, redis]
   mongo:
     image: mongo:7
-    ports: ['27017:27017']
+    ports: ['127.0.0.1:27017:27017']
     volumes: [mongo-data:/data/db]
   redis:
     image: redis:7-alpine
-    ports: ['6379:6379']
+    ports: ['127.0.0.1:6379:6379']
   nginx:
     image: nginx:alpine
     ports: ['80:80']

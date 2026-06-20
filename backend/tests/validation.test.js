@@ -46,6 +46,19 @@ test('truck list rejects invalid query filters before querying data', async () =
   expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ field: 'verified' })]));
 });
 
+test('public truck responses omit owner documents and vehicle identity records', async () => {
+  const res = await request(app).get('/api/trucks');
+
+  expect(res.status).toBe(200);
+  expect(res.body.trucks.length).toBeGreaterThan(0);
+  res.body.trucks.forEach((truck) => {
+    expect(truck.owner).toBeUndefined();
+    expect(truck.documents).toBeUndefined();
+    expect(truck.registrationNumber).toBeUndefined();
+    expect(truck.chassisNumber).toBeUndefined();
+  });
+});
+
 test('truck creation ignores owner-controlled privileged fields', async () => {
   const res = await request(app)
     .post('/api/trucks')
@@ -402,6 +415,15 @@ test('clients cannot submit carrier bids through workflow routes', async () => {
   expect(res.status).toBe(403);
 });
 
+test('workflow requests and reports reject empty submissions', async () => {
+  const authorization = authHeader({ id: 'demo-client-primary', role: 'client' });
+  const requestResult = await request(app).post('/api/workflow/requests').set('Authorization', authorization).send({});
+  const reportResult = await request(app).post('/api/workflow/reports').set('Authorization', authorization).send({});
+
+  expect(requestResult.status).toBe(422);
+  expect(reportResult.status).toBe(422);
+});
+
 test('booking clients can accept a pending bid and confirm the booking', async () => {
   const res = await request(app)
     .patch('/api/bookings/ITK-2031/bids/demo-owner-secondary/accept')
@@ -449,6 +471,21 @@ test('users can submit verification documents for admin review', async () => {
   expect(res.body.user.documents).toEqual(
     expect.arrayContaining([expect.objectContaining({ type: 'owner-kyc', status: 'pending' })])
   );
+});
+
+test('profile and truck document records require uploaded evidence URLs', async () => {
+  const profile = await request(app)
+    .patch('/api/users/documents/owner-kyc')
+    .set('Authorization', authHeader({ id: 'demo-owner-primary', role: 'owner' }))
+    .send({ fileName: 'owner-kyc.pdf' });
+
+  const truck = await request(app)
+    .patch('/api/trucks/demo-truck-isuzu/documents/insurance')
+    .set('Authorization', authHeader({ id: 'demo-owner-primary', role: 'owner' }))
+    .send({ fileName: 'insurance.pdf' });
+
+  expect(profile.status).toBe(422);
+  expect(truck.status).toBe(422);
 });
 
 test('shipper document aliases are normalized to current profile slots', async () => {
@@ -639,6 +676,19 @@ test('avatar uploads reject unsupported file types before storage', async () => 
   expect(res.status).toBe(415);
 });
 
+test('avatar uploads reject spoofed image content', async () => {
+  const res = await request(app)
+    .post('/api/upload/avatar')
+    .set('Authorization', authHeader())
+    .attach('file', Buffer.from('not really a png'), {
+      filename: 'avatar.png',
+      contentType: 'image/png'
+    });
+
+  expect(res.status).toBe(415);
+  expect(res.body.message).toContain('contents do not match');
+});
+
 test('admin document review validates supported statuses', async () => {
   const res = await request(app)
     .patch('/api/admin/users/demo-owner-primary/documents/insurance')
@@ -646,6 +696,16 @@ test('admin document review validates supported statuses', async () => {
     .send({ status: 'maybe' });
 
   expect(res.status).toBe(422);
+});
+
+test('admin cannot approve a document record that was never uploaded', async () => {
+  const res = await request(app)
+    .patch('/api/admin/users/demo-owner-primary/documents/nonexistent-proof')
+    .set('Authorization', authHeader({ id: 'demo-admin', role: 'admin' }))
+    .send({ status: 'approved' });
+
+  expect(res.status).toBe(404);
+  expect(res.body.message).toContain('Upload the document');
 });
 
 test('admin can update user verification state', async () => {

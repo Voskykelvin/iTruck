@@ -146,7 +146,7 @@ const bookingSchema = new mongoose.Schema(
           ],
           required: true
         },
-        url: { type: String, required: true },
+        url: String,
         urls: [String],
         fileName: String,
         fileNames: [String],

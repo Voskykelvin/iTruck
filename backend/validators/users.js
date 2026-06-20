@@ -27,7 +27,9 @@ const documentUploadSchema = [
     .withMessage('documentType must be a document slug'),
   body('url')
     .trim()
-    .optional({ checkFalsy: true })
+    .notEmpty()
+    .withMessage('url is required')
+    .bail()
     .custom(isDocumentUrl)
     .withMessage('url must be a valid document URL'),
   optionalString('fileName', 240),

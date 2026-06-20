@@ -1,5 +1,6 @@
 const express = require('express');
 const User = require('../models/User');
+const RefreshToken = require('../models/RefreshToken');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
@@ -71,7 +72,8 @@ router.patch('/password', updatePasswordSchema, validate, async (req, res, next)
 
     user.password = req.body.newPassword;
     await user.save();
-    res.json({ message: 'Password updated' });
+    await RefreshToken.revokeAll(user._id);
+    res.json({ message: 'Password updated. Sign in again on your devices.', sessionsRevoked: true });
   } catch (err) {
     next(err);
   }

@@ -2,6 +2,27 @@
 
 Date: 2026-05-25
 
+## Complete Codebase Sweep — 2026-06-20
+
+- Required authentication for every Socket.IO connection and authorization before joining a booking room, closing a denial-of-service path and preventing arbitrary shipment subscriptions.
+- Redacted owner identity, vehicle registration, chassis details, and document records from public truck responses while preserving full records for authorized fleet and admin views.
+- Required real upload evidence before user, truck, or shipment documents can be approved, and added file-signature checks so renamed or MIME-spoofed uploads are rejected.
+- Persisted demo uploads locally instead of returning dead placeholder URLs; local upload serving remains disabled in live mode.
+- Revoked refresh sessions after password changes and added single-flight browser refresh handling to prevent concurrent `401` responses from rotating the same refresh token multiple times.
+- Removed fake non-admin wallet top-ups from the workspace. Admin adjustments use the real API; shippers are directed to booking escrow/payment flows.
+- Corrected report validation and evidence handling so issue severity matches the API and selected photos are uploaded before report submission.
+- Added a React error boundary, accessible modal/toast semantics, safer service-worker caching, and a more defensible public landing page without unsupported scale or payment claims.
+- Hardened deployment defaults with 15-minute access tokens, localhost-only development database ports, production dependency audits in CI, and a `.dockerignore` that excludes secrets and local artifacts.
+- Updated runtime dependencies and added regression coverage for socket authorization, public truck redaction, upload spoofing, document evidence, CORS failures, generated POD records, and reset-token field privacy.
+
+### Deferred After The Sweep
+
+- Split the large React `App.jsx` into route-level features and add frontend component/integration tests.
+- Move browser access tokens out of JavaScript-readable storage as part of a coordinated cookie/session API redesign.
+- Add MongoDB transactions around multi-record financial and booking transitions where atomic single-document updates are not sufficient.
+- Complete live provider certification, callback monitoring, refunds, disputes, and owner payouts for Stripe, M-Pesa, and MTN MoMo.
+- Expand audit trails and authorization tests across every remaining high-risk admin and workflow transition.
+
 ## Backend Proposal Review — 2026-06-20
 
 - Retained the existing atomic wallet debit and withdrawal implementation. It already performs the balance check and decrement in one filtered MongoDB update, includes idempotency records, and is integrated with booking escrow and payment release rules.

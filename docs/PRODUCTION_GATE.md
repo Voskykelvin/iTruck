@@ -9,9 +9,10 @@ Run from the repository root:
 ```bash
 npm ci
 npm ci --prefix backend
-npm ci --prefix workspace
+npm ci --include=dev --prefix workspace
 npm run ci:check
 npm --prefix backend audit --omit=dev
+npm --prefix workspace audit --omit=dev
 ```
 
 Expected result:
@@ -20,9 +21,7 @@ Expected result:
 - Prettier check passes.
 - Backend tests pass.
 - Workspace build writes `frontend/app`.
-- Backend production dependency audit reports no vulnerabilities.
-
-The workspace audit can report Vite/esbuild dev-server advisories. Those do not ship in the production build, but they should still be revisited when upgrading Vite is low-risk.
+- Backend and workspace production dependency audits report no vulnerabilities.
 
 ## Staging Gate
 
@@ -59,9 +58,15 @@ Then verify:
 - The container image runs the backend as the non-root `node` user.
 - A staged frontend deployment shows the update prompt when a new service worker is waiting.
 - Register, login, refresh, logout, and session revocation work with secure cookies.
+- Changing a password revokes existing refresh sessions.
+- Concurrent expired-access-token requests trigger one refresh operation and recover without signing the user out.
+- Unauthenticated Socket.IO clients are rejected.
+- Authenticated users cannot join booking rooms they cannot access.
 - Owner can create a truck but cannot self-verify it.
 - Owner can archive a truck and archived trucks no longer appear in public/fleet listings.
+- Public truck responses omit owner identity, registration number, chassis number, and document records.
 - Admin can verify the truck and review user/truck documents.
+- Admin cannot approve a document that has no uploaded or generated evidence.
 - Shipper can create a booking.
 - Unverified owners, owners missing required documents, and unverified trucks cannot submit production bids.
 - Verified owner can submit a bid only with an approved, available truck.
@@ -83,7 +88,8 @@ Then verify:
 - Repeating a payment, withdrawal, or release request with the same `Idempotency-Key` does not create duplicate ledger entries.
 - Documents generate only for users who can see the booking.
 - Notifications only mark current-user records as read.
-- Uploads reject unsupported file types and store allowed files.
+- Uploads reject unsupported or MIME-spoofed file types and store allowed files.
+- Local/demo upload URLs are not served in live mode.
 
 ## External Gates
 

@@ -77,7 +77,9 @@ const truckDocumentSchema = [
     .withMessage('documentType must be a document slug'),
   body('url')
     .trim()
-    .optional({ checkFalsy: true })
+    .notEmpty()
+    .withMessage('url is required')
+    .bail()
     .custom(isDocumentUrl)
     .withMessage('url must be a valid document URL'),
   optionalString('fileName', 240),
@@ -87,7 +89,9 @@ const truckPhotoSchema = [
   ...truckIdSchema,
   body('url')
     .trim()
-    .optional({ checkFalsy: true })
+    .notEmpty()
+    .withMessage('url is required')
+    .bail()
     .isURL({ require_protocol: true })
     .withMessage('url must be a valid photo URL'),
   optionalString('fileName', 240)

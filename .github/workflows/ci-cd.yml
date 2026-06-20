@@ -29,4 +29,6 @@ jobs:
       - run: npm ci
       - run: npm ci --prefix backend
       - run: npm ci --include=dev --prefix workspace
+      - run: npm audit --omit=dev --audit-level=high --prefix backend
+      - run: npm audit --omit=dev --audit-level=high --prefix workspace
       - run: npm run ci:check
