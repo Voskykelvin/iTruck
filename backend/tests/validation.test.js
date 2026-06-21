@@ -22,7 +22,9 @@ test('auth login returns structured validation errors', async () => {
   expect(res.status).toBe(422);
   expect(res.body.status).toBe('fail');
   expect(res.body.message).toBe('Validation failed');
-  expect(res.body.errors.map((error) => error.field)).toEqual(expect.arrayContaining(['email', 'password']));
+  expect(res.body.errors.map((error) => error.field)).toEqual(
+    expect.arrayContaining(['email', 'password', 'deviceId'])
+  );
 });
 
 test('forgot password returns a generic response', async () => {
@@ -32,11 +34,43 @@ test('forgot password returns a generic response', async () => {
   expect(res.body.message).toContain('If that email exists');
 });
 
-test('google sign-in start reports unconfigured provider', async () => {
+test('registration requires the complete frontend contract and omits device metadata from the user', async () => {
+  const deviceId = '123e4567-e89b-42d3-a456-426614174000';
+  const incomplete = await request(app).post('/api/auth/register/client').send({
+    firstName: 'Runtime',
+    lastName: 'Check',
+    email: 'incomplete@example.com',
+    password: 'StrongPass123!'
+  });
+
+  expect(incomplete.status).toBe(422);
+  expect(incomplete.body.errors.map((error) => error.field)).toEqual(
+    expect.arrayContaining(['phone', 'country', 'deviceId'])
+  );
+
+  const complete = await request(app)
+    .post('/api/auth/register/client')
+    .send({
+      firstName: 'Runtime',
+      lastName: 'Check',
+      email: `runtime-${Date.now()}@example.com`,
+      phone: '700000000',
+      countryCode: '+254',
+      country: 'Kenya',
+      password: 'StrongPass123!',
+      deviceId
+    });
+
+  expect(complete.status).toBe(201);
+  expect(complete.body.user.role).toBe('client');
+  expect(complete.body.user.deviceId).toBeUndefined();
+});
+
+test('unimplemented social auth routes are not exposed', async () => {
   const res = await request(app).get('/api/auth/google/start');
 
-  expect(res.status).toBe(501);
-  expect(res.body.message).toContain('not configured');
+  expect(res.status).toBe(404);
+  expect(res.body.message).toContain('not found');
 });
 
 test('truck list rejects invalid query filters before querying data', async () => {

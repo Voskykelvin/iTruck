@@ -17,13 +17,13 @@ const registerSchema = [
     .isIn(['personal', 'business', 'ngo'])
     .withMessage('Account type is invalid'),
   body('company').optional({ checkFalsy: true }).trim().isLength({ max: 120 }).withMessage('Company is too long'),
-  body('deviceId').optional({ checkFalsy: true }).trim().isUUID().withMessage('deviceId is invalid')
+  body('deviceId').trim().isUUID().withMessage('deviceId is required and must be a UUID')
 ];
 
 const loginSchema = [
   body('email').isEmail().withMessage('Provide a valid email address').normalizeEmail(),
   body('password').isLength({ min: 8, max: 128 }).withMessage('Password must be at least 8 characters'),
-  body('deviceId').optional({ checkFalsy: true }).trim().isUUID().withMessage('deviceId is invalid')
+  body('deviceId').trim().isUUID().withMessage('deviceId is required and must be a UUID')
 ];
 
 const forgotPasswordSchema = [body('email').isEmail().withMessage('Provide a valid email address').normalizeEmail()];

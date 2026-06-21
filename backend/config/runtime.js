@@ -122,10 +122,14 @@ function goLiveIntegrationStatus() {
     ]);
   const smsReady =
     Boolean(process.env.SMS_PROVIDER_MODULE) || hasAllEnv(['AFRICASTALKING_API_KEY', 'AFRICASTALKING_USERNAME']);
+  const emailFrom = Boolean(process.env.EMAIL_FROM);
   const emailReady =
     Boolean(process.env.EMAIL_PROVIDER_MODULE) ||
-    Boolean(process.env.SENDGRID_API_KEY) ||
-    Boolean(process.env.RESEND_API_KEY);
+    (emailFrom && Boolean(process.env.SENDGRID_API_KEY)) ||
+    (emailFrom && Boolean(process.env.RESEND_API_KEY)) ||
+    (emailFrom &&
+      (Boolean(process.env.SMTP_URL) ||
+        (Boolean(process.env.SMTP_HOST) && Boolean(process.env.SMTP_USER) && Boolean(process.env.SMTP_PASS))));
   const mapsReady = Boolean(process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY);
 
   return [
@@ -142,7 +146,7 @@ function goLiveIntegrationStatus() {
     {
       name: 'email',
       configured: emailReady,
-      hint: 'configure EMAIL_PROVIDER_MODULE, SENDGRID_API_KEY, or RESEND_API_KEY'
+      hint: 'configure EMAIL_PROVIDER_MODULE, or EMAIL_FROM plus Resend, SendGrid, or SMTP credentials'
     },
     {
       name: 'maps',

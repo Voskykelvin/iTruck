@@ -2,7 +2,8 @@ process.env.REDIS_URL = '';
 
 const { errorHandler } = require('../middleware/security');
 const { redactUrlSecrets } = require('../utils/redactUrl');
-const { corsOptions } = require('../app');
+const { app, corsOptions } = require('../app');
+const request = require('supertest');
 
 const originalEnv = { ...process.env };
 
@@ -60,6 +61,16 @@ test('error handler hides unexpected production server errors', () => {
   });
 });
 
+test('error handler returns a client-safe payload for oversized uploads', () => {
+  const res = runError({ name: 'MulterError', code: 'LIMIT_FILE_SIZE', message: 'File too large' });
+
+  expect(res.statusCode).toBe(413);
+  expect(res.body).toEqual({
+    status: 'fail',
+    message: 'Uploaded file exceeds the 10 MB limit.'
+  });
+});
+
 test('callback secrets are removed from logged URLs', () => {
   expect(redactUrlSecrets('/api/payments/webhooks/mpesa/stk?token=secret-value&mode=live')).toBe(
     '/api/payments/webhooks/mpesa/stk?token=[redacted]&mode=live'
@@ -73,4 +84,12 @@ test('disallowed cors origins produce a forbidden error', (done) => {
     expect(err.message).toContain('not allowed');
     done();
   });
+});
+
+test('direct backend responses include browser security policy headers', async () => {
+  const res = await request(app).get('/api/health');
+
+  expect(res.headers['content-security-policy']).toContain("default-src 'self'");
+  expect(res.headers['content-security-policy']).toContain("frame-ancestors 'none'");
+  expect(res.headers['permissions-policy']).toContain('geolocation=(self)');
 });

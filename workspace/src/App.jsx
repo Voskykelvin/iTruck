@@ -97,6 +97,18 @@ const workspaceFleet = DEMO_MODE ? demoFleet : [];
 const workspaceShipments = DEMO_MODE ? demoShipments : [];
 const workspaceLoads = DEMO_MODE ? demoLoads : [];
 
+const registrationCountries = [
+  ['Kenya', '+254'],
+  ['Nigeria', '+234'],
+  ['South Africa', '+27'],
+  ['Uganda', '+256'],
+  ['Tanzania', '+255'],
+  ['Ghana', '+233'],
+  ['Egypt', '+20'],
+  ['Morocco', '+212'],
+  ['Ethiopia', '+251'],
+  ['DRC Congo', '+243']
+];
 const vehicleTypes = ['Matatu', 'Pickup', 'Lorry', 'Large Truck', 'Trailer', 'Bus', 'Specialised'];
 const ownerProfileDocuments = ['Owner KYC', 'Driver ID', 'Business registration', 'Insurance'];
 const shipperProfileDocuments = ['Shipper KYC', 'Business registration', 'Tax certificate'];
@@ -6153,13 +6165,23 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
   const [regLastName, setRegLastName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
+  const [regPhone, setRegPhone] = useState('');
+  const [regCountry, setRegCountry] = useState(registrationCountries[0][0]);
+  const [regCountryCode, setRegCountryCode] = useState(registrationCountries[0][1]);
   const [regRole, setRegRole] = useState('client');
   const [regBusy, setRegBusy] = useState(false);
 
   async function register(event) {
     event.preventDefault();
-    if (!regEmail.trim() || !regPassword.trim()) {
-      notify('Email and password are required');
+    if (
+      !regFirstName.trim() ||
+      !regLastName.trim() ||
+      !regEmail.trim() ||
+      !regPassword.trim() ||
+      !regPhone.trim() ||
+      !regCountry
+    ) {
+      notify('Complete every account field');
       return;
     }
     setRegBusy(true);
@@ -6168,7 +6190,10 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
         email: regEmail,
         password: regPassword,
         firstName: regFirstName,
-        lastName: regLastName
+        lastName: regLastName,
+        phone: regPhone,
+        country: regCountry,
+        countryCode: regCountryCode
       });
       setSession(data);
       setUser(data.user);
@@ -6192,19 +6217,6 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
       notify(err.message);
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function startGoogleSignIn() {
-    try {
-      const data = await api.googleSignInStart();
-      if (data.url) {
-        window.location.href = data.url;
-        return;
-      }
-      notify('Google sign-in is not configured yet');
-    } catch (err) {
-      notify(err.message || 'Google sign-in is not configured yet');
     }
   }
 
@@ -6323,18 +6335,6 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
             </div>
 
             <div className="auth-controls">
-              {authMode !== 'reset' ? (
-                <>
-                  <button className="auth-provider-button" type="button" onClick={startGoogleSignIn}>
-                    <span className="google-mark">G</span>
-                    Continue with Google
-                  </button>
-                  <div className="auth-divider">
-                    <span>or</span>
-                  </div>
-                </>
-              ) : null}
-
               {authMode === 'forgot' ? (
                 <form className="auth-form" onSubmit={requestPasswordReset}>
                   <label className="field">
@@ -6396,6 +6396,7 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
                       type="text"
                       value={regFirstName}
                       autoComplete="given-name"
+                      required
                       onChange={(event) => setRegFirstName(event.target.value)}
                     />
                   </label>
@@ -6405,6 +6406,7 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
                       type="text"
                       value={regLastName}
                       autoComplete="family-name"
+                      required
                       onChange={(event) => setRegLastName(event.target.value)}
                     />
                   </label>
@@ -6414,8 +6416,55 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
                       type="email"
                       value={regEmail}
                       autoComplete="email"
+                      required
                       onChange={(event) => setRegEmail(event.target.value)}
                     />
+                  </label>
+                  <label className="field">
+                    <span>Phone</span>
+                    <div className="phone-input-row">
+                      <select
+                        value={regCountryCode}
+                        aria-label="Country dial code"
+                        required
+                        onChange={(event) => {
+                          const country = registrationCountries.find(([, code]) => code === event.target.value);
+                          setRegCountryCode(event.target.value);
+                          if (country) setRegCountry(country[0]);
+                        }}
+                      >
+                        {registrationCountries.map(([country, code]) => (
+                          <option key={code} value={code}>
+                            {code} {country}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="tel"
+                        value={regPhone}
+                        autoComplete="tel-national"
+                        required
+                        onChange={(event) => setRegPhone(event.target.value)}
+                      />
+                    </div>
+                  </label>
+                  <label className="field">
+                    <span>Country</span>
+                    <select
+                      value={regCountry}
+                      required
+                      onChange={(event) => {
+                        const country = registrationCountries.find(([name]) => name === event.target.value);
+                        setRegCountry(event.target.value);
+                        if (country) setRegCountryCode(country[1]);
+                      }}
+                    >
+                      {registrationCountries.map(([country]) => (
+                        <option key={country} value={country}>
+                          {country}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className="field">
                     <span>Password</span>
@@ -6423,6 +6472,8 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
                       type="password"
                       value={regPassword}
                       autoComplete="new-password"
+                      minLength={8}
+                      required
                       onChange={(event) => setRegPassword(event.target.value)}
                     />
                   </label>

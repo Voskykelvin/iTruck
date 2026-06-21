@@ -51,3 +51,11 @@ services:
         sync: false
       - key: EMAIL_PROVIDER_MODULE
         sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: SMTP_URL
+        sync: false

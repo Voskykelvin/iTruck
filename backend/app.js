@@ -37,6 +37,22 @@ const legacyRouteMap = {
   '/pages/profile.html': '/app/profile',
   '/pages/admin/admin-dashboard.html': '/app/admin'
 };
+const contentSecurityPolicy = {
+  directives: {
+    defaultSrc: ["'self'"],
+    baseUri: ["'self'"],
+    connectSrc: ["'self'", 'https:', 'ws:', 'wss:'],
+    fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+    formAction: ["'self'"],
+    frameAncestors: ["'none'"],
+    frameSrc: ["'self'", 'https://www.google.com'],
+    imgSrc: ["'self'", 'https:', 'data:', 'blob:'],
+    objectSrc: ["'none'"],
+    scriptSrc: ["'self'", "'unsafe-inline'"],
+    styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+    upgradeInsecureRequests: isLiveMode() ? [] : null
+  }
+};
 
 function sendReactApp(req, res, next) {
   if (!fs.existsSync(reactAppIndex)) return next();
@@ -68,7 +84,11 @@ function corsOptions() {
   };
 }
 
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet({ contentSecurityPolicy }));
+app.use((_req, res, next) => {
+  res.setHeader('Permissions-Policy', 'geolocation=(self), camera=(self), microphone=()');
+  next();
+});
 app.set('trust proxy', isLiveMode() ? 1 : false);
 app.use(cors(corsOptions()));
 app.use(

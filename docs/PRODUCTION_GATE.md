@@ -40,7 +40,8 @@ Deploy with live-mode settings:
 - `REDIS_URL` if running more than one instance or using shared rate limits
 - `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`, or equivalent M-Pesa/MTN MoMo live credentials
 - `AFRICASTALKING_API_KEY` and `AFRICASTALKING_USERNAME`, or a custom `SMS_PROVIDER_MODULE`
-- `EMAIL_PROVIDER_MODULE`, `SENDGRID_API_KEY`, or `RESEND_API_KEY`
+- `EMAIL_PROVIDER_MODULE`, or `EMAIL_FROM` plus `SENDGRID_API_KEY`, `RESEND_API_KEY`, `SMTP_URL`, or SMTP host
+  credentials
 - `GOOGLE_MAPS_API_KEY` or `VITE_GOOGLE_MAPS_API_KEY`
 
 Run:

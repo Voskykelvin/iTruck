@@ -261,7 +261,7 @@ router.get('/', documentListSchema, validate, async (req, res, next) => {
   }
 });
 
-router.post('/draft/:type', protect, async (req, res, next) => {
+router.post('/draft/:type', async (req, res, next) => {
   try {
     const create = documentFactories[req.params.type];
     if (!create) return res.status(404).json({ message: 'Document type not found' });

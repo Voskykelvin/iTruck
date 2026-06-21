@@ -17,18 +17,19 @@ Before deploying, ensure all production secrets are configured:
 
 - [ ] `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` — Payment processing
 - [ ] `AFRICASTALKING_*` or `SMS_PROVIDER_MODULE` — SMS notifications
-- [ ] `SENDGRID_API_KEY` or `EMAIL_PROVIDER_MODULE` — Email confirmations
+- [ ] `EMAIL_FROM` plus `RESEND_API_KEY`, `SENDGRID_API_KEY`, or SMTP credentials; alternatively use
+      `EMAIL_PROVIDER_MODULE` — Email confirmations and password resets
 - [ ] `GOOGLE_MAPS_API_KEY` — Map rendering (fallback: static placeholder)
 - [ ] `REDIS_URL` — Caching & rate limiting
 
 ### 2. Code Readiness
 
-- [ ] Backend tests passing: `npm.cmd --prefix backend test` - 95 tests pass
+- [ ] Backend tests passing: `npm.cmd --prefix backend test` - 122 tests pass
 - [ ] Code linting: `npm run lint` ✅ Passes
 - [ ] Build artifacts generated: `npm run app:build` ✅ In `frontend/app/`
 - [ ] No `DEMO_MODE` in production code
 
-Current backend verification: `npm.cmd --prefix backend test` passes with 95 tests.
+Current backend verification: `npm.cmd --prefix backend test` passes with 122 tests.
 
 ### 3. Database Setup
 

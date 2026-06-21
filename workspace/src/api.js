@@ -210,7 +210,6 @@ function assertUploadFile(file, allowedTypes, label) {
 
 export const api = {
   request,
-  health: () => request('/health'),
   profile: () => request('/users/profile'),
   updateProfile: (payload) => request('/users/profile', { method: 'PATCH', body: JSON.stringify(payload) }),
   estimate: (payload) => request('/marketplace/estimate', { method: 'POST', body: JSON.stringify(payload) }),
@@ -243,8 +242,6 @@ export const api = {
   createTruck: (payload) => request('/trucks', { method: 'POST', body: JSON.stringify(payload) }),
   rateBooking: (bookingId, payload) =>
     request(`/bookings/${encodeURIComponent(bookingId)}/ratings`, { method: 'POST', body: JSON.stringify(payload) }),
-  rateTruck: (id, payload) =>
-    request(`/trucks/${encodeURIComponent(id)}/ratings`, { method: 'POST', body: JSON.stringify(payload) }),
   wallet: () => request('/payments/wallet'),
   creditWallet: (payload) =>
     request('/payments/wallet/credit', {
@@ -275,14 +272,12 @@ export const api = {
       headers: { 'Idempotency-Key': idempotencyKey('withdraw') },
       body: JSON.stringify(payload)
     }),
-  workflow: (query) => request(`/workflow${query || ''}`),
   listMessages: (bookingId) => request(`/workflow/messages?booking=${encodeURIComponent(bookingId)}`),
   sendMessage: (payload) => request('/workflow/messages', { method: 'POST', body: JSON.stringify(payload) }),
   listNotifications: (options = 20) => {
     const limit = typeof options === 'object' ? options.limit : options;
     return request(`/notifications?limit=${encodeURIComponent(limit || 20)}`);
   },
-  notificationCount: () => request('/notifications/count'),
   markNotificationRead: (id) => request(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' }),
   listDocuments: (params = {}) => request(`/documents${queryString(params)}`),
   downloadDocument: (type, bookingId) =>
@@ -296,11 +291,6 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   uploadCargo: uploadCargoFiles,
-  uploadAvatar: (file) => {
-    const body = new FormData();
-    body.append('file', file);
-    return request('/upload/avatar', { method: 'POST', body });
-  },
   uploadProfileDocument: (documentType, file) =>
     uploadDocument(`/users/documents/${encodeURIComponent(documentType)}`, documentType, file),
   uploadTruckDocument: (truckId, documentType, file) =>
@@ -325,18 +315,10 @@ export const api = {
       body: JSON.stringify({ url, fileName: file.name })
     });
   },
-  removeTruckPhoto: (truckId, photoUrl) =>
-    request(`/trucks/${encodeURIComponent(truckId)}/photos/${encodeURIComponent(photoUrl)}`, {
-      method: 'DELETE'
-    }),
   removeTruck: (truckId, reason = '') =>
     request(`/trucks/${encodeURIComponent(truckId)}`, {
       method: 'DELETE',
       body: JSON.stringify({ reason })
-    }),
-  removeUserDocument: (documentType) =>
-    request(`/users/documents/${encodeURIComponent(documentType)}`, {
-      method: 'DELETE'
     }),
   adminStats: () => request('/admin/stats'),
   adminListUsers: () => request('/admin/users'),
@@ -344,11 +326,6 @@ export const api = {
   adminListBookings: () => request('/admin/bookings'),
   adminListPayments: () => request('/admin/payments'),
   adminAuditLogs: () => request('/admin/audit-logs'),
-  adminSetUserActive: (userId, isActive) =>
-    request(`/admin/users/${encodeURIComponent(userId)}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify({ isActive })
-    }),
   adminDeleteUser: (userId, payload) =>
     request(`/admin/users/${encodeURIComponent(userId)}`, {
       method: 'DELETE',
@@ -386,7 +363,6 @@ export const api = {
     }),
   submitBookingBid: (bookingId, payload) =>
     request(`/bookings/${encodeURIComponent(bookingId)}/bids`, { method: 'POST', body: JSON.stringify(payload) }),
-  submitBid: (payload) => request('/workflow/bids', { method: 'POST', body: JSON.stringify(payload) }),
   reportIssue: (payload) => request('/workflow/reports', { method: 'POST', body: JSON.stringify(payload) }),
   login: (payload) =>
     request('/auth/login', { method: 'POST', body: JSON.stringify({ ...payload, deviceId: getDeviceId() }) }),
@@ -397,12 +373,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload)
     }),
-  googleSignInStart: () => request('/auth/google/start'),
   logout: () => request('/auth/logout', { method: 'POST' }).finally(clearSession),
   listSessions: () => request('/auth/sessions'),
   revokeSession: (id) => request(`/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   revokeOtherSessions: () => request('/auth/sessions', { method: 'DELETE' }),
-  revokeEverywhere: () => request('/auth/sessions?everywhere=true', { method: 'DELETE' }),
   register: (role, payload) =>
     request(`/auth/register/${role}`, { method: 'POST', body: JSON.stringify({ ...payload, deviceId: getDeviceId() }) })
 };

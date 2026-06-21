@@ -14,6 +14,7 @@
     "build": "npm --prefix workspace run build",
     "seed": "npm --prefix backend run seed",
     "test": "npm --prefix backend test",
+    "test:coverage": "npm --prefix backend run test:coverage",
     "live:check": "npm --prefix backend run live:check",
     "lint": "eslint \"backend/**/*.js\" \"workspace/src/**/*.{js,jsx}\"",
     "format:check": "prettier --check \"backend/**/*.js\" \"workspace/src/**/*.{js,jsx}\" \"frontend/js/**/*.js\"",
@@ -32,6 +33,6 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.6.0",
-    "prettier": "^3.8.3"
+    "prettier": "^3.8.4"
   }
 }

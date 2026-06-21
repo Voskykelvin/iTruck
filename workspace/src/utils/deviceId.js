@@ -14,7 +14,3 @@ export function getDeviceId() {
   }
   return value;
 }
-
-export function clearDeviceId() {
-  localStorage.removeItem(DEVICE_ID_KEY);
-}
