@@ -48,7 +48,7 @@ const contentSecurityPolicy = {
     frameSrc: ["'self'", 'https://www.google.com'],
     imgSrc: ["'self'", 'https:', 'data:', 'blob:'],
     objectSrc: ["'none'"],
-    scriptSrc: ["'self'", "'unsafe-inline'"],
+    scriptSrc: ["'self'", "'unsafe-inline'", 'https://maps.googleapis.com', 'https://maps.gstatic.com'],
     styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
     upgradeInsecureRequests: isLiveMode() ? [] : null
   }
@@ -128,6 +128,7 @@ app.use('/api', apiLimiter);
 app.use('/api/auth', authLimiter, require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/trucks', require('./routes/trucks'));
+app.use('/api/maps', require('./routes/maps'));
 app.use('/api/bookings', require('./routes/deliveryProof'));
 app.use('/api/bookings', require('./routes/bookings'));
 app.use('/api/payments', require('./routes/payments'));

@@ -39,6 +39,11 @@ const submitWorkflowBidSchema = [
   body('amount').isFloat({ min: 0.01 }).withMessage('Bid amount must be greater than zero').toFloat(),
   optionalString('message', 1000),
   liveMongoIdBody('truck'),
+  body('expiresAt')
+    .optional({ checkFalsy: true })
+    .isISO8601()
+    .withMessage('expiresAt must be a valid timestamp')
+    .toDate(),
   body('status').optional({ checkFalsy: true }).isIn(workflowStatuses).withMessage('Status is invalid')
 ];
 

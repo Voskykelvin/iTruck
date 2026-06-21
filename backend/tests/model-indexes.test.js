@@ -17,6 +17,7 @@ const DeliveryOtpChallenge = require('../models/DeliveryOtpChallenge');
 const DeliveryProofAsset = require('../models/DeliveryProofAsset');
 const DeliveryProof = require('../models/DeliveryProof');
 const DeliveryCustodyEvent = require('../models/DeliveryCustodyEvent');
+const DispatchPlan = require('../models/DispatchPlan');
 
 function hasIndex(Model, keys, options = {}) {
   return Model.schema
@@ -70,6 +71,10 @@ test('booking indexes cover client owner status dashboards', () => {
   expect(Booking.schema.path('deliveryGeofenceMeters')).toBeDefined();
   expect(Booking.schema.path('lastKnownLocation.recordedAt')).toBeDefined();
   expect(Booking.schema.path('deliveryProof.recordHash')).toBeDefined();
+  expect(Booking.schema.path('routePlan.encodedPolyline')).toBeDefined();
+  expect(Booking.schema.path('eta.estimatedArrivalAt')).toBeDefined();
+  expect(Booking.schema.path('routeDeviation.isDeviated')).toBeDefined();
+  expect(Booking.schema.path('dispatchPlan')).toBeDefined();
   expect(Booking.schema.path('disputeCase')).toBeDefined();
   expect(Booking.schema.path('disputeStatusBefore')).toBeDefined();
   expect(
@@ -77,6 +82,12 @@ test('booking indexes cover client owner status dashboards', () => {
       documents: [{ type: 'pod', status: 'approved', generatedAt: new Date() }]
     }).validateSync()
   ).toBeUndefined();
+});
+
+test('dispatch plan indexes support active capacity and booking lookups', () => {
+  expect(hasIndex(DispatchPlan, { truck: 1, status: 1, pickupDate: 1 })).toBe(true);
+  expect(hasIndex(DispatchPlan, { routeKey: 1, status: 1, remainingTonnes: -1 })).toBe(true);
+  expect(hasIndex(DispatchPlan, { 'assignments.booking': 1 })).toBe(true);
 });
 
 test('delivery proof indexes support OTP lookup, immutable assets, and hash-chain reads', () => {

@@ -130,7 +130,9 @@ function goLiveIntegrationStatus() {
     (emailFrom &&
       (Boolean(process.env.SMTP_URL) ||
         (Boolean(process.env.SMTP_HOST) && Boolean(process.env.SMTP_USER) && Boolean(process.env.SMTP_PASS))));
-  const mapsReady = Boolean(process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY);
+  const mapsReady = Boolean(
+    process.env.GOOGLE_MAPS_API_KEY && (process.env.GOOGLE_MAPS_BROWSER_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY)
+  );
 
   return [
     {
@@ -151,7 +153,7 @@ function goLiveIntegrationStatus() {
     {
       name: 'maps',
       configured: mapsReady,
-      hint: 'configure GOOGLE_MAPS_API_KEY or VITE_GOOGLE_MAPS_API_KEY'
+      hint: 'configure GOOGLE_MAPS_API_KEY plus a referrer-restricted GOOGLE_MAPS_BROWSER_KEY'
     }
   ];
 }

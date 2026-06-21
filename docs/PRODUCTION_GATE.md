@@ -42,7 +42,8 @@ Deploy with live-mode settings:
 - `AFRICASTALKING_API_KEY` and `AFRICASTALKING_USERNAME`, or a custom `SMS_PROVIDER_MODULE`
 - `EMAIL_PROVIDER_MODULE`, or `EMAIL_FROM` plus `SENDGRID_API_KEY`, `RESEND_API_KEY`, `SMTP_URL`, or SMTP host
   credentials
-- `GOOGLE_MAPS_API_KEY` or `VITE_GOOGLE_MAPS_API_KEY`
+- `GOOGLE_MAPS_API_KEY` for server-side geocoding/routes
+- `GOOGLE_MAPS_BROWSER_KEY` restricted to production web origins, plus `GOOGLE_MAPS_MAP_ID`
 
 Run:
 

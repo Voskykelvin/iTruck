@@ -11,6 +11,7 @@ const validate = require('../middleware/validate');
 const notifications = require('../services/notifications');
 const caseManagement = require('../services/caseManagement');
 const { assertOwnerCanBid } = require('../services/operationsPolicy');
+const bidding = require('../services/bidding');
 const {
   createLoadRequestSchema,
   createMessageSchema,
@@ -154,16 +155,7 @@ async function submitBid(req, res, next) {
       return res.status(400).json({ message: 'Bid amount must be greater than zero' });
     }
 
-    const bid = {
-      owner: req.user._id,
-      amount,
-      message: req.body.message || '',
-      status: 'pending',
-      createdAt: new Date()
-    };
-    if (truck || mongoose.Types.ObjectId.isValid(req.body.truck)) bid.truck = req.body.truck;
-
-    booking.bids.push(bid);
+    const bid = bidding.submitBid(booking, req.user, { ...req.body, amount }, truck);
     if (booking.status === 'pending') booking.transitionTo('bidding');
     await booking.save();
 
@@ -185,6 +177,7 @@ async function submitBid(req, res, next) {
       type: 'bid',
       user: req.user._id,
       booking: booking._id,
+      bidId: bid._id,
       status: 'pending',
       payload: { ...req.body, amount }
     };

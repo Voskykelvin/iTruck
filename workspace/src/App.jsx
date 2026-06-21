@@ -660,7 +660,13 @@ function normalizeBid(bid = {}) {
     amount: Number(bid.amount || bid.price || 0),
     message: bid.message || 'Carrier has not added a note yet.',
     status: bid.status || 'pending',
-    createdAt: bid.createdAt
+    createdAt: bid.createdAt,
+    expiresAt: bid.expiresAt,
+    counteroffer: bid.counteroffer,
+    rejectionReason: bid.rejectionReason,
+    withdrawalReason: bid.withdrawalReason,
+    carrierAcknowledgedAt: bid.carrierAcknowledgedAt,
+    history: bid.history || []
   };
 }
 
@@ -746,6 +752,13 @@ function normalizeBookingShipment(booking) {
   const hasLatestCoordinates = [latest.lat, latest.lng].every((value) => Number.isFinite(Number(value)));
   const latestSpeed = Number(latest.speed);
   const bookingDocuments = bookingDocumentsFrom(booking);
+  const etaDate = booking.eta?.estimatedArrivalAt ? new Date(booking.eta.estimatedArrivalAt) : null;
+  const etaText =
+    etaDate && !Number.isNaN(etaDate.getTime())
+      ? etaDate.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
+      : booking.status === 'delivered'
+        ? 'POD ready'
+        : 'Awaiting update';
 
   return {
     id: bookingRef(booking),
@@ -755,6 +768,7 @@ function normalizeBookingShipment(booking) {
     origin: booking.pickup || 'Pickup pending',
     destination: booking.destination || 'Destination pending',
     cargo: booking.cargo || 'Cargo pending',
+    loadMode: booking.loadMode || 'full-truck',
     vehicle: booking.vehicleType || booking.truck?.type || 'Vehicle pending',
     plate: booking.truck?.plateNumber || booking.plate || 'Unassigned',
     driver: booking.owner
@@ -763,7 +777,8 @@ function normalizeBookingShipment(booking) {
     status: statusLabel(booking.status),
     rawStatus: booking.status || 'pending',
     progress,
-    eta: booking.eta || (booking.status === 'delivered' ? 'POD ready' : 'Awaiting update'),
+    eta: etaText,
+    etaDetails: booking.eta || null,
     position: latest.city || (hasLatestCoordinates ? formatCoordinatePair(latest) : 'Awaiting GPS update'),
     speed: Number.isFinite(latestSpeed) ? `${Number(latestSpeed.toFixed(1))} km/h` : 'Speed pending',
     payment: booking.paymentMethod || 'Payment pending',
@@ -773,6 +788,11 @@ function normalizeBookingShipment(booking) {
     documents: booking.estimate?.requiredDocuments || demoDocuments.slice(0, 3),
     bookingDocuments,
     destinationCoordinates: booking.destinationCoordinates,
+    pickupCoordinates: booking.pickupCoordinates,
+    routePlan: booking.routePlan || null,
+    routeDeviation: booking.routeDeviation || null,
+    dispatchPlanId: booking.dispatchPlan?._id || booking.dispatchPlan || '',
+    dispatch: booking.dispatch || null,
     deliveryGeofenceMeters: booking.deliveryGeofenceMeters,
     deliveredAt: booking.deliveredAt,
     receiverName: booking.receiverName || '',
@@ -832,12 +852,18 @@ function normalizeOpenLoad(booking) {
 function normalizeOwnerBidRecord(record = {}) {
   return {
     id: record.id || `${record.bookingId || record.route || 'bid'}-${record.createdAt || Date.now()}`,
+    bidId: record.bidId || record.id || '',
     bookingId: record.bookingId || record.id || '',
     route: record.route || 'Route pending',
     cargo: record.cargo || 'Cargo pending',
     amount: Number(record.amount || 0),
     message: record.message || 'Bid note pending',
     status: record.status || 'pending',
+    expiresAt: record.expiresAt,
+    counteroffer: record.counteroffer,
+    rejectionReason: record.rejectionReason,
+    withdrawalReason: record.withdrawalReason,
+    carrierAcknowledgedAt: record.carrierAcknowledgedAt,
     truckName: record.truckName || record.truck || 'Selected vehicle',
     createdAt: record.createdAt
   };
@@ -851,12 +877,18 @@ function ownerBidRecordsFromShipments(shipments, user) {
       .map((bid) =>
         normalizeOwnerBidRecord({
           id: `${shipment.bookingId || shipment.id}-${bid.id}`,
+          bidId: bid.id,
           bookingId: shipment.bookingId || shipment.id,
           route: shipment.route,
           cargo: shipment.cargo,
           amount: bid.amount,
           message: bid.message,
           status: bid.status,
+          expiresAt: bid.expiresAt,
+          counteroffer: bid.counteroffer,
+          rejectionReason: bid.rejectionReason,
+          withdrawalReason: bid.withdrawalReason,
+          carrierAcknowledgedAt: bid.carrierAcknowledgedAt,
           truckName: bid.truckName,
           createdAt: bid.createdAt
         })
@@ -1594,12 +1626,15 @@ function BookingPage({ notify }) {
   useEffect(() => {
     let active = true;
     const payload = { ...form, crossBorder: form.border === 'Cross-border' };
-    api
-      .estimate(payload)
-      .then((data) => active && setEstimate(data))
-      .catch(() => active && setEstimate(fallbackEstimate(payload)));
+    const timer = window.setTimeout(() => {
+      api
+        .estimate(payload)
+        .then((data) => active && setEstimate(data))
+        .catch(() => active && setEstimate(fallbackEstimate(payload)));
+    }, 450);
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
   }, [form]);
 
@@ -1688,7 +1723,12 @@ function BookingPage({ notify }) {
       return;
     }
 
-    const payload = { ...form, estimate, quoteAcknowledged: true };
+    const payload = {
+      ...form,
+      ...(estimate?.route || {}),
+      estimate,
+      quoteAcknowledged: true
+    };
     setSaving(true);
     try {
       await api.createBooking(payload);
@@ -1721,9 +1761,9 @@ function BookingPage({ notify }) {
             <Input label="Pickup" value={form.pickup} onChange={(value) => update('pickup', value)} />
             <Input label="Destination" value={form.destination} onChange={(value) => update('destination', value)} />
             <Input
-              label="Distance km"
+              label="Distance km (road route)"
               type="number"
-              value={form.distance}
+              value={estimate?.route?.distance || form.distance}
               onChange={(value) => update('distance', Number(value))}
             />
             <Select
@@ -2105,6 +2145,148 @@ function MarketplacePage({ route }) {
       </div>
     </section>
   );
+}
+
+let googleMapsLoader;
+
+function loadGoogleMaps(apiKey) {
+  if (window.google?.maps?.importLibrary) return Promise.resolve(window.google.maps);
+  if (googleMapsLoader) return googleMapsLoader;
+  googleMapsLoader = new Promise((resolve, reject) => {
+    const callback = `itruckMapsReady_${Date.now()}`;
+    window[callback] = () => {
+      delete window[callback];
+      resolve(window.google.maps);
+    };
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&loading=async&callback=${callback}`;
+    script.async = true;
+    script.onerror = () => {
+      delete window[callback];
+      googleMapsLoader = null;
+      reject(new Error('Google Maps could not load'));
+    };
+    document.head.appendChild(script);
+  });
+  return googleMapsLoader;
+}
+
+function decodeRoutePolyline(encoded = '') {
+  const points = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+  while (index < encoded.length) {
+    let shift = 0;
+    let result = 0;
+    let byte;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20 && index <= encoded.length);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+
+    shift = 0;
+    result = 0;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20 && index <= encoded.length);
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+    points.push({ lat: lat / 1e5, lng: lng / 1e5 });
+  }
+  return points;
+}
+
+function ProductionRouteMap({ shipment }) {
+  const mapRef = useRef(null);
+  const [fallback, setFallback] = useState(false);
+  const latest = latestTrackingPoint(shipment);
+
+  useEffect(() => {
+    let active = true;
+    const overlays = [];
+
+    async function renderMap() {
+      const config = await api.mapsConfig();
+      if (!config.apiKey || !shipment?.routePlan?.encodedPolyline) {
+        if (active) setFallback(true);
+        return;
+      }
+
+      await loadGoogleMaps(config.apiKey);
+      const [{ Map: GoogleMap, Polyline }, { AdvancedMarkerElement }] = await Promise.all([
+        window.google.maps.importLibrary('maps'),
+        window.google.maps.importLibrary('marker')
+      ]);
+      if (!active || !mapRef.current) return;
+
+      const path = decodeRoutePolyline(shipment.routePlan.encodedPolyline);
+      const center = latest || path[0] || shipment.pickupCoordinates || shipment.destinationCoordinates;
+      const map = new GoogleMap(mapRef.current, {
+        center,
+        zoom: 7,
+        mapId: config.mapId || 'DEMO_MAP_ID',
+        streetViewControl: false,
+        mapTypeControl: false,
+        fullscreenControl: true
+      });
+      const routeLine = new Polyline({
+        map,
+        path,
+        strokeColor: shipment.routeDeviation?.isDeviated ? '#dc2626' : '#0b7a53',
+        strokeOpacity: 0.9,
+        strokeWeight: 5
+      });
+      overlays.push(routeLine);
+
+      const markers = [
+        [shipment.pickupCoordinates || path[0], `Pickup: ${shipment.origin}`],
+        [shipment.destinationCoordinates || path.at(-1), `Delivery: ${shipment.destination}`],
+        [latest, `Truck: ${shipment.plate}`]
+      ];
+      markers.forEach(([position, title]) => {
+        if (!position) return;
+        const marker = new AdvancedMarkerElement({ map, position, title });
+        overlays.push(marker);
+      });
+
+      const bounds = new window.google.maps.LatLngBounds();
+      path.forEach((point) => bounds.extend(point));
+      if (latest) bounds.extend(latest);
+      if (!bounds.isEmpty()) map.fitBounds(bounds, 42);
+      setFallback(false);
+    }
+
+    renderMap().catch(() => active && setFallback(true));
+    return () => {
+      active = false;
+      overlays.forEach((overlay) => {
+        if ('map' in overlay) overlay.map = null;
+        else overlay.setMap?.(null);
+      });
+    };
+  }, [
+    latest,
+    latest?.lat,
+    latest?.lng,
+    shipment?.bookingId,
+    shipment?.destination,
+    shipment?.destinationCoordinates,
+    shipment?.origin,
+    shipment?.plate,
+    shipment?.pickupCoordinates,
+    shipment?.routeDeviation?.isDeviated,
+    shipment?.routePlan?.encodedPolyline
+  ]);
+
+  if (fallback) {
+    const mapUrl = `https://www.google.com/maps?output=embed&saddr=${encodeURIComponent(shipment.origin)}&daddr=${encodeURIComponent(shipment.destination)}&dirflg=d`;
+    return <iframe title="Shipment route" src={mapUrl} loading="lazy" />;
+  }
+  return <div className="production-route-map" ref={mapRef} aria-label={`Road route for ${shipment.route}`} />;
 }
 
 function useAnimatedTrackingPoint(targetPoint) {
@@ -2555,6 +2737,7 @@ function TrackingPage({ notify, route, user }) {
   const [caseReplyFiles, setCaseReplyFiles] = useState([]);
   const [caseActionBusy, setCaseActionBusy] = useState('');
   const [deliveryBusyType, setDeliveryBusyType] = useState('');
+  const [dispatchPlan, setDispatchPlan] = useState(null);
   const chatInputRef = useRef(null);
 
   const trackingParams = useMemo(() => new URLSearchParams(route.split('?')[1] || ''), [route]);
@@ -2611,6 +2794,21 @@ function TrackingPage({ notify, route, user }) {
   useEffect(() => {
     loadShipmentCases();
   }, [loadShipmentCases]);
+
+  useEffect(() => {
+    let active = true;
+    if (!shipment?.bookingId || !shipment?.dispatchPlanId) {
+      setDispatchPlan(null);
+      return undefined;
+    }
+    api
+      .bookingDispatch(shipment.bookingId)
+      .then((data) => active && setDispatchPlan(data.dispatchPlan || null))
+      .catch(() => active && setDispatchPlan(null));
+    return () => {
+      active = false;
+    };
+  }, [shipment?.bookingId, shipment?.dispatchPlanId]);
 
   useEffect(() => {
     if (!shipment?.bookingId) return undefined;
@@ -2982,7 +3180,6 @@ function TrackingPage({ notify, route, user }) {
     );
   }
 
-  const mapUrl = `https://www.google.com/maps?output=embed&saddr=${encodeURIComponent(shipment.origin)}&daddr=${encodeURIComponent(shipment.destination)}&dirflg=d`;
   const ratingTitle = activeRole === 'owner' ? 'Rate Shipper' : 'Rate Carrier';
   const contactTarget = activeRole === 'owner' ? 'shipper' : 'driver';
   const contactLabel = activeRole === 'owner' ? 'Contact Shipper' : 'Contact Driver';
@@ -3040,13 +3237,25 @@ function TrackingPage({ notify, route, user }) {
               <span>Share</span>
             </button>
           </div>
-          <iframe title="Shipment route" src={mapUrl} loading="lazy" />
+          <ProductionRouteMap shipment={shipment} />
           <div className="map-status">
             <LivePositionCard shipment={shipment} />
             <small>
               <Navigation size={14} />
               ETA {shipment.eta}
             </small>
+            {shipment.routeDeviation?.isDeviated ? (
+              <small className="route-alert">
+                <AlertTriangle size={14} />
+                Route deviation: {Math.round(Number(shipment.routeDeviation.distanceMeters || 0))} m
+              </small>
+            ) : null}
+            {shipment.etaDetails?.remainingDistanceMeters ? (
+              <small>
+                <MapPin size={14} />
+                {(Number(shipment.etaDetails.remainingDistanceMeters) / 1000).toFixed(1)} km remaining
+              </small>
+            ) : null}
           </div>
         </section>
 
@@ -3109,6 +3318,33 @@ function TrackingPage({ notify, route, user }) {
               ))}
             </div>
           </Panel>
+
+          {dispatchPlan?.stops?.length ? (
+            <Panel title="Dispatch Stops" eyebrow={shipment.loadMode === 'ltl' ? 'Shared Load' : 'Assignment'}>
+              <div className="dispatch-stop-list">
+                {dispatchPlan.stops.map((stop) => (
+                  <div
+                    className={String(stop.booking?._id || stop.booking) === String(shipment.bookingId) ? 'active' : ''}
+                    key={`${stop.sequence}-${stop.type}-${stop.booking?._id || stop.booking}`}
+                  >
+                    <span>{stop.sequence}</span>
+                    <div>
+                      <strong>
+                        {statusLabel(stop.type)} · {stop.label}
+                      </strong>
+                      <small>{statusLabel(stop.status)}</small>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="facts-grid">
+                <span>Reserved</span>
+                <strong>{Number(dispatchPlan.reservedTonnes || 0).toFixed(1)} t</strong>
+                <span>Remaining</span>
+                <strong>{Number(dispatchPlan.remainingTonnes || 0).toFixed(1)} t</strong>
+              </div>
+            </Panel>
+          ) : null}
 
           <Panel title="Closeout" eyebrow="Delivery">
             <DeliveryReadinessPanel
@@ -4179,6 +4415,7 @@ function BidsPage({ notify, user }) {
   const [busy, setBusy] = useState('');
   const [bidTarget, setBidTarget] = useState(null);
   const [bidDraft, setBidDraft] = useState(() => bidDraftForLoad(null));
+  const [matchOptions, setMatchOptions] = useState({});
 
   useEffect(() => {
     if (role === 'owner') {
@@ -4296,6 +4533,115 @@ function BidsPage({ notify, user }) {
     }
   }
 
+  function replaceBooking(data, setter = setItems) {
+    if (!data?.booking) return;
+    const updated = normalizeBookingShipment(data.booking);
+    setter((current) =>
+      current.map((item) =>
+        String(item.bookingId || item.id) === String(updated.bookingId || updated.id) ? updated : item
+      )
+    );
+  }
+
+  async function counterBid(booking, bid) {
+    const amount = Number(window.prompt('Counteroffer amount', String(bid.amount || '')) || 0);
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    const message = window.prompt('Counteroffer note', 'Please confirm this revised rate.') || '';
+    setBusy(`counter-${bid.id}`);
+    try {
+      const data = await api.counterBookingBid(booking.bookingId, bid.id, { amount, message });
+      replaceBooking(data);
+      notify('Counteroffer sent to carrier');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function rejectBid(booking, bid) {
+    const reason = window.prompt('Reason for rejecting this bid');
+    if (!reason?.trim()) return;
+    setBusy(`reject-${bid.id}`);
+    try {
+      const data = await api.rejectBookingBid(booking.bookingId, bid.id, { reason: reason.trim() });
+      replaceBooking(data);
+      notify('Bid rejected with reason');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function respondToCounter(bid, decision) {
+    const reason =
+      decision === 'reject' ? window.prompt('Reason for declining this counteroffer') || '' : 'Counteroffer accepted';
+    setBusy(`counter-response-${bid.bidId}`);
+    try {
+      const data = await api.respondBookingCounter(bid.bookingId, bid.bidId, { decision, reason });
+      replaceBooking(data, setOwnerBookings);
+      notify(`Counteroffer ${decision === 'accept' ? 'accepted' : 'declined'}`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function withdrawBid(bid) {
+    const reason = window.prompt('Optional withdrawal reason') || '';
+    setBusy(`withdraw-${bid.bidId}`);
+    try {
+      const data = await api.withdrawBookingBid(bid.bookingId, bid.bidId, { reason });
+      replaceBooking(data, setOwnerBookings);
+      notify('Bid withdrawn');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function acknowledgeBid(bid) {
+    setBusy(`ack-${bid.bidId}`);
+    try {
+      const data = await api.acknowledgeBookingBid(bid.bookingId, bid.bidId);
+      replaceBooking(data, setOwnerBookings);
+      notify('Bid decision acknowledged');
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function loadMatches(booking) {
+    setBusy(`matches-${booking.bookingId}`);
+    try {
+      const data = await api.bookingMatches(booking.bookingId);
+      setMatchOptions((current) => ({ ...current, [booking.bookingId]: data.matches || [] }));
+      notify(`${data.matches?.length || 0} verified truck matches found`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function autoAssign(booking) {
+    setBusy(`auto-${booking.bookingId}`);
+    try {
+      const data = await api.autoAssignBooking(booking.bookingId);
+      replaceBooking(data);
+      notify(`Assigned ${data.truck?.plateNumber || 'best verified truck'}`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
   if (role === 'owner') {
     return (
       <section className="workspace-layout">
@@ -4352,16 +4698,64 @@ function BidsPage({ notify, user }) {
                       <strong>{bid.route}</strong>
                       <span>{bid.cargo}</span>
                       <small>{bid.message}</small>
+                      {bid.counteroffer?.status === 'pending' ? (
+                        <small>Shipper counter: {money(bid.counteroffer.amount)}</small>
+                      ) : null}
+                      {bid.rejectionReason || bid.withdrawalReason ? (
+                        <small>{bid.rejectionReason || bid.withdrawalReason}</small>
+                      ) : null}
                     </div>
                     <div>
                       <strong>{money(bid.amount)}</strong>
-                      <button
-                        className="ghost"
-                        type="button"
-                        onClick={() => navigate(`/app/tracking?shipment=${encodeURIComponent(bid.bookingId)}`)}
-                      >
-                        Open
-                      </button>
+                      <div className="stack-actions compact-actions">
+                        {bid.status === 'countered' ? (
+                          <>
+                            <button
+                              className="primary"
+                              type="button"
+                              disabled={busy === `counter-response-${bid.bidId}`}
+                              onClick={() => respondToCounter(bid, 'accept')}
+                            >
+                              Accept Counter
+                            </button>
+                            <button
+                              className="ghost"
+                              type="button"
+                              disabled={busy === `counter-response-${bid.bidId}`}
+                              onClick={() => respondToCounter(bid, 'reject')}
+                            >
+                              Decline
+                            </button>
+                          </>
+                        ) : null}
+                        {['pending', 'countered'].includes(bid.status) ? (
+                          <button
+                            className="ghost"
+                            type="button"
+                            disabled={busy === `withdraw-${bid.bidId}`}
+                            onClick={() => withdrawBid(bid)}
+                          >
+                            Withdraw
+                          </button>
+                        ) : null}
+                        {['accepted', 'rejected', 'expired'].includes(bid.status) && !bid.carrierAcknowledgedAt ? (
+                          <button
+                            className="secondary"
+                            type="button"
+                            disabled={busy === `ack-${bid.bidId}`}
+                            onClick={() => acknowledgeBid(bid)}
+                          >
+                            Acknowledge
+                          </button>
+                        ) : null}
+                        <button
+                          className="ghost"
+                          type="button"
+                          onClick={() => navigate(`/app/tracking?shipment=${encodeURIComponent(bid.bookingId)}`)}
+                        >
+                          Open
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))
@@ -4399,6 +4793,36 @@ function BidsPage({ notify, user }) {
                   <h3>{booking.route}</h3>
                   <p>{booking.cargo}</p>
                   <small>{booking.bids?.length || 0} carrier bids</small>
+                  <div className="button-row">
+                    <button
+                      className="secondary"
+                      type="button"
+                      disabled={busy === `matches-${booking.bookingId}`}
+                      onClick={() => loadMatches(booking)}
+                    >
+                      {busy === `matches-${booking.bookingId}` ? 'Ranking...' : 'Find Verified Trucks'}
+                    </button>
+                    <button
+                      className="primary"
+                      type="button"
+                      disabled={busy === `auto-${booking.bookingId}` || booking.rawStatus !== 'bidding'}
+                      onClick={() => autoAssign(booking)}
+                    >
+                      {busy === `auto-${booking.bookingId}` ? 'Assigning...' : 'Auto Assign Best'}
+                    </button>
+                  </div>
+                  {(matchOptions[booking.bookingId] || []).length ? (
+                    <div className="match-preview">
+                      {matchOptions[booking.bookingId].slice(0, 3).map((match) => (
+                        <div key={match.truck.id}>
+                          <strong>
+                            {match.truck.plateNumber} · {match.score}% match
+                          </strong>
+                          <span>{match.reasons.join(' · ')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   <div className="bid-options">
                     {(booking.bids || []).length ? (
                       booking.bids.map((bid) => (
@@ -4410,17 +4834,49 @@ function BidsPage({ notify, user }) {
                             <strong>{bid.ownerName}</strong>
                             <span>{bid.truckName}</span>
                             <small>{bid.message}</small>
+                            {bid.counteroffer?.status === 'pending' ? (
+                              <small>Counteroffer awaiting carrier: {money(bid.counteroffer.amount)}</small>
+                            ) : null}
+                            {bid.rejectionReason || bid.withdrawalReason ? (
+                              <small>{bid.rejectionReason || bid.withdrawalReason}</small>
+                            ) : null}
                           </div>
                           <div>
                             <strong>{money(bid.amount)}</strong>
-                            <button
-                              className="primary"
-                              type="button"
-                              disabled={busy === `${booking.bookingId}-${bid.id}` || bid.status === 'accepted'}
-                              onClick={() => acceptBid(booking, bid)}
-                            >
-                              {bid.status === 'accepted' ? 'Awarded' : 'Award'}
-                            </button>
+                            <div className="stack-actions compact-actions">
+                              {bid.status === 'pending' ? (
+                                <>
+                                  <button
+                                    className="primary"
+                                    type="button"
+                                    disabled={busy === `${booking.bookingId}-${bid.id}`}
+                                    onClick={() => acceptBid(booking, bid)}
+                                  >
+                                    Award
+                                  </button>
+                                  <button
+                                    className="secondary"
+                                    type="button"
+                                    disabled={busy === `counter-${bid.id}`}
+                                    onClick={() => counterBid(booking, bid)}
+                                  >
+                                    Counter
+                                  </button>
+                                  <button
+                                    className="ghost"
+                                    type="button"
+                                    disabled={busy === `reject-${bid.id}`}
+                                    onClick={() => rejectBid(booking, bid)}
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              ) : (
+                                <StatusBadge tone={bid.status === 'accepted' ? 'success' : 'default'}>
+                                  {statusLabel(bid.status)}
+                                </StatusBadge>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))

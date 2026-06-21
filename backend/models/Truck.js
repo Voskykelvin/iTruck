@@ -35,7 +35,8 @@ const truckSchema = new mongoose.Schema(
     completedTrips: { type: Number, default: 0, min: 0 },
     isVerified: { type: Boolean, default: false },
     isAvailable: { type: Boolean, default: true },
-    location: { lat: Number, lng: Number, city: String },
+    location: { lat: Number, lng: Number, city: String, recordedAt: Date },
+    reservedCapacityTonnes: { type: Number, default: 0, min: 0 },
     documents: [truckDocumentSchema],
     archivedAt: Date,
     archivedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -61,6 +62,7 @@ truckSchema.index({ country: 1, type: 1 });
 truckSchema.index({ routes: 1 });
 truckSchema.index({ isAvailable: 1, routes: 1, archivedAt: 1 });
 truckSchema.index({ ratingAverage: -1, ratingCount: -1 });
+truckSchema.index({ 'location.lat': 1, 'location.lng': 1 });
 
 truckSchema.statics.TYPES = TRUCK_TYPES;
 
