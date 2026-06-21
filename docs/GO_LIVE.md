@@ -14,7 +14,8 @@
 - Expand shipment proof of delivery into receiver e-signature or OTP, immutable cargo-photo metadata, chain of custody, and dispute review.
 - Add web push and provider delivery-receipt callbacks; preferences, quiet hours, email/SMS routing, durable retries,
   and operator controls are implemented.
-- Add a complete admin dispute/support queue with ownership, SLA, escalation, comments, and resolution history.
+- Validate the implemented admin dispute/support queue with real operators, including assignment, elapsed-time SLA
+  targets, participant/internal comments, evidence, escalation, resolution, reopening, and automatic closure.
 - Replace the placeholder auto-assignment result with verified-truck ranking and assignment.
 - Add a dedicated driver identity/session and driver-to-truck/job assignment flow.
 - Public and owner fleet listings exclude archived trucks; use the archive endpoint instead of hard-deleting vehicles.
@@ -64,9 +65,15 @@
 
 ## Operations And Support
 
-- Issue reports can be submitted and stored against bookings.
-- Before public launch, add admin assignment, case status transitions, SLA timers, comments, escalation, resolution
-  evidence, and controlled disputed-booking outcomes.
+- Support and dispute cases can be submitted against bookings with evidence and a participant-visible timeline.
+- Admins can assign cases, add participant or internal comments, change active statuses, resolve controlled booking
+  outcomes, and reopen solved cases during the configured window.
+- Only direct booking parties or admins can open formal disputes. They hold the booking in `disputed`, reapply that
+  hold when reopened, and can resume, cancel, confirm delivery, or mark a funded booking `refund_pending` without
+  falsely claiming that the provider refund has completed.
+- Operational scans escalate first-response/resolution breaches and automatically close solved cases after the
+  configured resolution window.
+- SLA targets currently use elapsed time. Add business-hours/holiday calendars if support contracts require them.
 - Configure error monitoring, metrics, alerts, uptime checks, MongoDB backup/restore testing, and an incident runbook.
 - Keep background jobs enabled on at least one live instance and verify delivery/operations intervals in deployment
   configuration.

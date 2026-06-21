@@ -6,7 +6,7 @@
 - `npm run ci:check` passes:
   - ESLint
   - Prettier
-  - 17 Jest suites and 145 tests
+  - 18 Jest suites and 165 tests
   - Vite production build
 - Backend and frontend dependency audits report zero known vulnerabilities.
 - Demo runtime smoke checks pass for:
@@ -30,6 +30,9 @@
 - Added leased operational scans for document expiry and stale in-transit tracking, with per-record failure isolation
   and deduplicated reminders.
 - Removed duplicate socket-generated alerts while retaining demo-mode fallbacks.
+- Completed Batch 2 support/dispute case management: assignment, public/internal comments, evidence, timelines,
+  priority-based SLA targets, pause/resume behavior, breach escalation, controlled booking outcomes, reopening, and
+  automatic closure.
 - Aligned go-live email validation with the providers the application actually supports.
 - Completed the React registration form contract for phone, country, country code, and device ID.
 - Removed the exposed but unimplemented Google sign-in flow.
@@ -42,9 +45,9 @@
 The application is materially stronger, but “100%” cannot honestly be claimed without live infrastructure and broader
 coverage.
 
-### What The 62.27% Figure Means
+### What The 62.44% Figure Means
 
-The `62.27%` figure is **backend test line coverage**, not a product-completion score. It means the automated Jest suite
+The `62.44%` figure is **backend test line coverage**, not a product-completion score. It means the automated Jest suite
 executed about 62% of the measured backend lines during the coverage run. It does not mean that only 62% of the
 application is implemented.
 
@@ -78,11 +81,15 @@ and stronger test assurance.
      alerts.
    - Web push and provider delivery-receipt callbacks remain future upgrades.
 3. **Dispute and support case lifecycle**
-   - Users can submit issue reports and attach evidence.
-   - There is no complete admin case workflow for assignment, status changes, SLA timers, comments, escalation,
-     resolution evidence, or reopening.
-   - A disputed booking is currently a terminal state; there is no controlled resolution path back to cancelled,
-     delivered, or refunded outcomes.
+   - Completed in Batch 2: users can open support or formal dispute cases, attach evidence, follow participant-visible
+     history, comment, and reopen eligible resolutions.
+   - Admins can assign cases, keep internal notes, manage status, resolve controlled booking outcomes, and audit every
+     sensitive action.
+   - Only the booking client, assigned carrier, or an admin can open a formal dispute. Disputes atomically hold the
+     booking, reapply that hold when reopened, and resolve to resumed, cancelled, delivered, or `refund_pending`
+     outcomes.
+   - SLA targets currently use elapsed time; business-hours calendars and actual payment-provider refund execution
+     remain future production integrations.
 4. **Receiver-grade proof of delivery**
    - POD/receiver-confirmation documents, cargo evidence, approval, and geofence checks exist.
    - Actual receiver e-signature or OTP acceptance, immutable evidence metadata, photo timestamps/hashes, and a full
@@ -110,6 +117,7 @@ and stronger test assurance.
 9. **Scheduled operational jobs**
    - Batch 1 added document-expiry reminders, stale-tracking alerts, delivery retries, failed-delivery visibility, and
      cross-instance leases.
+   - Batch 2 added case SLA breach escalation and automatic closure of resolved cases.
    - Abandoned-booking cleanup and additional operational automations remain future work.
 10. **Scale and maintainability**
     - Several admin lists are capped rather than fully paginated.
@@ -119,10 +127,10 @@ and stronger test assurance.
 #### Assurance and security hardening
 
 11. Increase backend coverage from the current baseline:
-   - statements: 57.46%
-   - branches: 40.98%
-   - functions: 58.45%
-   - lines: 62.27%
+   - statements: 57.81%
+   - branches: 42.02%
+   - functions: 59.50%
+   - lines: 62.44%
    - prioritize authentication persistence, admin actions, workflow routes, document synchronization, webhooks, and
      provider failure paths.
 12. Add browser end-to-end tests for shipper, owner, and admin journeys using Playwright or Cypress.

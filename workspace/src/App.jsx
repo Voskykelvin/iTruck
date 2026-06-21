@@ -681,7 +681,7 @@ function statusLabel(status = 'pending') {
 function paymentTone(status = 'unpaid') {
   if (['escrowed', 'released', 'completed', 'paid'].includes(status)) return 'success';
   if (['failed', 'refunded', 'cancelled', 'disputed'].includes(status)) return 'danger';
-  if (['pending', 'release_pending', 'withdrawal'].includes(status)) return 'warn';
+  if (['pending', 'release_pending', 'refund_pending', 'withdrawal'].includes(status)) return 'warn';
   return 'default';
 }
 
@@ -2552,6 +2552,11 @@ function TrackingPage({ notify, route, user }) {
   const [ratingBusy, setRatingBusy] = useState(false);
   const [issueModalOpen, setIssueModalOpen] = useState(false);
   const [issueBusy, setIssueBusy] = useState(false);
+  const [shipmentCases, setShipmentCases] = useState([]);
+  const [selectedCaseId, setSelectedCaseId] = useState('');
+  const [caseReply, setCaseReply] = useState('');
+  const [caseReplyFiles, setCaseReplyFiles] = useState([]);
+  const [caseActionBusy, setCaseActionBusy] = useState('');
   const [deliveryBusyType, setDeliveryBusyType] = useState('');
   const chatInputRef = useRef(null);
 
@@ -2584,6 +2589,31 @@ function TrackingPage({ notify, route, user }) {
 
   const shipment = shipments[selected] || shipments[0];
   const shipmentMessageKey = shipment?.bookingId || shipment?.id || '';
+  const selectedCase =
+    shipmentCases.find((record) => String(record._id || record.id) === String(selectedCaseId)) || shipmentCases[0];
+
+  const loadShipmentCases = useCallback(async () => {
+    if (!shipmentMessageKey) {
+      setShipmentCases([]);
+      return;
+    }
+    try {
+      const data = await api.listCases({ booking: shipmentMessageKey, limit: 20 });
+      const records = Array.isArray(data.cases) ? data.cases : [];
+      setShipmentCases(records);
+      setSelectedCaseId((current) =>
+        records.some((record) => String(record._id || record.id) === String(current))
+          ? current
+          : String(records[0]?._id || records[0]?.id || '')
+      );
+    } catch (_err) {
+      setShipmentCases([]);
+    }
+  }, [shipmentMessageKey]);
+
+  useEffect(() => {
+    loadShipmentCases();
+  }, [loadShipmentCases]);
 
   useEffect(() => {
     if (!shipment?.bookingId) return undefined;
@@ -2789,19 +2819,30 @@ function TrackingPage({ notify, route, user }) {
     try {
       const upload = issue.photos?.length ? await api.uploadCargo(issue.photos) : { urls: [] };
       const evidenceUrls = upload.urls || [];
-      await api.reportIssue({
+      const data = await api.reportIssue({
         booking: shipment.bookingId,
         bookingId: shipment.bookingId,
         shipmentId: shipment.id,
+        kind: issue.kind || 'support',
+        category: issue.issueType || 'other',
+        title: `${issue.issueType || 'Shipment'} ${issue.kind === 'dispute' ? 'dispute' : 'support case'}`,
         message: issue.description || `Issue reported for ${shipment.route}`,
-        issueType: issue.issueType || 'other',
         severity: issue.severity || 'normal',
         evidenceUrls,
+        evidenceFileNames: Array.from(issue.photos || []).map((file) => file.name),
         photoCount: evidenceUrls.length,
-        status: 'submitted'
+        route: shipment.route
       });
+      if (data.case) {
+        setShipmentCases((current) => [data.case, ...current.filter((item) => item._id !== data.case._id)]);
+        setSelectedCaseId(String(data.case._id || data.case.id || ''));
+      } else {
+        await loadShipmentCases();
+      }
       setIssueModalOpen(false);
-      notify('Issue report sent to operations');
+      notify(
+        issue.kind === 'dispute' ? 'Dispute opened and shipment held for review' : 'Support case sent to operations'
+      );
     } catch (err) {
       saveLocal('issue_reports', {
         bookingId: shipment.bookingId,
@@ -2816,6 +2857,56 @@ function TrackingPage({ notify, route, user }) {
       notify(err.message || 'Issue report queued for operations');
     } finally {
       setIssueBusy(false);
+    }
+  }
+
+  async function replyToCase(event) {
+    event.preventDefault();
+    const caseId = selectedCase?._id || selectedCase?.id;
+    if (!caseId || !caseReply.trim()) return;
+    setCaseActionBusy(`reply-${caseId}`);
+    try {
+      const upload = caseReplyFiles.length ? await api.uploadCargo(caseReplyFiles) : { urls: [] };
+      const data = await api.addCaseComment(caseId, {
+        body: caseReply.trim(),
+        evidenceUrls: upload.urls || [],
+        evidenceFileNames: caseReplyFiles.map((file) => file.name)
+      });
+      setCaseReply('');
+      setCaseReplyFiles([]);
+      if (data.case) {
+        setShipmentCases((current) =>
+          current.map((record) => (String(record._id || record.id) === String(caseId) ? data.case : record))
+        );
+      } else {
+        await loadShipmentCases();
+      }
+      notify('Case update sent');
+    } catch (err) {
+      notify(err.message || 'Unable to update this case');
+    } finally {
+      setCaseActionBusy('');
+    }
+  }
+
+  async function reopenShipmentCase() {
+    const caseId = selectedCase?._id || selectedCase?.id;
+    if (!caseId) return;
+    setCaseActionBusy(`reopen-${caseId}`);
+    try {
+      const data = await api.reopenCase(caseId, { note: 'Participant requested additional review' });
+      if (data.case) {
+        setShipmentCases((current) =>
+          current.map((record) => (String(record._id || record.id) === String(caseId) ? data.case : record))
+        );
+      } else {
+        await loadShipmentCases();
+      }
+      notify('Case reopened');
+    } catch (err) {
+      notify(err.message || 'Unable to reopen this case');
+    } finally {
+      setCaseActionBusy('');
     }
   }
 
@@ -3011,6 +3102,158 @@ function TrackingPage({ notify, route, user }) {
                 <span>Report Issue</span>
               </button>
             </div>
+            {shipmentCases.length ? (
+              <div className="shipment-case-workspace">
+                <div className="shipment-case-list">
+                  {shipmentCases.map((record) => {
+                    const caseId = String(record._id || record.id);
+                    return (
+                      <button
+                        type="button"
+                        className={caseId === String(selectedCase?._id || selectedCase?.id) ? 'active' : ''}
+                        key={caseId}
+                        onClick={() => setSelectedCaseId(caseId)}
+                      >
+                        <strong>{record.caseNumber || caseId}</strong>
+                        <span>{statusLabel(record.status)}</span>
+                        <small>{statusLabel(record.kind || 'support')}</small>
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedCase ? (
+                  <div className="shipment-case-detail">
+                    <div className="shipment-case-heading">
+                      <div>
+                        <StatusBadge
+                          tone={
+                            ['urgent', 'high'].includes(selectedCase.priority)
+                              ? 'danger'
+                              : selectedCase.status === 'resolved'
+                                ? 'success'
+                                : 'warn'
+                          }
+                        >
+                          {statusLabel(selectedCase.priority || 'normal')}
+                        </StatusBadge>
+                        <strong>{selectedCase.title || selectedCase.caseNumber}</strong>
+                      </div>
+                      <small>
+                        Resolution target{' '}
+                        {selectedCase.resolutionDueAt
+                          ? new Date(selectedCase.resolutionDueAt).toLocaleString([], {
+                              dateStyle: 'medium',
+                              timeStyle: 'short'
+                            })
+                          : 'pending'}
+                      </small>
+                    </div>
+                    <p>{selectedCase.message}</p>
+                    {(selectedCase.evidence || []).length ? (
+                      <div className="case-evidence-links">
+                        {selectedCase.evidence.map((item, index) => (
+                          <a href={item.url} target="_blank" rel="noreferrer" key={item._id || item.url}>
+                            {item.fileName || `Evidence ${index + 1}`}
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                    {selectedCase.resolution?.summary ? (
+                      <div className="case-resolution-box">
+                        <strong>{statusLabel(selectedCase.resolution.outcome || 'resolved')}</strong>
+                        <p>{selectedCase.resolution.summary}</p>
+                        {(selectedCase.resolution.evidenceUrls || []).length ? (
+                          <div className="case-evidence-links">
+                            {selectedCase.resolution.evidenceUrls.map((url, index) => (
+                              <a href={url} target="_blank" rel="noreferrer" key={url}>
+                                Resolution evidence {index + 1}
+                              </a>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <div className="case-comment-thread">
+                      {(selectedCase.comments || []).map((comment) => (
+                        <div className="case-comment" key={comment._id || `${comment.createdAt}-${comment.body}`}>
+                          <strong>
+                            {[comment.author?.firstName, comment.author?.lastName].filter(Boolean).join(' ') ||
+                              comment.author?.email ||
+                              'Case participant'}
+                          </strong>
+                          <span>{comment.body}</span>
+                          {(comment.evidence || []).length ? (
+                            <div className="case-evidence-links">
+                              {comment.evidence.map((item, index) => (
+                                <a href={item.url} target="_blank" rel="noreferrer" key={item._id || item.url}>
+                                  {item.fileName || `Attachment ${index + 1}`}
+                                </a>
+                              ))}
+                            </div>
+                          ) : null}
+                          <small>{comment.createdAt ? new Date(comment.createdAt).toLocaleString() : ''}</small>
+                        </div>
+                      ))}
+                    </div>
+                    {(selectedCase.timeline || []).length ? (
+                      <div className="case-timeline">
+                        {selectedCase.timeline.slice(-6).map((event) => (
+                          <div key={event._id || `${event.action}-${event.createdAt}`}>
+                            <strong>{statusLabel(event.action?.replaceAll('.', '_') || 'case update')}</strong>
+                            <span>
+                              {event.note || `${statusLabel(event.fromStatus)} to ${statusLabel(event.toStatus)}`}
+                            </span>
+                            <small>{event.createdAt ? new Date(event.createdAt).toLocaleString() : ''}</small>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {['resolved', 'dismissed'].includes(selectedCase.status) ? (
+                      <button
+                        className="secondary"
+                        type="button"
+                        disabled={caseActionBusy === `reopen-${selectedCase._id || selectedCase.id}`}
+                        onClick={reopenShipmentCase}
+                      >
+                        Reopen case
+                      </button>
+                    ) : selectedCase.status === 'closed' ? (
+                      <p className="muted-note">This case is closed. Open a follow-up case if more help is needed.</p>
+                    ) : (
+                      <form className="case-reply-form" onSubmit={replyToCase}>
+                        <textarea
+                          value={caseReply}
+                          onChange={(event) => setCaseReply(event.target.value)}
+                          placeholder="Add an update for operations..."
+                          rows={3}
+                        />
+                        <label className="case-file-input">
+                          <span>Add evidence</span>
+                          <input
+                            type="file"
+                            accept={documentUploadAccept}
+                            multiple
+                            onChange={(event) => setCaseReplyFiles(Array.from(event.target.files || []).slice(0, 10))}
+                          />
+                          <small>
+                            {caseReplyFiles.length
+                              ? `${caseReplyFiles.length} file${caseReplyFiles.length === 1 ? '' : 's'} selected`
+                              : 'Optional'}
+                          </small>
+                        </label>
+                        <button
+                          className="secondary"
+                          type="submit"
+                          disabled={caseActionBusy === `reply-${selectedCase._id || selectedCase.id}`}
+                        >
+                          Send update
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             {shipment.rawStatus === 'delivered' ? (
               <div className="rating-panel">
                 <strong>{ratingTitle}</strong>
@@ -4887,7 +5130,7 @@ function MessagesPage({ notify, user }) {
   );
 }
 
-function AdminPage({ notify }) {
+function AdminPage({ notify, user }) {
   const [stats, setStats] = useState(null);
   const [adminData, setAdminData] = useState({
     users: [],
@@ -4895,12 +5138,14 @@ function AdminPage({ notify }) {
     bookings: [],
     documents: [],
     payments: [],
+    cases: [],
     notificationDeliveries: [],
     logs: []
   });
   const [busyAction, setBusyAction] = useState('');
   const [activeReview, setActiveReview] = useState('kyc');
   const [reviewNotes, setReviewNotes] = useState({});
+  const [caseDrafts, setCaseDrafts] = useState({});
 
   const loadAdminData = useCallback(async () => {
     const [
@@ -4910,6 +5155,7 @@ function AdminPage({ notify }) {
       bookingsResult,
       documentsResult,
       paymentsResult,
+      casesResult,
       deliveriesResult,
       logsResult
     ] = await Promise.allSettled([
@@ -4919,6 +5165,7 @@ function AdminPage({ notify }) {
       api.adminListBookings(),
       api.listDocuments({ limit: 100 }),
       api.adminListPayments(),
+      api.adminCases({ limit: 100 }),
       api.adminNotificationDeliveries(),
       api.adminAuditLogs()
     ]);
@@ -4937,6 +5184,7 @@ function AdminPage({ notify }) {
       bookings: mergeDocumentIndex(bookings, indexedDocuments, 'booking'),
       documents: indexedDocuments,
       payments: paymentsResult.status === 'fulfilled' ? paymentsResult.value.transactions || [] : [],
+      cases: casesResult.status === 'fulfilled' ? casesResult.value.cases || [] : [],
       notificationDeliveries: deliveriesResult.status === 'fulfilled' ? deliveriesResult.value.deliveries || [] : [],
       logs: logsResult.status === 'fulfilled' ? logsResult.value.logs || [] : []
     });
@@ -4949,6 +5197,7 @@ function AdminPage({ notify }) {
   usePollingEffect(true, loadAdminData, 30000);
 
   function recordId(record) {
+    if (typeof record === 'string' || typeof record === 'number') return String(record);
     return String(record?._id || record?.id || record?.bookingId || '');
   }
 
@@ -5042,6 +5291,28 @@ function AdminPage({ notify }) {
 
   function updateReviewNote(key, value) {
     setReviewNotes((current) => ({ ...current, [key]: value }));
+  }
+
+  function caseDraft(record) {
+    const id = recordId(record);
+    return {
+      assignedTo: recordId(record.assignedTo) || recordId(user),
+      status: record.status === 'open' ? 'triaged' : record.status || 'in_progress',
+      note: '',
+      visibility: 'participants',
+      outcome: record.kind === 'dispute' ? 'resume_booking' : 'no_action',
+      summary: '',
+      files: [],
+      ...(caseDrafts[id] || {})
+    };
+  }
+
+  function updateCaseDraft(record, patch) {
+    const id = recordId(record);
+    setCaseDrafts((current) => ({
+      ...current,
+      [id]: { ...(current[id] || {}), ...patch }
+    }));
   }
 
   function plateKey(truck) {
@@ -5149,6 +5420,10 @@ function AdminPage({ notify }) {
     (booking) => booking.status === 'delivered' && booking.paymentStatus === 'escrowed'
   );
   const highValueBookings = adminData.bookings.filter((booking) => bookingAmount(booking) >= 5000);
+  const activeCases = adminData.cases.filter(
+    (record) => !['resolved', 'dismissed', 'closed'].includes(String(record.status || '').toLowerCase())
+  );
+  const breachedCases = activeCases.filter((record) => record.firstResponseBreachedAt || record.resolutionBreachedAt);
   const duplicatePlateGroups = Object.entries(plateGroups).filter(([, trucks]) => trucks.length > 1);
   const duplicateProfileGroups = Object.entries(profileGroups).filter(([, users]) => users.length > 1);
   const expiredDocumentReviews = [
@@ -5219,6 +5494,12 @@ function AdminPage({ notify }) {
       label: 'Delivery queue',
       count: adminData.notificationDeliveries.filter((item) => ['failed', 'retry'].includes(item.status)).length,
       tone: adminData.notificationDeliveries.some((item) => item.status === 'failed') ? 'danger' : 'default'
+    },
+    {
+      key: 'cases',
+      label: 'Support cases',
+      count: activeCases.length,
+      tone: breachedCases.length ? 'danger' : activeCases.length ? 'warn' : 'success'
     },
     {
       key: 'risk',
@@ -5427,6 +5708,85 @@ function AdminPage({ notify }) {
         priority: 'high'
       });
       notify(`High-value review recorded for ${adminBookingRef(booking)}`);
+      await loadAdminData();
+    });
+  }
+
+  async function assignSupportCase(record) {
+    const draft = caseDraft(record);
+    if (!draft.assignedTo) {
+      notify('Choose an admin assignee');
+      return;
+    }
+    await withAdminAction(`case-${recordId(record)}-assign`, async () => {
+      await api.adminAssignCase(recordId(record), {
+        assignedTo: draft.assignedTo,
+        note: draft.note || 'Assigned from the support desk'
+      });
+      notify(`${record.caseNumber || 'Case'} assigned`);
+      await loadAdminData();
+    });
+  }
+
+  async function updateSupportCaseStatus(record, statusOverride) {
+    const draft = caseDraft(record);
+    const nextStatus = statusOverride || draft.status;
+    await withAdminAction(`case-${recordId(record)}-status`, async () => {
+      await api.adminUpdateCaseStatus(recordId(record), {
+        status: nextStatus,
+        note: draft.note || `Status changed to ${statusLabel(nextStatus)}`
+      });
+      notify(`${record.caseNumber || 'Case'} moved to ${statusLabel(nextStatus)}`);
+      await loadAdminData();
+    });
+  }
+
+  async function commentOnSupportCase(record) {
+    const draft = caseDraft(record);
+    if (!draft.note.trim()) {
+      notify('Write a case update first');
+      return;
+    }
+    await withAdminAction(`case-${recordId(record)}-comment`, async () => {
+      const upload = draft.files.length ? await api.uploadCargo(draft.files) : { urls: [] };
+      await api.adminAddCaseComment(recordId(record), {
+        body: draft.note.trim(),
+        visibility: draft.visibility,
+        evidenceUrls: upload.urls || [],
+        evidenceFileNames: draft.files.map((file) => file.name)
+      });
+      updateCaseDraft(record, { note: '', files: [] });
+      notify(draft.visibility === 'internal' ? 'Internal case note added' : 'Participant update sent');
+      await loadAdminData();
+    });
+  }
+
+  async function resolveSupportCase(record) {
+    const draft = caseDraft(record);
+    const summary = String(draft.summary || draft.note || '').trim();
+    if (summary.length < 5) {
+      notify('Add a resolution summary');
+      return;
+    }
+    await withAdminAction(`case-${recordId(record)}-resolve`, async () => {
+      const upload = draft.files.length ? await api.uploadCargo(draft.files) : { urls: [] };
+      await api.adminResolveCase(recordId(record), {
+        outcome: draft.outcome,
+        summary,
+        evidenceUrls: upload.urls || []
+      });
+      notify(`${record.caseNumber || 'Case'} resolved`);
+      await loadAdminData();
+    });
+  }
+
+  async function reopenSupportCase(record) {
+    const draft = caseDraft(record);
+    await withAdminAction(`case-${recordId(record)}-reopen`, async () => {
+      await api.adminReopenCase(recordId(record), {
+        note: draft.note || 'Operations reopened the case for additional review'
+      });
+      notify(`${record.caseNumber || 'Case'} reopened`);
       await loadAdminData();
     });
   }
@@ -5990,6 +6350,294 @@ function AdminPage({ notify }) {
     );
   }
 
+  function renderCaseReview() {
+    if (!adminData.cases.length) {
+      return <EmptyState title="No support cases" detail="Shipment support and dispute cases will appear here." />;
+    }
+    const admins = adminData.users.filter((record) => record.role === 'admin' && record.isActive !== false);
+
+    return (
+      <div className="admin-review-list">
+        {adminData.cases.map((record) => {
+          const draft = caseDraft(record);
+          const resolved = ['resolved', 'dismissed'].includes(record.status);
+          const closed = record.status === 'closed';
+          const breached = Boolean(record.firstResponseBreachedAt || record.resolutionBreachedAt);
+          const availableStatuses = ['triaged', 'in_progress', 'waiting_on_user', 'waiting_on_carrier'];
+          const selectedManagementStatus = availableStatuses.includes(draft.status)
+            ? draft.status
+            : availableStatuses[0];
+          const outcomes =
+            record.kind === 'dispute'
+              ? [
+                  ['resume_booking', 'Resume booking'],
+                  ['cancel_booking', 'Cancel booking'],
+                  ['confirm_delivery', 'Confirm delivery'],
+                  ['refund_required', 'Cancel + refund required']
+                ]
+              : [
+                  ['no_action', 'Resolved - no booking change'],
+                  ['dismissed', 'Dismiss case']
+                ];
+
+          return (
+            <article
+              className={`admin-review-row case-review-card ${breached ? 'sla-breached' : ''}`}
+              key={recordId(record)}
+            >
+              <div className="admin-review-summary">
+                <div>
+                  <div className="case-badge-row">
+                    <StatusBadge tone={breached ? 'danger' : record.priority === 'urgent' ? 'danger' : 'warn'}>
+                      {statusLabel(record.priority || 'normal')}
+                    </StatusBadge>
+                    <StatusBadge tone={resolved || closed ? 'success' : 'default'}>
+                      {statusLabel(record.status)}
+                    </StatusBadge>
+                    <StatusBadge tone={record.kind === 'dispute' ? 'danger' : 'default'}>
+                      {statusLabel(record.kind)}
+                    </StatusBadge>
+                  </div>
+                  <h3>
+                    {record.caseNumber || recordId(record)} - {record.title || statusLabel(record.category)}
+                  </h3>
+                  <p>{record.message}</p>
+                  <div className="admin-review-meta">
+                    <span>
+                      Reporter:{' '}
+                      {[record.user?.firstName, record.user?.lastName].filter(Boolean).join(' ') ||
+                        record.user?.email ||
+                        'Unknown'}
+                    </span>
+                    <span>
+                      Booking:{' '}
+                      {record.booking
+                        ? `${record.booking.pickup || 'Pickup'} to ${record.booking.destination || 'destination'}`
+                        : 'General support'}
+                    </span>
+                    <span>Escalation {record.escalationLevel || 0}</span>
+                    <span>
+                      Due:{' '}
+                      {record.resolutionDueAt
+                        ? new Date(record.resolutionDueAt).toLocaleString([], {
+                            dateStyle: 'medium',
+                            timeStyle: 'short'
+                          })
+                        : 'Not set'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {(record.evidence || []).length ? (
+                <div className="case-evidence-links">
+                  {record.evidence.map((item, index) => (
+                    <a href={item.url} target="_blank" rel="noreferrer" key={item._id || item.url}>
+                      {item.fileName || `Evidence ${index + 1}`}
+                    </a>
+                  ))}
+                </div>
+              ) : null}
+
+              {!resolved && !closed ? (
+                <div className="case-control-grid">
+                  <label className="field">
+                    <span>Assignee</span>
+                    <select
+                      value={draft.assignedTo}
+                      onChange={(event) => updateCaseDraft(record, { assignedTo: event.target.value })}
+                    >
+                      <option value="">Unassigned</option>
+                      {admins.map((admin) => (
+                        <option value={recordId(admin)} key={recordId(admin)}>
+                          {personName(admin)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={busyAction === `case-${recordId(record)}-assign`}
+                    onClick={() => assignSupportCase(record)}
+                  >
+                    Assign
+                  </button>
+                  <label className="field">
+                    <span>Status</span>
+                    <select
+                      value={selectedManagementStatus}
+                      onChange={(event) => updateCaseDraft(record, { status: event.target.value })}
+                    >
+                      {availableStatuses.map((status) => (
+                        <option value={status} key={status}>
+                          {statusLabel(status)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={busyAction === `case-${recordId(record)}-status`}
+                    onClick={() => updateSupportCaseStatus(record, selectedManagementStatus)}
+                  >
+                    Update status
+                  </button>
+                </div>
+              ) : null}
+
+              <label className="field review-note">
+                <span>Case note or participant update</span>
+                <textarea
+                  value={draft.note}
+                  disabled={closed}
+                  onChange={(event) => updateCaseDraft(record, { note: event.target.value })}
+                  placeholder="Record findings, request evidence, or update the participants"
+                />
+              </label>
+              <div className="admin-action-row">
+                <select
+                  value={draft.visibility}
+                  disabled={closed}
+                  onChange={(event) => updateCaseDraft(record, { visibility: event.target.value })}
+                >
+                  <option value="participants">Visible to participants</option>
+                  <option value="internal">Internal note</option>
+                </select>
+                <button
+                  className="secondary"
+                  type="button"
+                  disabled={closed || busyAction === `case-${recordId(record)}-comment`}
+                  onClick={() => commentOnSupportCase(record)}
+                >
+                  Add update
+                </button>
+              </div>
+
+              {(record.comments || []).length ? (
+                <div className="case-comment-thread admin-case-thread">
+                  {record.comments.slice(-5).map((comment) => (
+                    <div
+                      className={`case-comment ${comment.visibility === 'internal' ? 'internal' : ''}`}
+                      key={comment._id}
+                    >
+                      <strong>
+                        {[comment.author?.firstName, comment.author?.lastName].filter(Boolean).join(' ') ||
+                          comment.author?.email ||
+                          'Operations'}
+                      </strong>
+                      <span>{comment.body}</span>
+                      {(comment.evidence || []).length ? (
+                        <div className="case-evidence-links">
+                          {comment.evidence.map((item, index) => (
+                            <a href={item.url} target="_blank" rel="noreferrer" key={item._id || item.url}>
+                              {item.fileName || `Attachment ${index + 1}`}
+                            </a>
+                          ))}
+                        </div>
+                      ) : null}
+                      <small>
+                        {statusLabel(comment.visibility)} - {comment.createdAt ? formatDateTime(comment.createdAt) : ''}
+                      </small>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {(record.timeline || []).length ? (
+                <div className="case-timeline">
+                  {record.timeline.slice(-6).map((event) => (
+                    <div key={event._id || `${event.action}-${event.createdAt}`}>
+                      <strong>{statusLabel(event.action?.replaceAll('.', '_') || 'case update')}</strong>
+                      <span>{event.note || `${statusLabel(event.fromStatus)} to ${statusLabel(event.toStatus)}`}</span>
+                      <small>{event.createdAt ? formatDateTime(event.createdAt) : ''}</small>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {!closed ? (
+                <label className="case-file-input">
+                  <span>Evidence for the next update or resolution</span>
+                  <input
+                    type="file"
+                    accept={documentUploadAccept}
+                    multiple
+                    onChange={(event) =>
+                      updateCaseDraft(record, { files: Array.from(event.target.files || []).slice(0, 10) })
+                    }
+                  />
+                  <small>
+                    {draft.files.length
+                      ? `${draft.files.length} file${draft.files.length === 1 ? '' : 's'} selected`
+                      : 'Optional'}
+                  </small>
+                </label>
+              ) : null}
+
+              {!closed && !resolved ? (
+                <div className="case-resolution-box">
+                  <label className="field">
+                    <span>Resolution outcome</span>
+                    <select
+                      value={draft.outcome}
+                      onChange={(event) => updateCaseDraft(record, { outcome: event.target.value })}
+                    >
+                      {outcomes.map(([value, label]) => (
+                        <option value={value} key={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Resolution summary</span>
+                    <textarea
+                      value={draft.summary}
+                      onChange={(event) => updateCaseDraft(record, { summary: event.target.value })}
+                      placeholder="Decision, evidence reviewed, and next operational step"
+                    />
+                  </label>
+                  <button
+                    className="primary"
+                    type="button"
+                    disabled={busyAction === `case-${recordId(record)}-resolve`}
+                    onClick={() => resolveSupportCase(record)}
+                  >
+                    Resolve case
+                  </button>
+                </div>
+              ) : resolved ? (
+                <div className="case-resolution-box">
+                  <strong>{statusLabel(record.resolution?.outcome || record.status)}</strong>
+                  <p>{record.resolution?.summary || 'Case resolution recorded.'}</p>
+                  {(record.resolution?.evidenceUrls || []).length ? (
+                    <div className="case-evidence-links">
+                      {record.resolution.evidenceUrls.map((url, index) => (
+                        <a href={url} target="_blank" rel="noreferrer" key={url}>
+                          Resolution evidence {index + 1}
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={busyAction === `case-${recordId(record)}-reopen`}
+                    onClick={() => reopenSupportCase(record)}
+                  >
+                    Reopen
+                  </button>
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
+      </div>
+    );
+  }
+
   function renderHighValueReview() {
     if (!highValueBookings.length)
       return <EmptyState title="No high-value cargo" detail="High-value bookings will appear here." />;
@@ -6097,6 +6745,7 @@ function AdminPage({ notify }) {
     duplicates: 'Duplicate Listings',
     payments: 'Payment Releases',
     notifications: 'Notification Delivery Queue',
+    cases: 'Support And Dispute Cases',
     'high-value': 'High-value Cargo',
     expiry: 'Document Expiry'
   };
@@ -6113,6 +6762,7 @@ function AdminPage({ notify }) {
     if (activeReview === 'duplicates') return renderDuplicateReview();
     if (activeReview === 'payments') return renderPaymentReview();
     if (activeReview === 'notifications') return renderNotificationDeliveryReview();
+    if (activeReview === 'cases') return renderCaseReview();
     if (activeReview === 'high-value') return renderHighValueReview();
     if (activeReview === 'expiry') return renderExpiryReview();
     return renderKycReview();
@@ -7093,13 +7743,25 @@ function GlobalSearch({ shipments = [], trucks = [], onClose, onNavigate }) {
    REPORT ISSUE MODAL
    ============================================================ */
 function ReportIssueModal({ shipment, onClose, onSubmit, busy }) {
+  const [kind, setKind] = useState('support');
   const [issueType, setIssueType] = useState('delay');
   const [description, setDescription] = useState('');
   const [severity, setSeverity] = useState('normal');
   const [photos, setPhotos] = useState([]);
   const fileRef = useRef(null);
 
-  const issueTypes = ['delay', 'damage', 'wrong cargo', 'driver behavior', 'route deviation', 'other'];
+  const issueTypes = [
+    ['delay', 'Delay'],
+    ['tracking', 'Tracking'],
+    ['delivery', 'Delivery'],
+    ['damage', 'Damage'],
+    ['loss', 'Loss'],
+    ['payment', 'Payment'],
+    ['documents', 'Documents'],
+    ['conduct', 'Conduct'],
+    ['technical', 'Technical'],
+    ['other', 'Other']
+  ];
 
   function handleFileChange(e) {
     setPhotos((current) => [...current, ...Array.from(e.target.files || [])].slice(0, 5));
@@ -7109,7 +7771,7 @@ function ReportIssueModal({ shipment, onClose, onSubmit, busy }) {
   function handleSubmit(e) {
     e.preventDefault();
     if (!description.trim()) return;
-    onSubmit({ issueType, description, severity, photos });
+    onSubmit({ kind, issueType, description, severity, photos });
   }
 
   return (
@@ -7124,18 +7786,41 @@ function ReportIssueModal({ shipment, onClose, onSubmit, busy }) {
         <form className="modal-card-body" onSubmit={handleSubmit}>
           <div>
             <p className="eyebrow" style={{ marginBottom: 8 }}>
+              Case type
+            </p>
+            <div className="severity-grid">
+              {[
+                ['support', 'Support'],
+                ['dispute', 'Formal dispute']
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`severity-btn ${kind === value ? 'active' : ''}`}
+                  onClick={() => setKind(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {kind === 'dispute' ? (
+              <p className="muted-note">A formal dispute pauses the shipment status until operations resolves it.</p>
+            ) : null}
+          </div>
+          <div>
+            <p className="eyebrow" style={{ marginBottom: 8 }}>
               Issue type
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {issueTypes.map((t) => (
+              {issueTypes.map(([value, label]) => (
                 <button
-                  key={t}
+                  key={value}
                   type="button"
-                  className={`severity-btn ${issueType === t ? 'active' : ''}`}
+                  className={`severity-btn ${issueType === value ? 'active' : ''}`}
                   style={{ minWidth: 90 }}
-                  onClick={() => setIssueType(t)}
+                  onClick={() => setIssueType(value)}
                 >
-                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                  {label}
                 </button>
               ))}
             </div>

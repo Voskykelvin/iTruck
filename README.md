@@ -44,6 +44,8 @@ Implemented:
 - User-controlled in-app, email, and SMS notification preferences with quiet hours.
 - MongoDB-backed notification delivery queue with atomic worker leases, retries, delivery history, and admin retry controls.
 - Scheduled document-expiry and stale-tracking alerts with cross-instance deduplication.
+- Shipment support and dispute cases with assignment, participant/internal comments, evidence, SLA deadlines,
+  escalation, auditable resolution outcomes, reopening, and automatic closure.
 - Dockerfile, docker-compose setup, Nginx config, Render config, and GitHub Actions checks.
 - Jest/Supertest backend tests, including security and authorization regressions.
 
@@ -52,14 +54,14 @@ Still in progress before full business launch:
 - Production certification, live-account validation, refund/dispute handling, and owner payout execution for Stripe, M-Pesa, and MTN MoMo.
 - Web push delivery and provider delivery-receipt callbacks.
 - Production routing/geocoding integration for custom live markers, road polylines, route deviation, and ETA.
-- A complete dispute/support case workflow with assignment, SLA, escalation, resolution, and evidence history.
 - Receiver e-signature or OTP proof, richer evidence metadata, and a full chain-of-custody trail.
 - Counteroffers, bid expiry/withdrawal/rejection reasons, automated matching, and full LTL dispatch allocation.
 - A dedicated driver role and driver-to-vehicle/job assignment workflow.
 - Production monitoring, analytics, alerting, backup/restore validation, and incident response.
 - Browser end-to-end tests, MongoDB/Redis integration tests, and higher backend branch coverage.
+- Business-hours SLA calendars and live payment-provider refund execution for cases resolved as refund required.
 
-The latest engineering audit, including an explanation of why `62.27%` is a test-coverage figure rather than a
+The latest engineering audit, including an explanation of why `62.44%` is a test-coverage figure rather than a
 product-completion score, is in `docs/ENGINEERING_AUDIT_2026-06-21.md`.
 
 ## Tech Stack
@@ -178,7 +180,16 @@ GET    /api/documents/customs/:bookingId
 
 GET    /api/notifications
 GET    /api/notifications/count
+GET    /api/notifications/preferences
+PATCH  /api/notifications/preferences
+PATCH  /api/notifications/read-all
 PATCH  /api/notifications/:id/read
+
+GET    /api/cases
+POST   /api/cases
+GET    /api/cases/:id
+POST   /api/cases/:id/comments
+POST   /api/cases/:id/reopen
 
 POST   /api/upload/avatar
 POST   /api/upload/cargo
@@ -188,6 +199,12 @@ GET    /api/admin/users
 GET    /api/admin/trucks
 GET    /api/admin/bookings
 GET    /api/admin/payments
+GET    /api/admin/cases
+PATCH  /api/admin/cases/:id/assign
+PATCH  /api/admin/cases/:id/status
+POST   /api/admin/cases/:id/comments
+POST   /api/admin/cases/:id/resolve
+POST   /api/admin/cases/:id/reopen
 POST   /api/admin/notify
 
 GET    /api/marketplace/trust
@@ -462,6 +479,10 @@ The API process also runs the notification delivery worker and operational remin
 `NOTIFICATION_WORKER_INTERVAL_MS`, `NOTIFICATION_WORKER_BATCH_SIZE`, `OPERATIONS_SCAN_INTERVAL_MS`, and
 `TRACKING_STALE_MINUTES`. Set `DISABLE_BACKGROUND_JOBS=true` only when another process owns those jobs.
 
+Case first-response and resolution targets are configurable per priority with
+`CASE_SLA_FIRST_RESPONSE_MINUTES_*` and `CASE_SLA_RESOLUTION_MINUTES_*`. `CASE_REOPEN_DAYS` controls the solved-case
+reopen window, and `CASE_AUTO_CLOSE_DAYS` controls automatic closure. These targets currently count elapsed time.
+
 Frontend workspace variables:
 
 ```text
@@ -597,7 +618,7 @@ Stage 1: launch discipline and trust controls:
 
 - Prioritize SME shippers and shorter payment cycles before taking on large corporate credit exposure.
 - Require clear quote acknowledgement, receiver details, cargo photos, and shipment document responsibility before dispatch.
-- Expand bid award, counteroffer, rejection reason, dispute, and admin escalation workflows.
+- Expand bid award, counteroffer, withdrawal, expiry, rejection reason, and carrier acknowledgement workflows.
 - Extend admin audit logs into every high-risk operational change and external provider reconciliation.
 
 Stage 2: local payment and delivery proof:
@@ -637,8 +658,8 @@ This reconstruction was built from the original project reference material and t
 Highest-value next engineering tasks:
 
 1. Certify payment-provider collections, callbacks, refunds, disputes, and owner payouts.
-2. Replace email/SMS stubs with production providers.
-3. Complete bid award, counteroffer, and dispute workflows.
+2. Add web push and provider delivery-receipt callbacks.
+3. Complete bid award, counteroffer, withdrawal, expiry, and rejection workflows.
 4. Split the React application into route-level features and add frontend tests.
 5. Add production maps with live vehicle positions.
 6. Expand audit logging across every high-risk admin transition.

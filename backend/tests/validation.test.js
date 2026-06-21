@@ -503,6 +503,75 @@ test('workflow requests and reports reject empty submissions', async () => {
   expect(reportResult.status).toBe(422);
 });
 
+test('case routes provide scoped support lifecycle and internal-note privacy', async () => {
+  const reporterAuth = authHeader({ id: 'case-reporter', role: 'client' });
+  const strangerAuth = authHeader({ id: 'case-stranger', role: 'owner' });
+  const adminAuth = authHeader({ id: 'demo-admin', role: 'admin' });
+
+  const disputeWithoutBooking = await request(app)
+    .post('/api/cases')
+    .set('Authorization', reporterAuth)
+    .send({ kind: 'dispute', category: 'damage', message: 'Cargo damage requires formal review' });
+  expect(disputeWithoutBooking.status).toBe(422);
+
+  const created = await request(app)
+    .post('/api/cases')
+    .set('Authorization', reporterAuth)
+    .send({
+      kind: 'support',
+      category: 'tracking',
+      title: 'Tracking stopped',
+      message: 'The live position has not changed for more than one hour',
+      severity: 'high',
+      evidenceUrls: ['/api/uploads/local/tracking-screen']
+    });
+  expect(created.status).toBe(201);
+  expect(created.body.case.caseNumber).toMatch(/^ITC-/);
+  expect(created.body.case.priority).toBe('high');
+  const caseId = created.body.case._id;
+
+  const strangerList = await request(app).get('/api/cases').set('Authorization', strangerAuth);
+  expect(strangerList.body.cases.some((record) => record._id === caseId)).toBe(false);
+
+  const assigned = await request(app)
+    .patch(`/api/admin/cases/${caseId}/assign`)
+    .set('Authorization', adminAuth)
+    .send({ assignedTo: 'demo-admin', note: 'Operations owns this case' });
+  expect(assigned.status).toBe(200);
+  expect(assigned.body.case.status).toBe('triaged');
+
+  const waitingWithoutNote = await request(app)
+    .patch(`/api/admin/cases/${caseId}/status`)
+    .set('Authorization', adminAuth)
+    .send({ status: 'waiting_on_user' });
+  expect(waitingWithoutNote.status).toBe(422);
+
+  const internalComment = await request(app)
+    .post(`/api/admin/cases/${caseId}/comments`)
+    .set('Authorization', adminAuth)
+    .send({ body: 'Possible device telemetry fault', visibility: 'internal' });
+  expect(internalComment.status).toBe(201);
+
+  const publicView = await request(app).get(`/api/cases/${caseId}`).set('Authorization', reporterAuth);
+  expect(publicView.status).toBe(200);
+  expect(publicView.body.case.comments).toEqual([]);
+
+  const resolved = await request(app)
+    .post(`/api/admin/cases/${caseId}/resolve`)
+    .set('Authorization', adminAuth)
+    .send({ outcome: 'no_action', summary: 'Tracking resumed after the device reconnected' });
+  expect(resolved.status).toBe(200);
+  expect(resolved.body.case.status).toBe('resolved');
+
+  const reopened = await request(app)
+    .post(`/api/cases/${caseId}/reopen`)
+    .set('Authorization', reporterAuth)
+    .send({ note: 'The same tracking issue returned' });
+  expect(reopened.status).toBe(200);
+  expect(reopened.body.case.status).toBe('in_progress');
+  expect(reopened.body.case.reopenCount).toBe(1);
+});
+
 test('booking clients can accept a pending bid and confirm the booking', async () => {
   const res = await request(app)
     .patch('/api/bookings/ITK-2031/bids/demo-owner-secondary/accept')

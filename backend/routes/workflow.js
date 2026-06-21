@@ -5,11 +5,11 @@ const BookingMessage = require('../models/BookingMessage');
 const IssueReport = require('../models/IssueReport');
 const Booking = require('../models/Booking');
 const Truck = require('../models/Truck');
-const User = require('../models/User');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const notifications = require('../services/notifications');
+const caseManagement = require('../services/caseManagement');
 const { assertOwnerCanBid } = require('../services/operationsPolicy');
 const {
   createLoadRequestSchema,
@@ -49,6 +49,20 @@ function bookingIdFrom(body = {}) {
 
 function messageTextFrom(body = {}) {
   return String(body.text || body.message || '').trim();
+}
+
+function reportCategory(body = {}) {
+  const value = String(body.category || body.issueType || 'other')
+    .trim()
+    .toLowerCase()
+    .replaceAll(' ', '_');
+  const aliases = {
+    wrong_cargo: 'delivery',
+    driver_behavior: 'conduct',
+    route_deviation: 'tracking'
+  };
+  const category = aliases[value] || value;
+  return IssueReport.CASE_CATEGORIES.includes(category) ? category : 'other';
 }
 
 function serialize(type, item) {
@@ -246,31 +260,22 @@ async function createReport(req, res, next) {
       return res.status(403).json({ message: 'Forbidden' });
     }
 
-    const item = await IssueReport.create({
-      user: req.user._id,
-      booking,
-      status: req.body.status || 'submitted',
-      severity: req.body.severity || 'normal',
-      message: messageTextFrom(req.body),
-      payload: req.body
-    });
-
-    const admins = await User.find({ role: 'admin', isActive: { $ne: false } })
-      .select('firstName lastName email phone countryCode role isActive notificationPreferences')
-      .limit(50);
-    await notifications.broadcast({
-      users: admins,
-      type: 'system.issue-reported',
-      data: {
-        title: `New ${item.severity} issue report`,
-        message: item.message || 'A shipment issue requires operations review.',
-        link: '/app/admin',
-        priority: item.severity === 'high' ? 'high' : 'normal',
-        bookingId: item.booking,
-        issueReportId: item._id
+    const item = await caseManagement.createCase(
+      {
+        user: req.user._id,
+        booking,
+        kind: req.body.kind || 'support',
+        category: reportCategory(req.body),
+        title: req.body.title,
+        severity: req.body.severity || 'normal',
+        priority: req.body.priority,
+        message: messageTextFrom(req.body),
+        evidenceUrls: req.body.evidenceUrls || [],
+        evidenceFileNames: req.body.evidenceFileNames || [],
+        payload: req.body
       },
-      io: req.app.get('io')
-    });
+      { io: req.app.get('io'), isAdmin: req.user.role === 'admin' }
+    );
 
     res.status(201).json({ item: serialize('report', item) });
   } catch (err) {
@@ -278,14 +283,17 @@ async function createReport(req, res, next) {
   }
 }
 
-async function queryItems(Model, type, filter) {
+async function queryItems(Model, type, filter, user) {
   const items = await Model.find(filter)
     .populate('user', 'firstName lastName email role')
     .populate('booking', 'pickup destination cargo status')
     .sort('-createdAt')
     .limit(100);
 
-  return items.map((item) => serialize(type, item));
+  return items.map((item) => {
+    const visible = Model === IssueReport ? caseManagement.visibleCase(item, user) : item;
+    return serialize(type, visible);
+  });
 }
 
 async function listRecords(req, res, next) {
@@ -305,7 +313,9 @@ async function listRecords(req, res, next) {
       ['report', IssueReport]
     ].filter(([sourceType]) => !type || type === sourceType);
 
-    const items = (await Promise.all(sources.map(([sourceType, Model]) => queryItems(Model, sourceType, filter))))
+    const items = (
+      await Promise.all(sources.map(([sourceType, Model]) => queryItems(Model, sourceType, filter, req.user)))
+    )
       .flat()
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, 100);
