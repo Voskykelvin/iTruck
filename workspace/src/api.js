@@ -278,6 +278,11 @@ export const api = {
     const limit = typeof options === 'object' ? options.limit : options;
     return request(`/notifications?limit=${encodeURIComponent(limit || 20)}`);
   },
+  notificationPreferences: () => request('/notifications/preferences'),
+  updateNotificationPreferences: (payload) =>
+    request('/notifications/preferences', { method: 'PATCH', body: JSON.stringify(payload) }),
+  sendTestNotification: () => request('/notifications/test', { method: 'POST' }),
+  markAllNotificationsRead: () => request('/notifications/read-all', { method: 'PATCH' }),
   markNotificationRead: (id) => request(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' }),
   listDocuments: (params = {}) => request(`/documents${queryString(params)}`),
   downloadDocument: (type, bookingId) =>
@@ -326,6 +331,10 @@ export const api = {
   adminListBookings: () => request('/admin/bookings'),
   adminListPayments: () => request('/admin/payments'),
   adminAuditLogs: () => request('/admin/audit-logs'),
+  adminNotificationDeliveries: (status = '') =>
+    request(`/admin/notification-deliveries${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  adminRetryNotificationDelivery: (id) =>
+    request(`/admin/notification-deliveries/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
   adminDeleteUser: (userId, payload) =>
     request(`/admin/users/${encodeURIComponent(userId)}`, {
       method: 'DELETE',

@@ -6,7 +6,7 @@
 - `npm run ci:check` passes:
   - ESLint
   - Prettier
-  - 14 Jest suites and 122 tests
+  - 17 Jest suites and 145 tests
   - Vite production build
 - Backend and frontend dependency audits report zero known vulnerabilities.
 - Demo runtime smoke checks pass for:
@@ -25,6 +25,11 @@
 - Upgraded Multer to the patched 2.x line and added safe upload-limit errors.
 - Patched the test dependency tree against `CVE-2026-53550` through `js-yaml` 4.2.0.
 - Added working Resend, SendGrid, and SMTP email providers.
+- Added user notification preferences, quiet hours, durable email/SMS delivery records, atomic claims, retry backoff,
+  provider timeouts, admin retry controls, and targeted broadcasts.
+- Added leased operational scans for document expiry and stale in-transit tracking, with per-record failure isolation
+  and deduplicated reminders.
+- Removed duplicate socket-generated alerts while retaining demo-mode fallbacks.
 - Aligned go-live email validation with the providers the application actually supports.
 - Completed the React registration form contract for phone, country, country code, and device ID.
 - Removed the exposed but unimplemented Google sign-in flow.
@@ -37,10 +42,10 @@
 The application is materially stronger, but “100%” cannot honestly be claimed without live infrastructure and broader
 coverage.
 
-### What The 60.95% Figure Means
+### What The 62.27% Figure Means
 
-The `60.95%` figure is **backend test line coverage**, not a product-completion score. It means the automated Jest suite
-executed about 61% of the measured backend lines during the coverage run. It does not mean that only 61% of the
+The `62.27%` figure is **backend test line coverage**, not a product-completion score. It means the automated Jest suite
+executed about 62% of the measured backend lines during the coverage run. It does not mean that only 62% of the
 application is implemented.
 
 There is no defensible single percentage for total product completion because production readiness combines different
@@ -68,10 +73,10 @@ and stronger test assurance.
 2. **Notification delivery orchestration**
    - Persistent in-app notifications and Socket.IO delivery work.
    - Resend, SendGrid, SMTP, and Africa's Talking adapters exist.
-   - Booking events are not yet consistently fanned out to email/SMS according to user preferences.
-   - Quiet hours, per-event preferences, delivery retries, failure records, and web-push subscriptions are not
-     implemented end to end.
-   - The admin broadcast endpoint currently records a queued audit event but does not dispatch a real broadcast.
+   - Completed in Batch 1: event-level email/SMS fan-out, user preferences, quiet hours, MongoDB delivery records,
+     retries, atomic worker leases, admin delivery controls, broadcasts, document-expiry reminders, and stale-tracking
+     alerts.
+   - Web push and provider delivery-receipt callbacks remain future upgrades.
 3. **Dispute and support case lifecycle**
    - Users can submit issue reports and attach evidence.
    - There is no complete admin case workflow for assignment, status changes, SLA timers, comments, escalation,
@@ -103,9 +108,9 @@ and stronger test assurance.
    - There is no separate driver role, driver invitation/session, driver-to-truck assignment, or restricted
      driver-only workflow.
 9. **Scheduled operational jobs**
-   - Document expiry fields and UI warnings exist.
-   - There is no production scheduler for expiry reminders, stale tracking alerts, abandoned bookings, retry queues,
-     or notification dead-letter handling.
+   - Batch 1 added document-expiry reminders, stale-tracking alerts, delivery retries, failed-delivery visibility, and
+     cross-instance leases.
+   - Abandoned-booking cleanup and additional operational automations remain future work.
 10. **Scale and maintainability**
     - Several admin lists are capped rather than fully paginated.
     - The React workspace remains concentrated in a very large `App.jsx`; it should be split into route and feature
@@ -114,10 +119,10 @@ and stronger test assurance.
 #### Assurance and security hardening
 
 11. Increase backend coverage from the current baseline:
-   - statements: 56.16%
-   - branches: 39.65%
-   - functions: 56.95%
-   - lines: 60.95%
+   - statements: 57.46%
+   - branches: 40.98%
+   - functions: 58.45%
+   - lines: 62.27%
    - prioritize authentication persistence, admin actions, workflow routes, document synchronization, webhooks, and
      provider failure paths.
 12. Add browser end-to-end tests for shipper, owner, and admin journeys using Playwright or Cypress.

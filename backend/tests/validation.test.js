@@ -206,6 +206,51 @@ test('notification read route rejects invalid object ids', async () => {
   expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ field: 'id' })]));
 });
 
+test('notification preferences validate quiet hours and support demo updates', async () => {
+  const authorization = authHeader({ id: 'demo-client-primary', role: 'client' });
+  const current = await request(app).get('/api/notifications/preferences').set('Authorization', authorization);
+
+  expect(current.status).toBe(200);
+  expect(current.body.preferences.channels.inApp).toBe(true);
+
+  const invalid = await request(app)
+    .patch('/api/notifications/preferences')
+    .set('Authorization', authorization)
+    .send({ quietHours: { enabled: true, start: '25:00', timezone: 'Not/A-Timezone' } });
+  expect(invalid.status).toBe(422);
+
+  const updated = await request(app)
+    .patch('/api/notifications/preferences')
+    .set('Authorization', authorization)
+    .send({
+      channels: { email: true, sms: true },
+      quietHours: {
+        enabled: true,
+        start: '21:00',
+        end: '07:00',
+        timezone: 'Africa/Nairobi',
+        allowHighPriority: true
+      }
+    });
+
+  expect(updated.status).toBe(200);
+  expect(updated.body.preferences.channels).toEqual(expect.objectContaining({ inApp: true, email: true, sms: true }));
+});
+
+test('admin broadcast requires content and queues a demo notification', async () => {
+  const authorization = authHeader({ id: 'demo-admin', role: 'admin' });
+  const invalid = await request(app).post('/api/admin/notify').set('Authorization', authorization).send({});
+  expect(invalid.status).toBe(422);
+
+  const queued = await request(app).post('/api/admin/notify').set('Authorization', authorization).send({
+    title: 'Operations notice',
+    message: 'Review active route exceptions.',
+    priority: 'high'
+  });
+  expect(queued.status).toBe(200);
+  expect(queued.body.summary).toEqual({ targeted: 1, created: 1 });
+});
+
 test('draft document route renders quote review documents as pdfs', async () => {
   const res = await request(app).post('/api/documents/draft/packing-list').set('Authorization', authHeader()).send({
     pickup: 'Nairobi',

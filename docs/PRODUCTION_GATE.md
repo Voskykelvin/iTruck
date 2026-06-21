@@ -103,6 +103,7 @@ These are not complete until verified against real services:
 - Africa's Talking SMS delivery from real booking events.
 - Resend, SendGrid, or SMTP delivery from real booking events.
 - Routing/geocoding accuracy, ETA behavior, quota controls, and key restrictions.
-- Notification retry and delivery-failure visibility.
+- Background worker activity on the deployed topology, including retry timing and one active operational-scan lease.
+- Provider delivery receipts and bounce/failure callbacks when those integrations are added.
 - Support/dispute ownership, SLA, escalation, and resolution operations.
 - Error monitoring/alerting destination.

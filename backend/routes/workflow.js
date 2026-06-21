@@ -5,6 +5,7 @@ const BookingMessage = require('../models/BookingMessage');
 const IssueReport = require('../models/IssueReport');
 const Booking = require('../models/Booking');
 const Truck = require('../models/Truck');
+const User = require('../models/User');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
@@ -92,14 +93,14 @@ async function createLoadRequest(req, res, next) {
       return res.status(201).json({ item: memoryRecord('requests', req), mode: 'memory' });
     }
 
-    const booking = bookingIdFrom(req.body);
-    if (booking && !(await bookingVisibleToUser(req.user, booking))) {
+    const bookingId = bookingIdFrom(req.body);
+    if (bookingId && !(await bookingVisibleToUser(req.user, bookingId))) {
       return res.status(403).json({ message: 'Forbidden' });
     }
 
     const item = await LoadRequest.create({
       user: req.user._id,
-      booking,
+      booking: bookingId,
       status: req.body.status || 'submitted',
       pickup: req.body.pickup,
       destination: req.body.destination,
@@ -187,8 +188,8 @@ async function createMessage(req, res, next) {
       return res.status(201).json({ item: memoryRecord('messages', req), mode: 'memory' });
     }
 
-    const booking = bookingIdFrom(req.body);
-    if (booking && !(await bookingVisibleToUser(req.user, booking))) {
+    const bookingId = bookingIdFrom(req.body);
+    if (bookingId && !(await bookingVisibleToUser(req.user, bookingId))) {
       return res.status(403).json({ message: 'Forbidden' });
     }
 
@@ -197,7 +198,7 @@ async function createMessage(req, res, next) {
 
     const item = await BookingMessage.create({
       user: req.user._id,
-      booking,
+      booking: bookingId,
       text,
       status: req.body.status || 'sent',
       payload: req.body
@@ -205,6 +206,27 @@ async function createMessage(req, res, next) {
 
     const io = req.app.get('io');
     if (io && item.booking) io.to(`booking:${item.booking}`).emit('message:new', serialize('message', item));
+    if (bookingId) {
+      const assignedBooking = await Booking.findById(bookingId).select('client owner');
+      const recipients = [assignedBooking?.client, assignedBooking?.owner].filter(
+        (value) => value && String(value) !== String(req.user._id)
+      );
+      await Promise.allSettled(
+        recipients.map((recipient) =>
+          notifications.deliver(
+            recipient,
+            'booking.message',
+            {
+              title: `New message on ${bookingId}`,
+              message: text.slice(0, 180),
+              link: '/app/messages',
+              bookingId
+            },
+            io
+          )
+        )
+      );
+    }
 
     res.status(201).json({ item: serialize('message', item) });
   } catch (err) {
@@ -231,6 +253,23 @@ async function createReport(req, res, next) {
       severity: req.body.severity || 'normal',
       message: messageTextFrom(req.body),
       payload: req.body
+    });
+
+    const admins = await User.find({ role: 'admin', isActive: { $ne: false } })
+      .select('firstName lastName email phone countryCode role isActive notificationPreferences')
+      .limit(50);
+    await notifications.broadcast({
+      users: admins,
+      type: 'system.issue-reported',
+      data: {
+        title: `New ${item.severity} issue report`,
+        message: item.message || 'A shipment issue requires operations review.',
+        link: '/app/admin',
+        priority: item.severity === 'high' ? 'high' : 'normal',
+        bookingId: item.booking,
+        issueReportId: item._id
+      },
+      io: req.app.get('io')
     });
 
     res.status(201).json({ item: serialize('report', item) });
