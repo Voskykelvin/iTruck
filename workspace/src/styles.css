@@ -1529,6 +1529,77 @@ input[type='radio'] {
   gap: 8px;
 }
 
+.compact-actions {
+  gap: 6px;
+}
+
+.compact-actions button {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.match-preview {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.match-preview > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.match-preview span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dispatch-stop-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.dispatch-stop-list > div {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.dispatch-stop-list > div.active {
+  border-color: var(--brand-border);
+  background: var(--brand-soft);
+}
+
+.dispatch-stop-list > div > span {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--navy);
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.dispatch-stop-list div div {
+  display: grid;
+  gap: 2px;
+}
+
+.dispatch-stop-list small {
+  color: var(--muted);
+}
+
 .chips span,
 .trust-line span {
   padding: 7px 9px;
@@ -1576,6 +1647,17 @@ input[type='radio'] {
   width: 100%;
   height: 360px;
   border: 0;
+}
+
+.production-route-map {
+  width: 100%;
+  height: 360px;
+  background: linear-gradient(135deg, rgba(6, 64, 43, 0.08), rgba(227, 169, 25, 0.08)), var(--surface-2);
+}
+
+.route-alert {
+  color: #fecaca !important;
+  font-weight: 800;
 }
 
 .map-toolbar {

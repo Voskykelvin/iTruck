@@ -1,4 +1,4 @@
-const { suggestPrice, buildEstimate, autoAssign } = require('../services/matching');
+const { suggestPrice, buildEstimate, sequenceDispatchStops } = require('../services/matching');
 const Booking = require('../models/Booking');
 
 test('suggestPrice uses vehicle-specific rates', () => {
@@ -45,8 +45,29 @@ test('buildEstimate supports LTL shared-capacity pricing and route keys', () => 
   expect(estimate.lineItems.map((item) => item.key)).toContain('ltlHandlingFee');
 });
 
-test('autoAssign returns a queued assignment record', async () => {
-  await expect(autoAssign('ITK-2044')).resolves.toEqual({ bookingId: 'ITK-2044', status: 'queued' });
+test('LTL stop sequencing never schedules delivery before pickup', () => {
+  const stops = sequenceDispatchStops([
+    {
+      booking: 'booking-1',
+      pickup: 'Nairobi',
+      destination: 'Kisumu',
+      pickupCoordinates: { lat: -1.2864, lng: 36.8172 },
+      destinationCoordinates: { lat: -0.0917, lng: 34.768 }
+    },
+    {
+      booking: 'booking-2',
+      pickup: 'Nakuru',
+      destination: 'Eldoret',
+      pickupCoordinates: { lat: -0.3031, lng: 36.08 },
+      destinationCoordinates: { lat: 0.5143, lng: 35.2698 }
+    }
+  ]);
+
+  ['booking-1', 'booking-2'].forEach((booking) => {
+    const pickup = stops.find((stop) => stop.booking === booking && stop.type === 'pickup');
+    const delivery = stops.find((stop) => stop.booking === booking && stop.type === 'delivery');
+    expect(pickup.sequence).toBeLessThan(delivery.sequence);
+  });
 });
 
 test('booking status machine rejects skipped transitions', () => {

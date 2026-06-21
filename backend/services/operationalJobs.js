@@ -5,6 +5,8 @@ const User = require('../models/User');
 const Truck = require('../models/Truck');
 const logger = require('../config/logger');
 const notifications = require('./notifications');
+const bidding = require('./bidding');
+const matching = require('./matching');
 
 const ACTIVE_TRACKING_STATUSES = ['in_transit', 'delivery_pending'];
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -159,6 +161,82 @@ async function notifyStaleTracking(now = new Date(), io) {
   }
 
   return notified;
+}
+
+async function expireCarrierBids(now = new Date(), io) {
+  const bookings = await Booking.find({
+    bids: {
+      $elemMatch: {
+        status: { $in: bidding.ACTIVE_BID_STATUSES },
+        expiresAt: { $lte: now }
+      }
+    }
+  })
+    .select('_id client pickup destination bids')
+    .limit(100);
+
+  let expired = 0;
+  for (const booking of bookings) {
+    try {
+      const expiredBids = (booking.bids || []).filter((bid) => bidding.expireBidIfNeeded(bid, now));
+      if (!expiredBids.length) continue;
+      await booking.save();
+      await Promise.allSettled(
+        expiredBids.flatMap((bid) => [
+          notifications.deliver(
+            bid.owner?._id || bid.owner,
+            'bid.expired',
+            {
+              title: `Bid expired on ${booking._id}`,
+              message: 'The offer validity window ended before the booking was awarded.',
+              link: '/app/bids',
+              bookingId: booking._id,
+              bidId: bid._id,
+              dedupeKey: `bid-expired:${booking._id}:${bid._id}`
+            },
+            io
+          ),
+          notifications.deliver(
+            booking.client,
+            'bid.expired',
+            {
+              title: `Carrier bid expired on ${booking._id}`,
+              message: `${booking.pickup || 'Pickup'} to ${booking.destination || 'delivery'} has an expired offer.`,
+              link: '/app/bids',
+              bookingId: booking._id,
+              bidId: bid._id,
+              dedupeKey: `bid-expired-client:${booking._id}:${bid._id}`
+            },
+            io
+          )
+        ])
+      );
+      if (io?.emitToBooking) io.emitToBooking(booking._id, 'bid-expired', booking);
+      expired += expiredBids.length;
+    } catch (err) {
+      logger.error({ err, bookingId: booking._id }, 'Bid expiry processing failed');
+    }
+  }
+  return expired;
+}
+
+async function reconcileDispatchCapacity() {
+  const bookings = await Booking.find({
+    status: { $in: ['delivered', 'cancelled'] },
+    dispatchPlan: { $ne: null }
+  })
+    .select('_id status dispatchPlan dispatch')
+    .limit(100);
+  let reconciled = 0;
+  for (const booking of bookings) {
+    try {
+      const plan = await matching.releaseAssignment(booking, booking.status);
+      if (plan) reconciled += 1;
+    } catch (err) {
+      logger.error({ err, bookingId: booking._id }, 'Dispatch capacity reconciliation failed');
+    }
+  }
+  return reconciled;
 }
 
 async function escalateBreachedCases(now = new Date(), io) {
@@ -343,6 +421,8 @@ async function runOperationalNotificationScan(options = {}) {
     ['expired', () => expireDocuments(now, io)],
     ['expiring', () => notifyExpiringDocuments(now, io)],
     ['staleTracking', () => notifyStaleTracking(now, io)],
+    ['expiredBids', () => expireCarrierBids(now, io)],
+    ['dispatchCapacity', () => reconcileDispatchCapacity()],
     ['caseSlaBreaches', () => escalateBreachedCases(now, io)],
     ['casesAutoClosed', () => closeResolvedCases(now, io)]
   ];
@@ -350,6 +430,8 @@ async function runOperationalNotificationScan(options = {}) {
     expired: 0,
     expiring: 0,
     staleTracking: 0,
+    expiredBids: 0,
+    dispatchCapacity: 0,
     caseSlaBreaches: 0,
     casesAutoClosed: 0
   };
@@ -368,8 +450,10 @@ module.exports = {
   closeResolvedCases,
   escalateBreachedCases,
   expireDocuments,
+  expireCarrierBids,
   expiryWindow,
   notifyExpiringDocuments,
   notifyStaleTracking,
+  reconcileDispatchCapacity,
   runOperationalNotificationScan
 };

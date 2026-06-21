@@ -1,10 +1,13 @@
 const express = require('express');
 const Booking = require('../models/Booking');
+const DispatchPlan = require('../models/DispatchPlan');
 const { mongoReady, requireDatabase } = require('../config/runtime');
-const { protect } = require('../middleware/auth');
+const { protect, restrictTo } = require('../middleware/auth');
 const matching = require('../services/matching');
+const notifications = require('../services/notifications');
 const validate = require('../middleware/validate');
-const { clusterSchema, estimateSchema } = require('../validators/marketplace');
+const { bookingMatchSchema, clusterSchema, estimateSchema } = require('../validators/marketplace');
+const { isLiveMode } = require('../config/runtime');
 
 const router = express.Router();
 
@@ -21,6 +24,25 @@ const paymentMethods = [
   { id: 'card', label: 'Card', countries: ['all'], settlement: 'escrow' },
   { id: 'cash', label: 'Cash on delivery', countries: ['all'], settlement: 'manual verification' }
 ];
+
+function visibleDispatchPlan(plan, user, bookingId) {
+  if (!plan) return null;
+  const value = plan.toObject ? plan.toObject() : { ...plan };
+  if (user.role !== 'client') return value;
+  value.assignments = (value.assignments || []).filter(
+    (assignment) => String(assignment.booking?._id || assignment.booking) === String(bookingId)
+  );
+  value.stops = (value.stops || []).map((stop) => {
+    if (String(stop.booking?._id || stop.booking) === String(bookingId)) return stop;
+    return {
+      type: stop.type,
+      sequence: stop.sequence,
+      label: `Shared ${stop.type}`,
+      status: stop.status
+    };
+  });
+  return value;
+}
 
 router.get('/trust', (req, res) => {
   res.json({
@@ -40,8 +62,19 @@ router.get('/localization', (req, res) => {
   });
 });
 
-router.post('/estimate', estimateSchema, validate, (req, res) => {
-  res.json(matching.buildEstimate(req.body));
+router.post('/estimate', estimateSchema, validate, async (req, res, next) => {
+  try {
+    let route = null;
+    try {
+      route = await require('../services/maps').enrichRoute(req.body);
+    } catch (err) {
+      if (isLiveMode()) throw err;
+    }
+    const input = route ? { ...req.body, ...route } : req.body;
+    res.json({ ...matching.buildEstimate(input), ...(route ? { route } : {}) });
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.get('/clusters', protect, clusterSchema, validate, async (req, res, next) => {
@@ -101,6 +134,111 @@ router.get('/clusters', protect, clusterSchema, validate, async (req, res, next)
     ]);
 
     res.json({ clusters });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get(
+  '/matches/:bookingId',
+  protect,
+  restrictTo('client', 'admin'),
+  bookingMatchSchema,
+  validate,
+  async (req, res, next) => {
+    try {
+      if (requireDatabase(req, res)) return;
+      if (!mongoReady()) return res.json({ matches: [], mode: 'memory' });
+      const booking = await Booking.findById(req.params.bookingId);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (req.user.role !== 'admin' && String(booking.client) !== String(req.user._id)) {
+        return res.status(403).json({ message: 'Forbidden' });
+      }
+
+      const matches = await matching.rankTrucksForBooking(booking, { limit: req.query.limit || 10 });
+      res.json({
+        matches: matches.map(({ truck, ...match }) => ({
+          ...match,
+          truck: {
+            id: truck._id,
+            type: truck.type,
+            make: truck.make,
+            model: truck.model,
+            plateNumber: truck.plateNumber,
+            capacityTonnes: truck.capacityTonnes,
+            pricePerKm: truck.pricePerKm,
+            ratingAverage: truck.ratingAverage,
+            ratingCount: truck.ratingCount,
+            completedTrips: truck.completedTrips,
+            location: truck.location,
+            owner: {
+              id: truck.owner?._id || truck.owner,
+              name: [truck.owner?.firstName, truck.owner?.lastName].filter(Boolean).join(' '),
+              company: truck.owner?.company
+            }
+          }
+        }))
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.post(
+  '/auto-assign/:bookingId',
+  protect,
+  restrictTo('client', 'admin'),
+  bookingMatchSchema,
+  validate,
+  async (req, res, next) => {
+    try {
+      if (requireDatabase(req, res)) return;
+      if (!mongoReady()) return res.status(503).json({ message: 'Automatic assignment requires a connected database' });
+      const booking = await Booking.findById(req.params.bookingId);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (req.user.role !== 'admin' && String(booking.client) !== String(req.user._id)) {
+        return res.status(403).json({ message: 'Forbidden' });
+      }
+
+      const result = await matching.autoAssign(booking._id, { actor: req.user });
+      await notifications.notifyBookingParties(
+        result.booking,
+        'booking.auto_assigned',
+        {
+          title: `${result.booking._id} assigned`,
+          message: `${result.truck.plateNumber} was selected with a ${result.match.score}% verified-truck match.`,
+          link: '/app/tracking',
+          bookingId: result.booking._id,
+          truckId: result.truck._id,
+          matchScore: result.match.score
+        },
+        req.app.get('io')
+      );
+      const io = req.app.get('io');
+      if (io?.emitToBooking) io.emitToBooking(result.booking._id, 'booking-auto-assigned', result);
+      res.status(201).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.get('/dispatch/:bookingId', protect, bookingMatchSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.json({ dispatchPlan: null, mode: 'memory' });
+    const booking = await Booking.findById(req.params.bookingId);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    const visible =
+      req.user.role === 'admin' ||
+      String(booking.client) === String(req.user._id) ||
+      String(booking.owner) === String(req.user._id);
+    if (!visible) return res.status(403).json({ message: 'Forbidden' });
+    const plan = booking.dispatchPlan
+      ? await DispatchPlan.findById(booking.dispatchPlan).populate('truck owner assignments.booking')
+      : null;
+    res.json({ dispatchPlan: visibleDispatchPlan(plan, req.user, booking._id) });
   } catch (err) {
     next(err);
   }

@@ -179,7 +179,7 @@ test('ltl booking creation stores shared-capacity fields and route key', async (
 
   expect(res.status).toBe(201);
   expect(res.body.booking.loadMode).toBe('ltl');
-  expect(res.body.booking.reservedCapacityTonnes).toBe(12);
+  expect(res.body.booking.reservedCapacityTonnes).toBeUndefined();
   expect(res.body.booking.consolidationEligible).toBe(true);
   expect(res.body.booking.routeKey).toBe('nairobi:kisumu:lorry');
   expect(res.body.booking.estimate.recommendedMode).toBe('route-cluster');
@@ -299,6 +299,39 @@ test('marketplace estimate validates required route fields', async () => {
 
   expect(res.status).toBe(422);
   expect(res.body.errors.map((error) => error.field)).toEqual(expect.arrayContaining(['pickup', 'destination']));
+});
+
+test('maps routes expose browser configuration and offline road-route fallback', async () => {
+  const authorization = authHeader();
+  const config = await request(app).get('/api/maps/config').set('Authorization', authorization);
+  expect(config.status).toBe(200);
+  expect(config.body.provider).toBe('fallback');
+
+  const route = await request(app)
+    .post('/api/maps/route')
+    .set('Authorization', authorization)
+    .send({
+      origin: { lat: -1.2864, lng: 36.8172 },
+      destinationCoordinates: { lat: -0.0917, lng: 34.768 }
+    });
+  expect(route.status).toBe(200);
+  expect(route.body.route).toEqual(
+    expect.objectContaining({
+      provider: 'fallback',
+      distanceMeters: expect.any(Number),
+      durationSeconds: expect.any(Number),
+      encodedPolyline: expect.any(String)
+    })
+  );
+});
+
+test('bid expiry validation rejects past offer deadlines', async () => {
+  const res = await request(app)
+    .post('/api/bookings/ITK-2031/bids')
+    .set('Authorization', authHeader({ id: 'demo-owner-secondary', role: 'owner' }))
+    .send({ amount: 1200, expiresAt: '2020-01-01T00:00:00.000Z' });
+  expect(res.status).toBe(422);
+  expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ field: 'expiresAt' })]));
 });
 
 test('marketplace clusters require auth and support memory fallback', async () => {

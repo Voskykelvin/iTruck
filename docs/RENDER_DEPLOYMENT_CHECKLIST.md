@@ -249,8 +249,8 @@ Current API health may also return `status: "OK"` with platform, version, and ti
 ### "Maps not showing" / "Blank page"
 
 - Google Maps API key might be invalid
-- Check `VITE_GOOGLE_MAPS_API_KEY` is set in .env
-- The current route view uses Google Maps Embed plus iTruck live coordinate updates; the next map upgrade is JavaScript markers, polylines, and ETA
+- Check `GOOGLE_MAPS_API_KEY`, `GOOGLE_MAPS_BROWSER_KEY`, and `GOOGLE_MAPS_MAP_ID` are configured
+- Verify the JavaScript map loads the planned road polyline, live truck marker, remaining distance, and ETA
 
 ### "Photos not uploading"
 

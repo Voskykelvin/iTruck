@@ -37,6 +37,27 @@ jest.mock('../services/deliveryProof', () => {
   };
 });
 
+jest.mock('../services/matching', () => {
+  const actual = jest.requireActual('../services/matching');
+  const mongoose = require('mongoose');
+  return {
+    ...actual,
+    releaseAssignment: jest.fn(async () => null),
+    reserveAssignment: jest.fn(async (booking) => {
+      booking.dispatchPlan = new mongoose.Types.ObjectId();
+      booking.dispatch = {
+        loadSequence: 1,
+        pickupSequence: 1,
+        deliverySequence: 2,
+        reservedTonnes: 12,
+        assignedAt: new Date(),
+        assignmentMethod: 'manual-bid'
+      };
+      return { _id: booking.dispatchPlan };
+    })
+  };
+});
+
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const request = require('supertest');

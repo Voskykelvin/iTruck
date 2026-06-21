@@ -1,5 +1,5 @@
 const { body, query } = require('express-validator');
-const { optionalPositiveNumber, optionalString, requiredString } = require('./common');
+const { liveMongoIdParam, optionalPositiveNumber, optionalString, requiredString } = require('./common');
 
 const VEHICLE_TYPES = ['Matatu', 'Pickup', 'Lorry', 'Large Truck', 'Trailer', 'Bus', 'Specialised'];
 const LOAD_MODES = ['full-truck', 'ltl'];
@@ -47,4 +47,13 @@ const clusterSchema = [
     .toInt()
 ];
 
-module.exports = { clusterSchema, estimateSchema };
+const bookingMatchSchema = [
+  liveMongoIdParam('bookingId'),
+  query('limit')
+    .optional({ checkFalsy: true })
+    .isInt({ min: 1, max: 25 })
+    .withMessage('limit must be between 1 and 25')
+    .toInt()
+];
+
+module.exports = { bookingMatchSchema, clusterSchema, estimateSchema };

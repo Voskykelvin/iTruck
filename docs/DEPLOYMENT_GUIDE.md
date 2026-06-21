@@ -19,7 +19,8 @@ Before deploying, ensure all production secrets are configured:
 - [ ] `AFRICASTALKING_*` or `SMS_PROVIDER_MODULE` — SMS notifications
 - [ ] `EMAIL_FROM` plus `RESEND_API_KEY`, `SENDGRID_API_KEY`, or SMTP credentials; alternatively use
       `EMAIL_PROVIDER_MODULE` — Email confirmations and password resets
-- [ ] `GOOGLE_MAPS_API_KEY` — Map rendering (fallback: static placeholder)
+- [ ] `GOOGLE_MAPS_API_KEY` — Server-side geocoding and road routes
+- [ ] `GOOGLE_MAPS_BROWSER_KEY` and `GOOGLE_MAPS_MAP_ID` — Referrer-restricted live map rendering
 - [ ] `REDIS_URL` — Caching & rate limiting
 
 ### 2. Code Readiness

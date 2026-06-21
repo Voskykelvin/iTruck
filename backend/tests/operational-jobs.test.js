@@ -27,6 +27,7 @@ const {
   closeResolvedCases,
   escalateBreachedCases,
   expireDocuments,
+  expireCarrierBids,
   expiryWindow,
   notifyExpiringDocuments,
   notifyStaleTracking
@@ -120,6 +121,41 @@ test('stale tracking scan alerts both booking parties with a daily dedupe key', 
     expect.objectContaining({ _id: 'booking-1' }),
     'tracking.stale',
     expect.objectContaining({ dedupeKey: 'tracking-stale:booking-1:2026-06-21' }),
+    undefined
+  );
+});
+
+test('expired carrier bids are finalized and both parties are notified', async () => {
+  const booking = {
+    _id: 'booking-bid-expiry',
+    client: 'client-1',
+    pickup: 'Nairobi',
+    destination: 'Kisumu',
+    bids: [
+      {
+        _id: 'bid-1',
+        owner: 'owner-1',
+        status: 'pending',
+        expiresAt: new Date('2026-06-21T10:00:00.000Z'),
+        history: []
+      }
+    ],
+    save: jest.fn().mockResolvedValue(undefined)
+  };
+  Booking.find.mockReturnValue(queryResult([booking]));
+
+  await expect(expireCarrierBids(new Date('2026-06-21T11:00:00.000Z'))).resolves.toBe(1);
+  expect(booking.bids[0].status).toBe('expired');
+  expect(notifications.deliver).toHaveBeenCalledWith(
+    'owner-1',
+    'bid.expired',
+    expect.objectContaining({ dedupeKey: 'bid-expired:booking-bid-expiry:bid-1' }),
+    undefined
+  );
+  expect(notifications.deliver).toHaveBeenCalledWith(
+    'client-1',
+    'bid.expired',
+    expect.objectContaining({ dedupeKey: 'bid-expired-client:booking-bid-expiry:bid-1' }),
     undefined
   );
 });

@@ -229,6 +229,9 @@ export const api = {
   profile: () => request('/users/profile'),
   updateProfile: (payload) => request('/users/profile', { method: 'PATCH', body: JSON.stringify(payload) }),
   estimate: (payload) => request('/marketplace/estimate', { method: 'POST', body: JSON.stringify(payload) }),
+  mapsConfig: () => request('/maps/config'),
+  geocode: (payload) => request('/maps/geocode', { method: 'POST', body: JSON.stringify(payload) }),
+  computeRoute: (payload) => request('/maps/route', { method: 'POST', body: JSON.stringify(payload) }),
   listTrucks: () => request('/trucks'),
   fleetTrucks: () => request('/trucks/fleet'),
   listBookings: () => request('/bookings'),
@@ -428,6 +431,35 @@ export const api = {
     request(`/bookings/${encodeURIComponent(bookingId)}/bids/${encodeURIComponent(bidId)}/accept`, {
       method: 'PATCH'
     }),
+  counterBookingBid: (bookingId, bidId, payload) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/bids/${encodeURIComponent(bidId)}/counter`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
+  respondBookingCounter: (bookingId, bidId, payload) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/bids/${encodeURIComponent(bidId)}/respond-counter`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
+  rejectBookingBid: (bookingId, bidId, payload) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/bids/${encodeURIComponent(bidId)}/reject`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
+  withdrawBookingBid: (bookingId, bidId, payload = {}) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/bids/${encodeURIComponent(bidId)}/withdraw`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
+  acknowledgeBookingBid: (bookingId, bidId) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/bids/${encodeURIComponent(bidId)}/acknowledge`, {
+      method: 'PATCH'
+    }),
+  bookingMatches: (bookingId, limit = 10) =>
+    request(`/marketplace/matches/${encodeURIComponent(bookingId)}?limit=${encodeURIComponent(limit)}`),
+  autoAssignBooking: (bookingId) =>
+    request(`/marketplace/auto-assign/${encodeURIComponent(bookingId)}`, { method: 'POST' }),
+  bookingDispatch: (bookingId) => request(`/marketplace/dispatch/${encodeURIComponent(bookingId)}`),
   submitBookingBid: (bookingId, payload) =>
     request(`/bookings/${encodeURIComponent(bookingId)}/bids`, { method: 'POST', body: JSON.stringify(payload) }),
   reportIssue: (payload) => request('/cases', { method: 'POST', body: JSON.stringify(payload) }),

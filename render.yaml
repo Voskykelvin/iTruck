@@ -8,13 +8,13 @@ services:
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
-        value: "22"
+        value: '22'
       - key: NODE_ENV
         value: production
       - key: LIVE_MODE
-        value: "true"
+        value: 'true'
       - key: DEMO_MODE
-        value: "false"
+        value: 'false'
       - key: JWT_ACCESS_EXPIRES
         value: 15m
       - key: JWT_REFRESH_EXPIRES
@@ -22,6 +22,8 @@ services:
       - key: MONGODB_URI
         sync: false
       - key: JWT_SECRET
+        sync: false
+      - key: DELIVERY_OTP_PEPPER
         sync: false
       - key: FRONTEND_URL
         sync: false
@@ -41,7 +43,9 @@ services:
         sync: false
       - key: GOOGLE_MAPS_API_KEY
         sync: false
-      - key: VITE_GOOGLE_MAPS_API_KEY
+      - key: GOOGLE_MAPS_BROWSER_KEY
+        sync: false
+      - key: GOOGLE_MAPS_MAP_ID
         sync: false
       - key: SMS_PROVIDER
         value: africastalking
@@ -60,34 +64,34 @@ services:
       - key: SMTP_URL
         sync: false
       - key: NOTIFICATION_WORKER_INTERVAL_MS
-        value: "15000"
+        value: '15000'
       - key: NOTIFICATION_WORKER_BATCH_SIZE
-        value: "20"
+        value: '20'
       - key: OPERATIONS_SCAN_INTERVAL_MS
-        value: "900000"
+        value: '900000'
       - key: TRACKING_STALE_MINUTES
-        value: "45"
+        value: '45'
       - key: EMAIL_TIMEOUT_MS
-        value: "15000"
+        value: '15000'
       - key: SMS_TIMEOUT_MS
-        value: "15000"
+        value: '15000'
       - key: CASE_SLA_FIRST_RESPONSE_MINUTES_LOW
-        value: "480"
+        value: '480'
       - key: CASE_SLA_FIRST_RESPONSE_MINUTES_NORMAL
-        value: "240"
+        value: '240'
       - key: CASE_SLA_FIRST_RESPONSE_MINUTES_HIGH
-        value: "60"
+        value: '60'
       - key: CASE_SLA_FIRST_RESPONSE_MINUTES_URGENT
-        value: "30"
+        value: '30'
       - key: CASE_SLA_RESOLUTION_MINUTES_LOW
-        value: "7200"
+        value: '7200'
       - key: CASE_SLA_RESOLUTION_MINUTES_NORMAL
-        value: "4320"
+        value: '4320'
       - key: CASE_SLA_RESOLUTION_MINUTES_HIGH
-        value: "1440"
+        value: '1440'
       - key: CASE_SLA_RESOLUTION_MINUTES_URGENT
-        value: "480"
+        value: '480'
       - key: CASE_REOPEN_DAYS
-        value: "14"
+        value: '14'
       - key: CASE_AUTO_CLOSE_DAYS
-        value: "7"
+        value: '7'

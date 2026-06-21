@@ -4,6 +4,7 @@ const Booking = require('../models/Booking');
 const Truck = require('../models/Truck');
 const User = require('../models/User');
 const matching = require('../services/matching');
+const bidding = require('../services/bidding');
 const { recordUploadedDocument } = require('../services/documentRecords');
 const notifications = require('../services/notifications');
 const {
@@ -13,23 +14,29 @@ const {
   assertOwnerCanBid
 } = require('../services/operationsPolicy');
 const { recordDeliveryConfirmation } = require('../services/deliveryProof');
-const { mongoReady, requireDatabase } = require('../config/runtime');
+const { isLiveMode, mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const {
   bookingIdSchema,
+  bidActionSchema,
   bookingDocumentUploadSchema,
   bookingRatingSchema,
   confirmDeliverySchema,
   acceptBidSchema,
+  counterBidSchema,
+  counterResponseSchema,
   createBookingSchema,
   listBookingsSchema,
+  rejectBidSchema,
   submitBidSchema,
   trackingBatchSchema,
   trackingLocationSchema,
-  updateStatusSchema
+  updateStatusSchema,
+  withdrawBidSchema
 } = require('../validators/bookings');
 const { normalizeBookingDocumentType } = require('../utils/documentTypes');
+const maps = require('../services/maps');
 
 const router = express.Router();
 router.use(protect);
@@ -109,13 +116,6 @@ function canConfirmDelivery(user, booking) {
   return user.role === 'client' && String(booking.client?._id || booking.client) === String(user._id);
 }
 
-function findBid(booking, bidId) {
-  if (booking.bids?.id) return booking.bids.id(bidId);
-  return (booking.bids || []).find((bid) =>
-    [bid._id, bid.id, bid.owner, bid.truck].some((value) => value && String(value) === String(bidId))
-  );
-}
-
 function acceptBidOnBooking(booking, bidId, _ownerUserId) {
   if (booking.status !== 'bidding') {
     const err = new Error('Booking is not ready for bid acceptance');
@@ -123,18 +123,7 @@ function acceptBidOnBooking(booking, bidId, _ownerUserId) {
     throw err;
   }
 
-  const bid = findBid(booking, bidId);
-  if (!bid) {
-    const err = new Error('Bid not found');
-    err.status = 404;
-    throw err;
-  }
-
-  booking.bids.forEach((item) => {
-    const isThis = String(item._id || item.id) === String(bidId);
-    item.status = isThis ? 'accepted' : 'rejected';
-  });
-  bid.status = 'accepted';
+  const bid = bidding.acceptBid(booking, bidId, _ownerUserId);
   booking.owner = bid.owner;
   if (bid.truck) booking.truck = bid.truck;
 
@@ -233,9 +222,6 @@ function cleanBookingPayload(body) {
   if (payload.reservedCapacityTonnes !== undefined && payload.reservedCapacityTonnes !== '') {
     payload.reservedCapacityTonnes = Number(payload.reservedCapacityTonnes);
   }
-  if (loadMode === 'ltl' && !payload.reservedCapacityTonnes) {
-    payload.reservedCapacityTonnes = matching.vehicleCapacity(payload.vehicleType || 'Lorry');
-  }
   if (payload.deliveryGeofenceMeters !== undefined && payload.deliveryGeofenceMeters !== '') {
     payload.deliveryGeofenceMeters = Number(payload.deliveryGeofenceMeters);
   }
@@ -245,6 +231,19 @@ function cleanBookingPayload(body) {
   payload.routeKey = matching.routeKeyFor(payload);
   payload.estimate = matching.buildEstimate(payload);
   return payload;
+}
+
+async function enrichBookingPayload(payload) {
+  try {
+    const route = await maps.enrichRoute(payload);
+    const enriched = { ...payload, ...route };
+    enriched.routeKey = matching.routeKeyFor(enriched);
+    enriched.estimate = matching.buildEstimate(enriched);
+    return enriched;
+  } catch (err) {
+    if (isLiveMode()) throw err;
+    return payload;
+  }
 }
 
 function emitBooking(req, bookingId, event, booking, options = {}) {
@@ -281,6 +280,27 @@ async function biddingTruckForOwner(req) {
   if (!truck) return assertOwnerCanBid(req.user, null);
   assertOwnerCanBid(req.user, truck);
   return truck;
+}
+
+async function notifyBidOwner(req, booking, bid, type, title, message, extra = {}) {
+  await notifications.deliver(
+    bid.owner?._id || bid.owner,
+    type,
+    {
+      title,
+      message,
+      link: '/app/bids',
+      bookingId: booking._id,
+      bidId: bid._id || bid.id,
+      ...extra
+    },
+    req.app.get('io')
+  );
+}
+
+function emitBidUpdate(req, booking, event, bid) {
+  const io = req.app.get('io');
+  if (io?.emitToBooking) io.emitToBooking(booking._id, event, { booking, bid });
 }
 
 function upsertBookingDocument(documents = [], type, patch) {
@@ -371,6 +391,8 @@ router.get('/', listBookingsSchema, validate, async (req, res, next) => {
     if (req.query.status) q.status = req.query.status;
     res.json({
       bookings: await Booking.find(q)
+        .populate('bids.owner', 'firstName lastName company rating ratingCount isVerified')
+        .populate('bids.truck', 'type make model plateNumber capacityTonnes ratingAverage ratingCount isVerified')
         .sort('-createdAt')
         .limit(req.query.limit || 50)
     });
@@ -416,7 +438,10 @@ router.get('/:id', bookingIdSchema, validate, async (req, res, next) => {
       return res.json({ booking, mode: 'memory' });
     }
 
-    const booking = await Booking.findById(req.params.id).populate('truck owner client');
+    const booking = await Booking.findById(req.params.id)
+      .populate('truck owner client')
+      .populate('bids.owner', 'firstName lastName company rating ratingCount isVerified')
+      .populate('bids.truck', 'type make model plateNumber capacityTonnes ratingAverage ratingCount isVerified');
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
     if (!bookingVisibleTo(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
     res.json({ booking });
@@ -427,7 +452,7 @@ router.get('/:id', bookingIdSchema, validate, async (req, res, next) => {
 
 router.post('/', createBookingSchema, validate, async (req, res, next) => {
   try {
-    const payload = cleanBookingPayload(req.body);
+    const payload = await enrichBookingPayload(cleanBookingPayload(req.body));
     if (requireDatabase(req, res)) return;
 
     if (!mongoReady()) {
@@ -470,8 +495,8 @@ router.post('/:id/bids', restrictTo('owner', 'admin'), submitBidSchema, validate
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
     if (!bookingOpenForBids(booking)) return res.status(409).json({ message: 'Booking is not open for bids' });
 
-    await biddingTruckForOwner(req);
-    booking.bids.push({ ...req.body, owner: req.user._id });
+    const truck = await biddingTruckForOwner(req);
+    bidding.submitBid(booking, req.user, req.body, truck);
     if (booking.status === 'pending') booking.transitionTo('bidding');
     await booking.save();
 
@@ -516,7 +541,34 @@ router.patch(
       if (!canAcceptBid(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
 
       acceptBidOnBooking(booking, req.params.bidId, req.user._id);
+      const acceptedBid = bidding.findBid(booking, req.params.bidId);
+      let truck = null;
+      if (acceptedBid?.truck) {
+        const truckQuery = Truck.findOne({ _id: acceptedBid.truck, owner: acceptedBid.owner });
+        truck =
+          typeof truckQuery?.populate === 'function'
+            ? await truckQuery.populate('owner', 'firstName lastName company isVerified documents rating ratingCount')
+            : await truckQuery;
+      }
+      await matching.reserveAssignment(booking, truck, { assignmentMethod: 'manual-bid' });
       await booking.save();
+
+      await Promise.allSettled(
+        booking.bids
+          .filter(
+            (bid) => bid.status === 'rejected' && bid.rejectionReason === 'Another carrier was awarded this booking'
+          )
+          .map((bid) =>
+            notifyBidOwner(
+              req,
+              booking,
+              bid,
+              'bid.rejected',
+              `Another carrier was awarded ${booking._id}`,
+              bid.rejectionReason
+            )
+          )
+      );
 
       await notifications.deliver(
         booking.owner,
@@ -531,6 +583,155 @@ router.patch(
       );
       emitBooking(req, booking._id, 'bid-accepted', booking, { silent: true });
       res.json({ booking });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.patch(
+  '/:id/bids/:bidId/counter',
+  restrictTo('client', 'admin'),
+  counterBidSchema,
+  validate,
+  async (req, res, next) => {
+    try {
+      if (requireDatabase(req, res)) return;
+      if (!mongoReady()) return res.status(503).json({ message: 'Counteroffers require a connected database' });
+      const booking = await Booking.findById(req.params.id);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (!canAcceptBid(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+
+      const bid = bidding.counterBid(booking, req.params.bidId, req.user, req.body);
+      await booking.save();
+      await notifyBidOwner(
+        req,
+        booking,
+        bid,
+        'bid.countered',
+        `Counteroffer on ${booking._id}`,
+        `The shipper proposed ${bid.counteroffer.amount}.`,
+        { amount: bid.counteroffer.amount, expiresAt: bid.expiresAt }
+      );
+      emitBidUpdate(req, booking, 'bid-countered', bid);
+      res.json({ booking, bid });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.patch(
+  '/:id/bids/:bidId/respond-counter',
+  restrictTo('owner', 'admin'),
+  counterResponseSchema,
+  validate,
+  async (req, res, next) => {
+    try {
+      if (requireDatabase(req, res)) return;
+      if (!mongoReady()) return res.status(503).json({ message: 'Counteroffers require a connected database' });
+      const booking = await Booking.findById(req.params.id);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+      const bid = bidding.respondToCounter(booking, req.params.bidId, req.user, req.body);
+      await booking.save();
+      await notifications.deliver(
+        booking.client,
+        req.body.decision === 'accept' ? 'bid.counter.accepted' : 'bid.counter.rejected',
+        {
+          title: `Counteroffer ${req.body.decision}ed on ${booking._id}`,
+          message:
+            req.body.decision === 'accept'
+              ? `Carrier accepted the revised amount of ${bid.amount}.`
+              : bid.rejectionReason,
+          link: '/app/bids',
+          bookingId: booking._id,
+          bidId: bid._id
+        },
+        req.app.get('io')
+      );
+      emitBidUpdate(req, booking, 'bid-counter-responded', bid);
+      res.json({ booking, bid });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.patch(
+  '/:id/bids/:bidId/reject',
+  restrictTo('client', 'admin'),
+  rejectBidSchema,
+  validate,
+  async (req, res, next) => {
+    try {
+      if (requireDatabase(req, res)) return;
+      if (!mongoReady()) return res.status(503).json({ message: 'Bid rejection requires a connected database' });
+      const booking = await Booking.findById(req.params.id);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (!canAcceptBid(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+
+      const bid = bidding.rejectBid(booking, req.params.bidId, req.user, req.body.reason);
+      await booking.save();
+      await notifyBidOwner(req, booking, bid, 'bid.rejected', `Bid rejected on ${booking._id}`, req.body.reason);
+      emitBidUpdate(req, booking, 'bid-rejected', bid);
+      res.json({ booking, bid });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.patch(
+  '/:id/bids/:bidId/withdraw',
+  restrictTo('owner', 'admin'),
+  withdrawBidSchema,
+  validate,
+  async (req, res, next) => {
+    try {
+      if (requireDatabase(req, res)) return;
+      if (!mongoReady()) return res.status(503).json({ message: 'Bid withdrawal requires a connected database' });
+      const booking = await Booking.findById(req.params.id);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+      const bid = bidding.withdrawBid(booking, req.params.bidId, req.user, req.body.reason);
+      await booking.save();
+      await notifications.deliver(
+        booking.client,
+        'bid.withdrawn',
+        {
+          title: `Carrier withdrew a bid on ${booking._id}`,
+          message: bid.withdrawalReason || 'Carrier withdrew the offer.',
+          link: '/app/bids',
+          bookingId: booking._id,
+          bidId: bid._id
+        },
+        req.app.get('io')
+      );
+      emitBidUpdate(req, booking, 'bid-withdrawn', bid);
+      res.json({ booking, bid });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.patch(
+  '/:id/bids/:bidId/acknowledge',
+  restrictTo('owner', 'admin'),
+  bidActionSchema,
+  validate,
+  async (req, res, next) => {
+    try {
+      if (requireDatabase(req, res)) return;
+      if (!mongoReady()) return res.status(503).json({ message: 'Bid acknowledgement requires a connected database' });
+      const booking = await Booking.findById(req.params.id);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+      const bid = bidding.acknowledgeBid(booking, req.params.bidId, req.user);
+      await booking.save();
+      emitBidUpdate(req, booking, 'bid-acknowledged', bid);
+      res.json({ booking, bid });
     } catch (err) {
       next(err);
     }
@@ -573,6 +774,9 @@ router.patch(
       await booking.save();
       await recordDeliveryConfirmation({ booking, actor: req.user });
       await booking.save();
+      await matching.releaseAssignment(booking, 'delivered').catch((err) => {
+        req.log?.error({ err, bookingId: booking._id }, 'Dispatch capacity release failed after delivery');
+      });
 
       await notifications.notifyBookingParties(
         booking,
@@ -706,6 +910,11 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
       await recordDeliveryConfirmation({ booking, actor: req.user });
       await booking.save();
     }
+    if (['delivered', 'cancelled'].includes(req.body.status)) {
+      await matching.releaseAssignment(booking, req.body.status).catch((err) => {
+        req.log?.error({ err, bookingId: booking._id }, 'Dispatch capacity release failed after status update');
+      });
+    }
 
     await notifications.notifyBookingParties(
       booking,
@@ -742,6 +951,11 @@ async function appendTrackingUpdates(req, res, next, updates) {
       }
 
       pushMemoryTracking(booking, orderedUpdates);
+      const routeUpdate = maps.routeTelemetry(booking, orderedUpdates[orderedUpdates.length - 1]);
+      if (routeUpdate) {
+        booking.eta = routeUpdate.eta;
+        booking.routeDeviation = routeUpdate.routeDeviation;
+      }
       emitTracking(req, booking, orderedUpdates);
       return res.json({ booking, updates: orderedUpdates, accepted: orderedUpdates.length, mode: 'memory' });
     }
@@ -759,16 +973,51 @@ async function appendTrackingUpdates(req, res, next, updates) {
     if (req.user.role !== 'admin') query.owner = req.user._id;
     const ingestedAt = new Date();
     const latest = orderedUpdates[orderedUpdates.length - 1];
+    const routeUpdate = maps.routeTelemetry(booking, latest, ingestedAt);
+    const set = { lastKnownLocation: lastKnownLocation(latest, ingestedAt) };
+    if (routeUpdate) {
+      set.eta = routeUpdate.eta;
+      set.routeDeviation = routeUpdate.routeDeviation;
+    }
 
     const updatedBooking = await Booking.findOneAndUpdate(
       query,
       {
         $push: { tracking: { $each: orderedUpdates, $slice: -1000 } },
-        $set: { lastKnownLocation: lastKnownLocation(latest, ingestedAt) }
+        $set: set
       },
       { new: true, runValidators: true }
     );
     if (!updatedBooking) return res.status(409).json({ message: 'Tracking update could not be applied' });
+
+    if (routeUpdate?.shouldAlert || routeUpdate?.recovered) {
+      const deviated = routeUpdate.shouldAlert;
+      await notifications.notifyBookingParties(
+        updatedBooking,
+        deviated ? 'tracking.route_deviation' : 'tracking.route_recovered',
+        {
+          title: deviated ? `${updatedBooking._id} left the planned route` : `${updatedBooking._id} returned to route`,
+          message: deviated
+            ? `Vehicle is about ${routeUpdate.routeDeviation.distanceMeters} metres from the planned road route.`
+            : 'Vehicle has returned within the planned route corridor.',
+          link: '/app/tracking',
+          priority: deviated ? 'high' : 'normal',
+          bookingId: updatedBooking._id,
+          distanceMeters: routeUpdate.routeDeviation.distanceMeters,
+          thresholdMeters: routeUpdate.routeDeviation.thresholdMeters,
+          dedupeKey: `${deviated ? 'route-deviation' : 'route-recovered'}:${updatedBooking._id}:${ingestedAt.toISOString().slice(0, 13)}`
+        },
+        req.app.get('io')
+      );
+      const io = req.app.get('io');
+      if (io?.emitToBooking) {
+        io.emitToBooking(updatedBooking._id, deviated ? 'route-deviation' : 'route-recovered', {
+          bookingId: updatedBooking._id,
+          routeDeviation: routeUpdate.routeDeviation,
+          eta: routeUpdate.eta
+        });
+      }
+    }
 
     emitTracking(req, updatedBooking, orderedUpdates);
     return res.json({ booking: updatedBooking, updates: orderedUpdates, accepted: orderedUpdates.length });

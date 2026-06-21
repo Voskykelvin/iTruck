@@ -21,6 +21,7 @@ const PAYMENT_STATUSES = [
   'refunded'
 ];
 const LOAD_MODES = ['full-truck', 'ltl'];
+const BID_STATUSES = ['pending', 'countered', 'accepted', 'rejected', 'withdrawn', 'expired'];
 const STATUS_TRANSITIONS = {
   pending: ['bidding', 'cancelled', 'disputed'],
   bidding: ['confirmed', 'cancelled', 'disputed'],
@@ -58,6 +59,57 @@ const ratingDetailSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const bidHistorySchema = new mongoose.Schema(
+  {
+    action: {
+      type: String,
+      enum: [
+        'submitted',
+        'countered',
+        'counter_accepted',
+        'counter_rejected',
+        'accepted',
+        'rejected',
+        'withdrawn',
+        'expired'
+      ]
+    },
+    actor: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    amount: Number,
+    message: String,
+    reason: String,
+    createdAt: { type: Date, default: Date.now }
+  },
+  { _id: false }
+);
+
+const bidSchema = new mongoose.Schema({
+  owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  truck: { type: mongoose.Schema.Types.ObjectId, ref: 'Truck' },
+  amount: { type: Number, min: 0.01 },
+  originalAmount: { type: Number, min: 0.01 },
+  message: String,
+  status: { type: String, enum: BID_STATUSES, default: 'pending' },
+  expiresAt: Date,
+  counteroffer: {
+    amount: { type: Number, min: 0.01 },
+    message: String,
+    status: { type: String, enum: ['pending', 'accepted', 'rejected', 'expired'] },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    createdAt: Date,
+    respondedAt: Date,
+    responseReason: String
+  },
+  rejectionReason: String,
+  rejectedAt: Date,
+  withdrawnAt: Date,
+  withdrawalReason: String,
+  carrierAcknowledgedAt: Date,
+  history: [bidHistorySchema],
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
 const bookingSchema = new mongoose.Schema(
   {
     client: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -84,6 +136,62 @@ const bookingSchema = new mongoose.Schema(
     reservedCapacityTonnes: { type: Number, min: 0.01 },
     consolidationEligible: { type: Boolean, default: false },
     routeKey: { type: String, trim: true, lowercase: true },
+    routePlan: {
+      provider: String,
+      origin: {
+        lat: Number,
+        lng: Number,
+        formattedAddress: String,
+        placeId: String
+      },
+      destination: {
+        lat: Number,
+        lng: Number,
+        formattedAddress: String,
+        placeId: String
+      },
+      waypoints: [
+        {
+          lat: Number,
+          lng: Number,
+          formattedAddress: String,
+          placeId: String
+        }
+      ],
+      encodedPolyline: String,
+      distanceMeters: Number,
+      durationSeconds: Number,
+      staticDurationSeconds: Number,
+      optimizedIntermediateWaypointIndex: [Number],
+      computedAt: Date,
+      trafficAware: Boolean,
+      deviationThresholdMeters: { type: Number, min: 100, max: 20000, default: 750 }
+    },
+    eta: {
+      estimatedArrivalAt: Date,
+      remainingDistanceMeters: Number,
+      remainingDurationSeconds: Number,
+      updatedAt: Date,
+      trafficAware: Boolean
+    },
+    routeDeviation: {
+      isDeviated: { type: Boolean, default: false },
+      distanceMeters: Number,
+      thresholdMeters: Number,
+      detectedAt: Date,
+      lastAlertedAt: Date,
+      recoveredAt: Date
+    },
+    dispatchPlan: { type: mongoose.Schema.Types.ObjectId, ref: 'DispatchPlan' },
+    dispatch: {
+      loadSequence: Number,
+      pickupSequence: Number,
+      deliverySequence: Number,
+      reservedTonnes: Number,
+      assignedAt: Date,
+      assignmentMethod: { type: String, enum: ['manual-bid', 'auto-match'] },
+      matchScore: Number
+    },
     cargo: String,
     cargoValue: Number,
     weight: String,
@@ -123,16 +231,7 @@ const bookingSchema = new mongoose.Schema(
       enum: STATUSES,
       default: 'pending'
     },
-    bids: [
-      {
-        owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-        truck: { type: mongoose.Schema.Types.ObjectId, ref: 'Truck' },
-        amount: Number,
-        message: String,
-        status: { type: String, default: 'pending' },
-        createdAt: { type: Date, default: Date.now }
-      }
-    ],
+    bids: [bidSchema],
     tracking: [
       {
         lat: Number,
@@ -206,11 +305,15 @@ bookingSchema.index({ 'documents.type': 1 });
 bookingSchema.index({ loadMode: 1, routeKey: 1, status: 1, pickupDate: 1 });
 bookingSchema.index({ consolidationEligible: 1, routeKey: 1, status: 1 });
 bookingSchema.index({ 'lastKnownLocation.recordedAt': -1 });
+bookingSchema.index({ 'eta.estimatedArrivalAt': 1, status: 1 });
+bookingSchema.index({ 'routeDeviation.isDeviated': 1, status: 1 });
+bookingSchema.index({ dispatchPlan: 1 }, { sparse: true });
 
 bookingSchema.statics.STATUSES = STATUSES;
 bookingSchema.statics.PAYMENT_STATUSES = PAYMENT_STATUSES;
 bookingSchema.statics.STATUS_TRANSITIONS = STATUS_TRANSITIONS;
 bookingSchema.statics.LOAD_MODES = LOAD_MODES;
+bookingSchema.statics.BID_STATUSES = BID_STATUSES;
 bookingSchema.statics.assertStatusTransition = assertStatusTransition;
 
 bookingSchema.methods.transitionTo = function transitionTo(nextStatus) {

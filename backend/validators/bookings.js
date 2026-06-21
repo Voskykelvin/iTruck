@@ -94,8 +94,36 @@ const submitBidSchema = [
   ...bookingIdSchema,
   positiveAmount('amount'),
   optionalString('message', 1000),
-  optionalString('truck', 120)
+  optionalString('truck', 120),
+  body('expiresAt')
+    .optional({ checkFalsy: true })
+    .isISO8601()
+    .withMessage('expiresAt must be a valid future timestamp')
+    .toDate()
+    .custom((value) => value > new Date())
+    .withMessage('expiresAt must be in the future')
 ];
+
+const bidActionSchema = [...bookingIdSchema, liveMongoIdParam('bidId')];
+const counterBidSchema = [
+  ...bidActionSchema,
+  positiveAmount('amount'),
+  optionalString('message', 1000),
+  body('expiresAt')
+    .optional({ checkFalsy: true })
+    .isISO8601()
+    .withMessage('expiresAt must be a valid future timestamp')
+    .toDate()
+    .custom((value) => value > new Date())
+    .withMessage('expiresAt must be in the future')
+];
+const counterResponseSchema = [
+  ...bidActionSchema,
+  body('decision').isIn(['accept', 'reject']).withMessage('decision must be accept or reject'),
+  optionalString('reason', 500)
+];
+const rejectBidSchema = [...bidActionSchema, requiredString('reason', 500)];
+const withdrawBidSchema = [...bidActionSchema, optionalString('reason', 500)];
 
 const locationSchema = [
   body('location').optional({ checkFalsy: true }).isObject().withMessage('location must be an object'),
@@ -211,14 +239,19 @@ const listBookingsSchema = [
 
 module.exports = {
   acceptBidSchema,
+  bidActionSchema,
   bookingDocumentUploadSchema,
   bookingRatingSchema,
   bookingIdSchema,
   confirmDeliverySchema,
+  counterBidSchema,
+  counterResponseSchema,
   createBookingSchema,
   listBookingsSchema,
+  rejectBidSchema,
   submitBidSchema,
   trackingBatchSchema,
   trackingLocationSchema,
-  updateStatusSchema
+  updateStatusSchema,
+  withdrawBidSchema
 };
