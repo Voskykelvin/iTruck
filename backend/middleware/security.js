@@ -35,6 +35,14 @@ const authLimiter = rateLimit({
   store: redisStore('auth')
 });
 
+const deliveryOtpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: redisStore('delivery-otp')
+});
+
 function handleCastError(err) {
   const raw = err.value;
   const value = raw === null || raw === undefined ? raw : typeof raw === 'object' ? JSON.stringify(raw) : raw;
@@ -106,4 +114,4 @@ function errorHandler(err, req, res, _next) {
   res.status(status).json(payload);
 }
 
-module.exports = { apiLimiter, authLimiter, errorHandler };
+module.exports = { apiLimiter, authLimiter, deliveryOtpLimiter, errorHandler };

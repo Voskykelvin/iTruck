@@ -13,6 +13,10 @@ const Document = require('../models/Document');
 const Notification = require('../models/Notification');
 const NotificationDelivery = require('../models/NotificationDelivery');
 const WorkerLease = require('../models/WorkerLease');
+const DeliveryOtpChallenge = require('../models/DeliveryOtpChallenge');
+const DeliveryProofAsset = require('../models/DeliveryProofAsset');
+const DeliveryProof = require('../models/DeliveryProof');
+const DeliveryCustodyEvent = require('../models/DeliveryCustodyEvent');
 
 function hasIndex(Model, keys, options = {}) {
   return Model.schema
@@ -65,6 +69,7 @@ test('booking indexes cover client owner status dashboards', () => {
   expect(Booking.schema.path('destinationCoordinates.lat')).toBeDefined();
   expect(Booking.schema.path('deliveryGeofenceMeters')).toBeDefined();
   expect(Booking.schema.path('lastKnownLocation.recordedAt')).toBeDefined();
+  expect(Booking.schema.path('deliveryProof.recordHash')).toBeDefined();
   expect(Booking.schema.path('disputeCase')).toBeDefined();
   expect(Booking.schema.path('disputeStatusBefore')).toBeDefined();
   expect(
@@ -72,6 +77,17 @@ test('booking indexes cover client owner status dashboards', () => {
       documents: [{ type: 'pod', status: 'approved', generatedAt: new Date() }]
     }).validateSync()
   ).toBeUndefined();
+});
+
+test('delivery proof indexes support OTP lookup, immutable assets, and hash-chain reads', () => {
+  expect(hasIndex(DeliveryOtpChallenge, { booking: 1 }, { unique: true })).toBe(true);
+  expect(hasIndex(DeliveryOtpChallenge, { status: 1, expiresAt: 1 })).toBe(true);
+  expect(hasIndex(DeliveryProofAsset, { booking: 1, createdAt: -1 })).toBe(true);
+  expect(hasIndex(DeliveryProofAsset, { booking: 1, contentHash: 1 })).toBe(true);
+  expect(hasIndex(DeliveryProof, { booking: 1 }, { unique: true })).toBe(true);
+  expect(hasIndex(DeliveryProof, { 'verification.verifiedAt': -1 })).toBe(true);
+  expect(hasIndex(DeliveryCustodyEvent, { booking: 1, sequence: 1 }, { unique: true })).toBe(true);
+  expect(hasIndex(DeliveryCustodyEvent, { booking: 1, occurredAt: 1 })).toBe(true);
 });
 
 test('truck indexes and schema fields support verified fleet operations', () => {
@@ -205,6 +221,32 @@ test('new models enforce their required fields without a database connection', (
       targetModel: 'User',
       type: 'tax-certificate',
       title: 'Tax certificate'
+    }).validateSync()
+  ).toBeUndefined();
+  expect(
+    new DeliveryProofAsset({
+      booking: oid(),
+      uploadedBy: oid(),
+      url: 'https://example.com/photo.webp',
+      fileName: 'photo.webp',
+      mimeType: 'image/webp',
+      size: 1200,
+      contentHash: 'a'.repeat(64),
+      recordHash: 'b'.repeat(64),
+      capturedAt: new Date(),
+      location: { lat: -1.2, lng: 36.8 }
+    }).validateSync()
+  ).toBeUndefined();
+  expect(
+    new DeliveryCustodyEvent({
+      booking: oid(),
+      sequence: 1,
+      eventType: 'proof.finalized',
+      actor: oid(),
+      actorRole: 'owner',
+      occurredAt: new Date(),
+      payloadHash: 'c'.repeat(64),
+      eventHash: 'd'.repeat(64)
     }).validateSync()
   ).toBeUndefined();
 });

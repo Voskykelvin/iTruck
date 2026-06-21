@@ -413,8 +413,15 @@ function deliveryProofDocument(shipment, options = {}) {
     });
 }
 
-function hasDeliveryProof(shipment, options = {}) {
-  return Boolean(deliveryProofDocument(shipment, options));
+function hasReceiverGradeProof(shipment) {
+  const proof = shipment?.deliveryProof || {};
+  return Boolean(
+    proof.proof &&
+    /^[a-f0-9]{64}$/.test(String(proof.recordHash || '')) &&
+    proof.verificationMethod === 'sms_otp' &&
+    proof.verifiedAt &&
+    Number(proof.photoCount) >= 1
+  );
 }
 
 function upsertGeneratedBookingDocument(shipment, type) {
@@ -768,6 +775,9 @@ function normalizeBookingShipment(booking) {
     destinationCoordinates: booking.destinationCoordinates,
     deliveryGeofenceMeters: booking.deliveryGeofenceMeters,
     deliveredAt: booking.deliveredAt,
+    receiverName: booking.receiverName || '',
+    receiverPhone: booking.receiverPhone || '',
+    deliveryProof: booking.deliveryProof || null,
     bids: Array.isArray(booking.bids) ? booking.bids.map(normalizeBid) : [],
     tracking
   };
@@ -2407,7 +2417,7 @@ function DriverLiveTracker({ shipment, notify, onBookingUpdate }) {
   );
 }
 
-function DeliveryReadinessPanel({ shipment, activeRole, busyType, onConfirmDelivery, onEndTrip, onGenerateProof }) {
+function DeliveryReadinessPanel({ shipment, activeRole, busyType, onConfirmDelivery, onCaptureProof }) {
   const rawStatus = shipment?.rawStatus || 'pending';
   const deliveryPending = rawStatus === 'delivery_pending';
   const tripStarted = ['in_transit', 'delivery_pending', 'delivered'].includes(rawStatus);
@@ -2417,15 +2427,15 @@ function DeliveryReadinessPanel({ shipment, activeRole, busyType, onConfirmDeliv
   const proofDoc = deliveryProofDocument(shipment);
   const proofStatus = proofDoc?.status || (proofDoc ? 'pending' : 'missing');
   const proofMeta = documentStatusMeta(proofStatus);
-  const proofReady = Boolean(proofDoc);
-  const approvedProof = hasDeliveryProof(shipment, { approvedOnly: true });
-  const canEndTrip = activeRole === 'owner' && rawStatus === 'in_transit' && proofReady && gpsReady;
+  const receiverProofReady = hasReceiverGradeProof(shipment);
   const canConfirm =
     ['client', 'admin'].includes(activeRole) &&
     ['in_transit', 'delivery_pending'].includes(rawStatus) &&
-    proofReady &&
+    receiverProofReady &&
     gpsReady;
-  const releaseReady = delivered && shipment?.paymentStatus === 'escrowed' && approvedProof;
+  const canCapture =
+    ['owner', 'admin'].includes(activeRole) && rawStatus === 'in_transit' && gpsReady && !receiverProofReady;
+  const releaseReady = delivered && shipment?.paymentStatus === 'escrowed' && receiverProofReady;
   const releaseComplete = shipment?.paymentStatus === 'released';
   const steps = [
     {
@@ -2445,73 +2455,54 @@ function DeliveryReadinessPanel({ shipment, activeRole, busyType, onConfirmDeliv
       tone: gpsReady ? 'success' : 'warn'
     },
     {
-      label: 'Delivery proof',
-      value: proofReady ? proofMeta.text : 'POD needed',
-      tone: proofReady ? proofMeta.tone : 'warn'
+      label: 'Receiver verification',
+      value: receiverProofReady ? 'OTP + e-sign verified' : 'Receiver OTP needed',
+      tone: receiverProofReady ? 'success' : 'warn'
     },
     {
-      label: 'Shipper confirmation',
+      label: 'Hashed evidence',
       value: releaseComplete
         ? 'Closed'
         : releaseReady
           ? 'Payment ready'
           : delivered
             ? 'Confirmed'
-            : deliveryPending
-              ? 'Pending'
-              : approvedProof
-                ? 'After arrival'
-                : 'After proof',
-      tone: releaseComplete || releaseReady ? 'success' : approvedProof ? 'warn' : 'default'
+            : receiverProofReady
+              ? `${shipment.deliveryProof.photoCount} photo${shipment.deliveryProof.photoCount === 1 ? '' : 's'} sealed`
+              : proofDoc
+                ? `${proofMeta.text} only`
+                : 'Photos needed',
+      tone: releaseComplete || releaseReady || receiverProofReady ? 'success' : proofDoc ? proofMeta.tone : 'warn'
     }
   ];
-  const generatedProof =
-    activeRole === 'owner'
-      ? { label: 'Proof of delivery', type: 'pod' }
-      : { label: 'Receiver confirmation', type: 'receiver-confirmation' };
-  const canGenerateProof =
-    ['owner', 'client', 'admin'].includes(activeRole) &&
-    Boolean(shipment?.bookingId) &&
-    tripStarted &&
-    gpsReady &&
-    !delivered &&
-    !proofReady;
-  const busyGenerating = busyType === generatedProof.type;
-  const primaryDisabled =
-    Boolean(busyType) ||
-    delivered ||
-    (!proofReady && !canGenerateProof) ||
-    (proofReady && activeRole === 'owner' && !canEndTrip) ||
-    (proofReady && activeRole !== 'owner' && !canConfirm);
+  const primaryDisabled = Boolean(busyType) || delivered || (activeRole === 'owner' ? !canCapture : !canConfirm);
   const primaryLabel = delivered
     ? 'Trip Closed'
     : !tripStarted
       ? 'Start GPS First'
-      : !proofReady
-        ? busyGenerating
-          ? 'Generating...'
-          : activeRole === 'owner'
-            ? 'Generate POD'
-            : 'Generate Confirmation'
-        : activeRole === 'owner'
-          ? busyType === 'end-trip'
-            ? 'Ending Trip...'
-            : deliveryPending
-              ? 'Awaiting Shipper'
-              : 'End Trip'
-          : 'Confirm Delivery';
-  const primaryAction = !proofReady
-    ? () => onGenerateProof(generatedProof)
-    : activeRole === 'owner'
-      ? onEndTrip
-      : onConfirmDelivery;
+      : activeRole === 'owner'
+        ? receiverProofReady || deliveryPending
+          ? 'Awaiting Shipper'
+          : gpsReady
+            ? 'Capture Receiver Proof'
+            : 'Arrival GPS Needed'
+        : receiverProofReady
+          ? 'Confirm Delivery'
+          : 'Awaiting Receiver Proof';
+  const primaryAction = activeRole === 'owner' ? onCaptureProof : onConfirmDelivery;
 
   return (
     <div className="delivery-readiness">
       <div className="delivery-readiness-head">
         <div>
           <p className="eyebrow">Next Step</p>
-          <strong>{delivered ? 'Delivery confirmed' : proofReady ? 'Ready for closeout' : generatedProof.label}</strong>
+          <strong>
+            {delivered
+              ? 'Delivery confirmed'
+              : receiverProofReady
+                ? 'Ready for shipper confirmation'
+                : 'Receiver-grade proof'}
+          </strong>
         </div>
         <StatusBadge tone={canConfirm || delivered ? 'success' : 'warn'}>
           {delivered ? 'Closed' : canConfirm ? 'Ready' : 'Open'}
@@ -2530,13 +2521,17 @@ function DeliveryReadinessPanel({ shipment, activeRole, busyType, onConfirmDeliv
       <div className="closeout-document">
         <ClipboardCheck size={18} />
         <div>
-          <strong>{generatedProof.label}</strong>
-          <span>{proofReady ? proofMeta.text : 'Generated from route, receiver, GPS, and booking details'}</span>
+          <strong>Immutable proof bundle</strong>
+          <span>
+            {receiverProofReady
+              ? `Verified ${new Date(shipment.deliveryProof.verifiedAt).toLocaleString()}`
+              : 'Receiver OTP, e-signature, arrival GPS, timestamps, and server-hashed photos'}
+          </span>
         </div>
       </div>
 
       <button className="primary full icon-label" type="button" disabled={primaryDisabled} onClick={primaryAction}>
-        {proofReady ? <PackageCheck size={18} /> : <FileText size={18} />}
+        {receiverProofReady ? <PackageCheck size={18} /> : <ShieldCheck size={18} />}
         <span>{primaryLabel}</span>
       </button>
     </div>
@@ -2551,6 +2546,8 @@ function TrackingPage({ notify, route, user }) {
   const [draftMessage, setDraftMessage] = useState('');
   const [ratingBusy, setRatingBusy] = useState(false);
   const [issueModalOpen, setIssueModalOpen] = useState(false);
+  const [deliveryProofModalOpen, setDeliveryProofModalOpen] = useState(false);
+  const [deliveryProofUpload, setDeliveryProofUpload] = useState(null);
   const [issueBusy, setIssueBusy] = useState(false);
   const [shipmentCases, setShipmentCases] = useState([]);
   const [selectedCaseId, setSelectedCaseId] = useState('');
@@ -2634,6 +2631,7 @@ function TrackingPage({ notify, route, user }) {
     socket.emit('join-booking', shipment.bookingId);
     socket.on('status-update', updateFromBooking);
     socket.on('delivery-confirmed', updateFromBooking);
+    socket.on('delivery-proof-finalized', updateFromBooking);
     socket.on('tracking-updated', updateFromBooking);
 
     return () => socket.disconnect();
@@ -2750,8 +2748,8 @@ function TrackingPage({ notify, route, user }) {
       notify('Delivery confirmation opens after the carrier starts or ends the trip');
       return;
     }
-    if (!hasDeliveryProof(shipment)) {
-      notify('Upload POD or receiver confirmation before confirming delivery');
+    if (!hasReceiverGradeProof(shipment)) {
+      notify('Receiver OTP, e-signature, GPS, and hashed delivery photos are required');
       return;
     }
     if (hasDestinationCoordinates(shipment) && !latestTrackingPoint(shipment)) {
@@ -2770,41 +2768,67 @@ function TrackingPage({ notify, route, user }) {
     }
   }
 
-  async function endTrip() {
+  function openDeliveryProof() {
     if (!shipment?.bookingId) {
-      notify('End trip needs a synced booking');
+      notify('Receiver proof needs a synced booking');
       return;
     }
-    if (activeRole !== 'owner') {
-      notify('Only the carrier profile can end the trip');
+    if (!['owner', 'admin'].includes(activeRole)) {
+      notify('Only the assigned carrier or an administrator can capture receiver proof');
       return;
     }
-    if (shipment.rawStatus === 'delivery_pending') {
-      notify('Trip is already awaiting shipper confirmation');
+    if (shipment.rawStatus === 'delivered') {
+      notify('Delivery is already confirmed');
       return;
     }
     if (shipment.rawStatus !== 'in_transit') {
-      notify('Start live tracking before ending the trip');
-      return;
-    }
-    if (!hasDeliveryProof(shipment)) {
-      notify('Upload POD or receiver confirmation before ending the trip');
+      notify('Receiver proof opens after the carrier starts the trip');
       return;
     }
     if (hasDestinationCoordinates(shipment) && !latestTrackingPoint(shipment)) {
-      notify('Driver GPS is required before ending the trip');
+      notify('Arrival GPS is required before receiver proof can be captured');
       return;
     }
+    setDeliveryProofUpload(null);
+    setDeliveryProofModalOpen(true);
+  }
 
-    setDeliveryBusyType('end-trip');
+  async function submitDeliveryProof(draft) {
+    if (!shipment?.bookingId) return;
+    setDeliveryBusyType('receiver-proof');
     try {
-      const location = latestTrackingPoint(shipment);
-      const data = await api.updateBookingStatus(shipment.bookingId, {
-        status: 'delivery_pending',
-        ...(location ? { location } : {})
+      const photoKey = draft.photos
+        .map((file) => `${file.name}:${file.size}:${file.lastModified}`)
+        .sort()
+        .join('|');
+      let assetIds = deliveryProofUpload?.photoKey === photoKey ? deliveryProofUpload.assetIds : null;
+      if (!assetIds?.length) {
+        const uploaded = await api.uploadDeliveryProofPhotos(shipment.bookingId, draft.photos, {
+          capturedAt: draft.capturedAt,
+          lat: draft.location.lat,
+          lng: draft.location.lng,
+          accuracy: draft.location.accuracy
+        });
+        assetIds = (uploaded.assets || []).map((asset) => asset.id);
+        setDeliveryProofUpload({ photoKey, assetIds });
+      }
+      const data = await api.finalizeDeliveryProof(shipment.bookingId, {
+        otp: draft.otp,
+        assetIds,
+        signerName: draft.signerName,
+        signerRole: draft.signerRole,
+        signatureType: 'typed',
+        signatureValue: draft.signatureValue,
+        consent: draft.consent,
+        signedAt: draft.signedAt,
+        clientTimestamp: new Date().toISOString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        location: draft.location
       });
       upsertBookingShipment(data.booking);
-      notify('Trip ended. Waiting for shipper delivery confirmation.');
+      setDeliveryProofUpload(null);
+      setDeliveryProofModalOpen(false);
+      notify('Receiver proof verified and sealed. Waiting for shipper confirmation.');
     } catch (err) {
       notify(err.message);
     } finally {
@@ -2979,7 +3003,7 @@ function TrackingPage({ notify, route, user }) {
     {
       label: activeRole === 'owner' ? 'Proof of delivery' : 'Receiver confirmation',
       type: activeRole === 'owner' ? 'pod' : 'receiver-confirmation',
-      labels: { missing: 'Generate', approved: 'Ready' }
+      labels: { missing: activeRole === 'owner' ? 'Capture proof' : 'Waiting', approved: 'Ready' }
     }
   ];
 
@@ -3069,7 +3093,17 @@ function TrackingPage({ notify, route, user }) {
                     pending: 'Review',
                     approved: definition.labels.approved
                   }}
-                  onClick={() => downloadTrackingDocument(definition)}
+                  onClick={() => {
+                    if (
+                      ['pod', 'receiver-confirmation'].includes(definition.type) &&
+                      !hasReceiverGradeProof(shipment)
+                    ) {
+                      if (activeRole === 'owner') openDeliveryProof();
+                      else notify('Receiver proof is still waiting for carrier capture.');
+                      return;
+                    }
+                    downloadTrackingDocument(definition);
+                  }}
                   title={`${definition.labels.missing} ${definition.label.toLowerCase()}`}
                 />
               ))}
@@ -3082,8 +3116,7 @@ function TrackingPage({ notify, route, user }) {
               activeRole={activeRole}
               busyType={deliveryBusyType}
               onConfirmDelivery={confirmDelivery}
-              onEndTrip={endTrip}
-              onGenerateProof={downloadTrackingDocument}
+              onCaptureProof={openDeliveryProof}
             />
           </Panel>
 
@@ -3306,6 +3339,17 @@ function TrackingPage({ notify, route, user }) {
             busy={issueBusy}
             onClose={() => setIssueModalOpen(false)}
             onSubmit={reportIssue}
+          />
+        ) : null}
+        {deliveryProofModalOpen ? (
+          <DeliveryProofModal
+            shipment={shipment}
+            busy={deliveryBusyType === 'receiver-proof'}
+            onClose={() => {
+              setDeliveryProofUpload(null);
+              setDeliveryProofModalOpen(false);
+            }}
+            onSubmit={submitDeliveryProof}
           />
         ) : null}
       </section>
@@ -7734,6 +7778,217 @@ function GlobalSearch({ shipments = [], trucks = [], onClose, onNavigate }) {
             <kbd>⌘K</kbd> to reopen
           </span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   RECEIVER DELIVERY PROOF MODAL
+   ============================================================ */
+function DeliveryProofModal({ shipment, onClose, onSubmit, busy }) {
+  const latest = latestTrackingPoint(shipment);
+  const [signerName, setSignerName] = useState(shipment?.receiverName || '');
+  const [signerRole, setSignerRole] = useState('Receiving officer');
+  const [signatureValue, setSignatureValue] = useState('');
+  const [otp, setOtp] = useState('');
+  const [photos, setPhotos] = useState([]);
+  const [capturedAt, setCapturedAt] = useState(new Date().toISOString());
+  const [consent, setConsent] = useState(false);
+  const [challenge, setChallenge] = useState(null);
+  const [requestingOtp, setRequestingOtp] = useState(false);
+  const [capturingGps, setCapturingGps] = useState(false);
+  const [error, setError] = useState('');
+  const [location, setLocation] = useState(() =>
+    latest
+      ? {
+          lat: Number(latest.lat),
+          lng: Number(latest.lng),
+          accuracy: Number.isFinite(Number(latest.accuracy)) ? Number(latest.accuracy) : undefined,
+          recordedAt: latest.timestamp || new Date().toISOString()
+        }
+      : null
+  );
+  const fileRef = useRef(null);
+
+  async function requestOtp() {
+    setRequestingOtp(true);
+    setError('');
+    try {
+      const data = await api.requestDeliveryOtp(shipment.bookingId);
+      setChallenge(data.challenge);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRequestingOtp(false);
+    }
+  }
+
+  function captureGps() {
+    if (!navigator.geolocation) {
+      setError('This browser cannot capture GPS.');
+      return;
+    }
+    setCapturingGps(true);
+    setError('');
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          recordedAt: new Date(position.timestamp || Date.now()).toISOString()
+        });
+        setCapturingGps(false);
+      },
+      (gpsError) => {
+        setError(gpsError.message || 'Unable to capture arrival GPS.');
+        setCapturingGps(false);
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 }
+    );
+  }
+
+  function handleFiles(event) {
+    const selected = Array.from(event.target.files || []).slice(0, 5);
+    setPhotos(selected);
+    setCapturedAt(new Date().toISOString());
+    event.target.value = '';
+  }
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    setError('');
+    if (!challenge) return setError('Send the receiver OTP first.');
+    if (!location) return setError('Capture arrival GPS before finalizing proof.');
+    if (!photos.length) return setError('Add at least one arrival or handover photo.');
+    if (!/^\d{6}$/.test(otp)) return setError('Enter the 6-digit receiver OTP.');
+    if (!signerName.trim() || !signatureValue.trim()) return setError('Receiver name and signature are required.');
+    if (!consent) return setError('The receiver must accept the delivery confirmation statement.');
+
+    onSubmit({
+      signerName: signerName.trim(),
+      signerRole: signerRole.trim(),
+      signatureValue: signatureValue.trim(),
+      otp,
+      photos,
+      capturedAt,
+      signedAt: new Date().toISOString(),
+      consent,
+      location
+    });
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-card delivery-proof-modal" role="dialog" aria-modal="true" aria-labelledby="pod-title">
+        <div className="modal-card-head">
+          <div>
+            <p className="eyebrow">Receiver-grade closeout</p>
+            <h3 id="pod-title">Seal Delivery Proof</h3>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" disabled={busy}>
+            <X size={18} />
+          </button>
+        </div>
+        <form className="modal-card-body" onSubmit={handleSubmit}>
+          <div className="proof-assurance">
+            <ShieldCheck size={22} />
+            <span>OTP, signature, GPS, timestamps, and photo hashes are sealed into an append-only custody chain.</span>
+          </div>
+
+          <div className="proof-step">
+            <div className="proof-step-heading">
+              <div>
+                <strong>1. Receiver OTP</strong>
+                <span>Sent to the receiver phone saved on this booking.</span>
+              </div>
+              <button className="secondary" type="button" onClick={requestOtp} disabled={requestingOtp || busy}>
+                {requestingOtp ? 'Sending...' : challenge ? 'Resend OTP' : 'Send OTP'}
+              </button>
+            </div>
+            {challenge ? (
+              <small className="proof-success">
+                Code sent to phone ending {challenge.receiverPhoneLast4}. Expires{' '}
+                {new Date(challenge.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.
+              </small>
+            ) : null}
+            <Input
+              label="Receiver OTP"
+              value={otp}
+              onChange={(value) => setOtp(value.replace(/\D/g, '').slice(0, 6))}
+            />
+          </div>
+
+          <div className="proof-step">
+            <div className="proof-step-heading">
+              <div>
+                <strong>2. Arrival GPS</strong>
+                <span>Use the device at the handover point.</span>
+              </div>
+              <button className="secondary" type="button" onClick={captureGps} disabled={capturingGps || busy}>
+                {capturingGps ? 'Capturing...' : 'Capture GPS'}
+              </button>
+            </div>
+            <div className="facts-grid">
+              <span>Coordinates</span>
+              <strong>{location ? formatCoordinatePair(location) : 'Not captured'}</strong>
+              <span>Accuracy</span>
+              <strong>
+                {Number.isFinite(Number(location?.accuracy)) ? `${Math.round(location.accuracy)} m` : 'Pending'}
+              </strong>
+            </div>
+          </div>
+
+          <div className="proof-step">
+            <strong>3. Handover photos</strong>
+            <span className="muted-note">
+              Add 1–5 current photos. The server computes a SHA-256 hash for each file.
+            </span>
+            <input
+              ref={fileRef}
+              type="file"
+              accept={imageUploadAccept}
+              capture="environment"
+              multiple
+              style={{ display: 'none' }}
+              onChange={handleFiles}
+            />
+            <button className="ghost icon-label" type="button" onClick={() => fileRef.current?.click()} disabled={busy}>
+              <Image size={18} />
+              <span>{photos.length ? 'Replace photos' : 'Add photos'}</span>
+            </button>
+            {photos.length ? (
+              <div className="proof-file-list">
+                {photos.map((file) => (
+                  <span key={`${file.name}-${file.lastModified}`}>{file.name}</span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="proof-step">
+            <strong>4. Electronic signature</strong>
+            <Input label="Receiver name" value={signerName} onChange={setSignerName} />
+            <Input label="Receiver role" value={signerRole} onChange={setSignerRole} />
+            <Input label="Type full name as signature" value={signatureValue} onChange={setSignatureValue} />
+            <label className="proof-consent">
+              <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
+              <span>I confirm that I received this shipment and that this electronic signature is accurate.</span>
+            </label>
+          </div>
+
+          {error ? <div className="form-error">{error}</div> : null}
+          <div className="button-row">
+            <button className="primary icon-label" type="submit" disabled={busy}>
+              <ShieldCheck size={18} />
+              <span>{busy ? 'Sealing proof...' : 'Verify and Seal Proof'}</span>
+            </button>
+            <button className="ghost" type="button" onClick={onClose} disabled={busy}>
+              Cancel
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

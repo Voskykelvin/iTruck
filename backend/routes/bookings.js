@@ -9,8 +9,10 @@ const notifications = require('../services/notifications');
 const {
   assertDeliveryGeofence,
   assertDeliveryProofForDelivery,
+  assertReceiverGradeDeliveryProof,
   assertOwnerCanBid
 } = require('../services/operationsPolicy');
+const { recordDeliveryConfirmation } = require('../services/deliveryProof');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
@@ -560,7 +562,7 @@ router.patch(
       if (!canConfirmDelivery(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
 
       assertDeliveryGeofence(booking, req.body.location);
-      assertDeliveryProofForDelivery(booking);
+      assertReceiverGradeDeliveryProof(booking);
       if (req.body.location) {
         const location = normalizeTrackingPoint(req.body.location);
         booking.tracking.push(location);
@@ -568,6 +570,8 @@ router.patch(
       }
       booking.transitionTo('delivered');
       booking.deliveredAt = new Date();
+      await booking.save();
+      await recordDeliveryConfirmation({ booking, actor: req.user });
       await booking.save();
 
       await notifications.notifyBookingParties(
@@ -654,6 +658,9 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
       const booking = memoryBookings.find((item) => item._id === req.params.id);
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
       if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+      if (req.body.status === 'delivered' && req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'The shipper or an administrator must confirm final delivery' });
+      }
 
       if (req.body.status === 'delivery_pending') {
         assertDeliveryGeofence(booking, req.body.location);
@@ -676,6 +683,9 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
     const booking = await Booking.findById(req.params.id);
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
     if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+    if (req.body.status === 'delivered' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'The shipper or an administrator must confirm final delivery' });
+    }
 
     if (req.body.status === 'delivery_pending') {
       assertDeliveryGeofence(booking, req.body.location);
@@ -683,7 +693,7 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
     }
     if (req.body.status === 'delivered') {
       assertDeliveryGeofence(booking, req.body.location);
-      assertDeliveryProofForDelivery(booking);
+      assertReceiverGradeDeliveryProof(booking);
     }
     if (req.body.status) booking.transitionTo(req.body.status);
     if (req.body.location) {
@@ -692,6 +702,10 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
       recordLatestLocation(booking, location);
     }
     await booking.save();
+    if (req.body.status === 'delivered') {
+      await recordDeliveryConfirmation({ booking, actor: req.user });
+      await booking.save();
+    }
 
     await notifications.notifyBookingParties(
       booking,

@@ -5,6 +5,7 @@ const Booking = require('../models/Booking');
 const User = require('../models/User');
 const logger = require('../config/logger');
 const notifications = require('./notifications');
+const { assertReceiverGradeDeliveryProof } = require('./operationsPolicy');
 
 const ACTIVE_STATUSES = [
   'submitted',
@@ -165,6 +166,7 @@ function disputeBookingUpdate(record, booking, outcome, now) {
   }
   if (outcome === 'cancel_booking' || outcome === 'refund_required') update.status = 'cancelled';
   if (outcome === 'confirm_delivery') {
+    assertReceiverGradeDeliveryProof(booking);
     update.status = 'delivered';
     update.deliveredAt = booking.deliveredAt || now;
   }

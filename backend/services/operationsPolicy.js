@@ -129,10 +129,29 @@ function hasDeliveryProof(booking = {}, options = {}) {
   return deliveryProofDocuments(booking, options).length > 0;
 }
 
+function hasReceiverGradeDeliveryProof(booking = {}) {
+  const proof = booking.deliveryProof || {};
+  return Boolean(
+    proof.proof &&
+    proof.recordHash &&
+    /^[a-f0-9]{64}$/.test(String(proof.recordHash)) &&
+    proof.verificationMethod === 'sms_otp' &&
+    proof.verifiedAt &&
+    Number(proof.photoCount) >= 1
+  );
+}
+
 function assertDeliveryProofForDelivery(booking = {}) {
   if (hasDeliveryProof(booking)) return;
   throw new AppError('Upload proof of delivery or receiver confirmation before marking delivery complete', 409, {
     requiredDocuments: DELIVERY_PROOF_DOCUMENTS
+  });
+}
+
+function assertReceiverGradeDeliveryProof(booking = {}) {
+  if (hasReceiverGradeDeliveryProof(booking)) return;
+  throw new AppError('Complete receiver OTP, e-signature, GPS, and delivery photos before confirming delivery', 409, {
+    requiredProof: ['receiver-otp', 'electronic-signature', 'gps-time-metadata', 'hashed-delivery-photos']
   });
 }
 
@@ -163,9 +182,9 @@ function assertDeliveryGeofence(booking = {}, currentLocation = null, options = 
 }
 
 function assertDeliveryProofForPaymentRelease(booking = {}) {
-  if (hasDeliveryProof(booking, { approvedOnly: true })) return;
-  throw new AppError('Approve proof of delivery or receiver confirmation before releasing payment', 409, {
-    requiredDocuments: DELIVERY_PROOF_DOCUMENTS
+  if (hasReceiverGradeDeliveryProof(booking)) return;
+  throw new AppError('Receiver-grade delivery proof is required before releasing payment', 409, {
+    requiredProof: ['receiver-otp', 'electronic-signature', 'gps-time-metadata', 'hashed-delivery-photos']
   });
 }
 
@@ -177,10 +196,12 @@ module.exports = {
   assertDeliveryGeofence,
   assertDeliveryProofForDelivery,
   assertDeliveryProofForPaymentRelease,
+  assertReceiverGradeDeliveryProof,
   assertOwnerCanBid,
   deliveryProofDocuments,
   geoDistanceMeters,
   hasDeliveryProof,
+  hasReceiverGradeDeliveryProof,
   latestTrackingLocation,
   missingApprovedDocuments
 };

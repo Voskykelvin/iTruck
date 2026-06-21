@@ -25,6 +25,18 @@ jest.mock('../services/audit', () => ({
   recordAdminAudit: jest.fn(async () => null)
 }));
 
+jest.mock('../services/deliveryProof', () => {
+  const actual = jest.requireActual('../services/deliveryProof');
+  return {
+    ...actual,
+    assertDeliveryProofIntegrity: jest.fn(async () => ({ chain: { valid: true } })),
+    recordDeliveryConfirmation: jest.fn(async ({ booking }) => {
+      booking.deliveryProof.chainHeadHash = 'b'.repeat(64);
+      return { eventHash: booking.deliveryProof.chainHeadHash };
+    })
+  };
+});
+
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const request = require('supertest');
@@ -462,6 +474,17 @@ describe('booking to payment to tracking to delivery flow', () => {
     expect(approvedPod.body.booking.documents).toContainEqual(
       expect.objectContaining({ type: 'pod', status: 'approved' })
     );
+
+    bookings.get(String(bookingId)).deliveryProof = {
+      proof: id(),
+      recordHash: 'a'.repeat(64),
+      verificationMethod: 'sms_otp',
+      verifiedAt: new Date(),
+      receiverName: 'Kampala Receiver',
+      receiverPhoneLast4: '1222',
+      photoCount: 2,
+      chainHeadHash: 'c'.repeat(64)
+    };
 
     const delivered = await request(app)
       .patch(`/api/bookings/${bookingId}/confirm-delivery`)

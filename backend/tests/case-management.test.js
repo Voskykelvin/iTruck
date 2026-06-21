@@ -319,6 +319,35 @@ test('dispute resolution resumes the pre-dispute booking state', async () => {
   );
 });
 
+test('dispute resolution cannot confirm delivery without receiver-grade proof', async () => {
+  const bookingId = oid();
+  const record = activeCase({
+    _id: oid(),
+    booking: bookingId,
+    kind: 'dispute',
+    bookingStatusBeforeDispute: 'delivery_pending'
+  });
+  jest.spyOn(Booking, 'findById').mockResolvedValue({
+    _id: bookingId,
+    status: 'disputed',
+    disputeStatusBefore: 'delivery_pending'
+  });
+  const bookingUpdate = jest.spyOn(Booking, 'findOneAndUpdate');
+
+  await expect(
+    resolveCase(
+      record,
+      {
+        outcome: 'confirm_delivery',
+        summary: 'Close the disputed delivery'
+      },
+      oid()
+    )
+  ).rejects.toThrow('Complete receiver OTP, e-signature, GPS, and delivery photos');
+
+  expect(bookingUpdate).not.toHaveBeenCalled();
+});
+
 test('funded disputes require the refund-required outcome before cancellation', async () => {
   const bookingId = oid();
   const record = activeCase({
