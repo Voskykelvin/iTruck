@@ -27,6 +27,11 @@ function addressObject(value) {
   return match ? { name: match[1].trim(), email: match[2].trim() } : { email: text };
 }
 
+function emailTimeoutMs() {
+  const configured = Number(process.env.EMAIL_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 15_000;
+}
+
 async function responseData(response) {
   const text = await response.text();
   if (!text) return {};
@@ -51,6 +56,7 @@ class ResendEmailProvider {
   async send(message) {
     const response = await this.fetchImpl(`${this.baseUrl}/emails`, {
       method: 'POST',
+      signal: AbortSignal.timeout(emailTimeoutMs()),
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json'
@@ -104,6 +110,7 @@ class SendGridEmailProvider {
 
     const response = await this.fetchImpl(`${this.baseUrl}/v3/mail/send`, {
       method: 'POST',
+      signal: AbortSignal.timeout(emailTimeoutMs()),
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json'
@@ -138,8 +145,18 @@ class SmtpEmailProvider {
 
     const nodemailer = require('nodemailer');
     const smtpUrl = options.url || process.env.SMTP_URL;
+    const timeout = emailTimeoutMs();
     if (smtpUrl) {
-      this.transporter = nodemailer.createTransport(smtpUrl, { from: this.from });
+      this.transporter = nodemailer.createTransport(
+        {
+          url: smtpUrl,
+          pool: true,
+          connectionTimeout: timeout,
+          greetingTimeout: timeout,
+          socketTimeout: timeout
+        },
+        { from: this.from }
+      );
       return;
     }
 
@@ -156,6 +173,9 @@ class SmtpEmailProvider {
         port,
         secure: options.secure ?? (process.env.SMTP_SECURE === 'true' || port === 465),
         pool: true,
+        connectionTimeout: timeout,
+        greetingTimeout: timeout,
+        socketTimeout: timeout,
         ...(user ? { auth: { user, pass } } : {})
       },
       { from: this.from }

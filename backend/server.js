@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const logger = require('./config/logger');
 const { assertRuntimeConfig, isLiveMode } = require('./config/runtime');
 const { app } = require('./app');
+const { startBackgroundRuntime, stopBackgroundRuntime } = require('./services/backgroundRuntime');
 
 const server = http.createServer(app);
 const io = require('./socket')(server);
@@ -42,7 +43,10 @@ async function start() {
     logger.warn({ err }, 'MongoDB unavailable, API will use limited in-memory fallbacks');
   }
 
-  server.listen(PORT, () => logger.info({ port: PORT }, 'iTruck API running'));
+  server.listen(PORT, () => {
+    startBackgroundRuntime(io);
+    logger.info({ port: PORT }, 'iTruck API running');
+  });
 }
 
 function closeHttpServer() {
@@ -66,6 +70,7 @@ async function shutdown(signal = 'manual') {
 
   try {
     logger.info({ signal }, 'Graceful shutdown started');
+    stopBackgroundRuntime();
     io.close();
     await io.closeRedis?.();
     await closeHttpServer();

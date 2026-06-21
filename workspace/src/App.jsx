@@ -109,6 +109,25 @@ const registrationCountries = [
   ['Ethiopia', '+251'],
   ['DRC Congo', '+243']
 ];
+const defaultNotificationPreferences = {
+  channels: { inApp: true, email: false, sms: false },
+  categories: {
+    bookings: true,
+    tracking: true,
+    documents: true,
+    payments: true,
+    security: true,
+    marketing: false,
+    system: true
+  },
+  quietHours: {
+    enabled: false,
+    start: '21:00',
+    end: '07:00',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Africa/Nairobi',
+    allowHighPriority: true
+  }
+};
 const vehicleTypes = ['Matatu', 'Pickup', 'Lorry', 'Large Truck', 'Trailer', 'Bus', 'Specialised'];
 const ownerProfileDocuments = ['Owner KYC', 'Driver ID', 'Business registration', 'Insurance'];
 const shipperProfileDocuments = ['Shipper KYC', 'Business registration', 'Tax certificate'];
@@ -4876,6 +4895,7 @@ function AdminPage({ notify }) {
     bookings: [],
     documents: [],
     payments: [],
+    notificationDeliveries: [],
     logs: []
   });
   const [busyAction, setBusyAction] = useState('');
@@ -4883,16 +4903,25 @@ function AdminPage({ notify }) {
   const [reviewNotes, setReviewNotes] = useState({});
 
   const loadAdminData = useCallback(async () => {
-    const [statsResult, usersResult, trucksResult, bookingsResult, documentsResult, paymentsResult, logsResult] =
-      await Promise.allSettled([
-        api.adminStats(),
-        api.adminListUsers(),
-        api.adminListTrucks(),
-        api.adminListBookings(),
-        api.listDocuments({ limit: 100 }),
-        api.adminListPayments(),
-        api.adminAuditLogs()
-      ]);
+    const [
+      statsResult,
+      usersResult,
+      trucksResult,
+      bookingsResult,
+      documentsResult,
+      paymentsResult,
+      deliveriesResult,
+      logsResult
+    ] = await Promise.allSettled([
+      api.adminStats(),
+      api.adminListUsers(),
+      api.adminListTrucks(),
+      api.adminListBookings(),
+      api.listDocuments({ limit: 100 }),
+      api.adminListPayments(),
+      api.adminNotificationDeliveries(),
+      api.adminAuditLogs()
+    ]);
 
     if (statsResult.status === 'fulfilled') setStats(statsResult.value);
     else setStats(null);
@@ -4908,6 +4937,7 @@ function AdminPage({ notify }) {
       bookings: mergeDocumentIndex(bookings, indexedDocuments, 'booking'),
       documents: indexedDocuments,
       payments: paymentsResult.status === 'fulfilled' ? paymentsResult.value.transactions || [] : [],
+      notificationDeliveries: deliveriesResult.status === 'fulfilled' ? deliveriesResult.value.deliveries || [] : [],
       logs: logsResult.status === 'fulfilled' ? logsResult.value.logs || [] : []
     });
   }, []);
@@ -5183,6 +5213,12 @@ function AdminPage({ notify }) {
       label: 'Payments',
       count: releaseReadyBookings.length,
       tone: releaseReadyBookings.length ? 'warn' : 'default'
+    },
+    {
+      key: 'notifications',
+      label: 'Delivery queue',
+      count: adminData.notificationDeliveries.filter((item) => ['failed', 'retry'].includes(item.status)).length,
+      tone: adminData.notificationDeliveries.some((item) => item.status === 'failed') ? 'danger' : 'default'
     },
     {
       key: 'risk',
@@ -5896,6 +5932,64 @@ function AdminPage({ notify }) {
     );
   }
 
+  function renderNotificationDeliveryReview() {
+    if (!adminData.notificationDeliveries.length) {
+      return <EmptyState title="No delivery records" detail="Email and SMS attempts will appear here." />;
+    }
+
+    return (
+      <div className="admin-review-list">
+        {adminData.notificationDeliveries.slice(0, 100).map((delivery) => (
+          <article className="admin-review-row" key={recordId(delivery)}>
+            <div className="admin-review-summary">
+              <div>
+                <StatusBadge
+                  tone={
+                    delivery.status === 'sent'
+                      ? 'success'
+                      : delivery.status === 'failed'
+                        ? 'danger'
+                        : delivery.status === 'retry'
+                          ? 'warn'
+                          : 'default'
+                  }
+                >
+                  {statusLabel(delivery.status)}
+                </StatusBadge>
+                <h3>{delivery.notification?.title || `${String(delivery.channel).toUpperCase()} notification`}</h3>
+                <p>
+                  {delivery.user
+                    ? `${personName(delivery.user)} - ${delivery.channel}`
+                    : `${delivery.recipient || 'Recipient unavailable'} - ${delivery.channel}`}
+                </p>
+                <small>
+                  Attempts {delivery.attempts}/{delivery.maxAttempts}
+                  {delivery.lastError ? ` - ${delivery.lastError}` : ''}
+                </small>
+              </div>
+              {delivery.status === 'failed' ? (
+                <button
+                  className="secondary"
+                  type="button"
+                  disabled={busyAction === `delivery-${recordId(delivery)}`}
+                  onClick={() =>
+                    withAdminAction(`delivery-${recordId(delivery)}`, async () => {
+                      await api.adminRetryNotificationDelivery(recordId(delivery));
+                      notify('Notification delivery queued for retry');
+                      await loadAdminData();
+                    })
+                  }
+                >
+                  Retry
+                </button>
+              ) : null}
+            </div>
+          </article>
+        ))}
+      </div>
+    );
+  }
+
   function renderHighValueReview() {
     if (!highValueBookings.length)
       return <EmptyState title="No high-value cargo" detail="High-value bookings will appear here." />;
@@ -6002,6 +6096,7 @@ function AdminPage({ notify }) {
     escrow: 'Escrow Release',
     duplicates: 'Duplicate Listings',
     payments: 'Payment Releases',
+    notifications: 'Notification Delivery Queue',
     'high-value': 'High-value Cargo',
     expiry: 'Document Expiry'
   };
@@ -6017,6 +6112,7 @@ function AdminPage({ notify }) {
     if (activeReview === 'escrow') return renderEscrowReview();
     if (activeReview === 'duplicates') return renderDuplicateReview();
     if (activeReview === 'payments') return renderPaymentReview();
+    if (activeReview === 'notifications') return renderNotificationDeliveryReview();
     if (activeReview === 'high-value') return renderHighValueReview();
     if (activeReview === 'expiry') return renderExpiryReview();
     return renderKycReview();
@@ -6106,8 +6202,19 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
     company: user.company || ''
   }));
   const [profileSaving, setProfileSaving] = useState(false);
+  const [notificationPreferences, setNotificationPreferences] = useState(defaultNotificationPreferences);
+  const [notificationPreferencesSaving, setNotificationPreferencesSaving] = useState(false);
+  const [notificationTestBusy, setNotificationTestBusy] = useState(false);
 
   useCurrentUserPolling(signedIn, setUser, 30000);
+
+  useEffect(() => {
+    if (!signedIn) return;
+    api
+      .notificationPreferences()
+      .then((data) => data.preferences && setNotificationPreferences(data.preferences))
+      .catch((err) => notify(err.message || 'Unable to load notification preferences'));
+  }, [notify, signedIn]);
 
   const selectPendingDocument = useCallback((item) => {
     pendingDocumentRef.current = item;
@@ -6308,6 +6415,42 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
       notify(err.message);
     } finally {
       setProfileSaving(false);
+    }
+  }
+
+  function updateNotificationPreference(section, key, value) {
+    setNotificationPreferences((current) => ({
+      ...current,
+      [section]: {
+        ...current[section],
+        [key]: value
+      }
+    }));
+  }
+
+  async function saveNotificationPreferences(event) {
+    event.preventDefault();
+    setNotificationPreferencesSaving(true);
+    try {
+      const data = await api.updateNotificationPreferences(notificationPreferences);
+      if (data.preferences) setNotificationPreferences(data.preferences);
+      notify('Notification preferences saved');
+    } catch (err) {
+      notify(err.message || 'Unable to save notification preferences');
+    } finally {
+      setNotificationPreferencesSaving(false);
+    }
+  }
+
+  async function sendNotificationTest() {
+    setNotificationTestBusy(true);
+    try {
+      await api.sendTestNotification();
+      notify('Test notification queued');
+    } catch (err) {
+      notify(err.message || 'Unable to queue test notification');
+    } finally {
+      setNotificationTestBusy(false);
     }
   }
 
@@ -6621,6 +6764,111 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
             })}
           </div>
           <p className="muted-note">{documentUploadLimitText}. Admin reviews uploaded files from the console.</p>
+        </Panel>
+      ) : null}
+      {signedIn ? (
+        <Panel title="Notifications" eyebrow="Preferences">
+          <form className="notification-preferences" onSubmit={saveNotificationPreferences}>
+            <div>
+              <strong>Delivery channels</strong>
+              <span>In-app alerts are immediate. Email and SMS are delivered by the configured providers.</span>
+            </div>
+            <div className="preference-toggle-grid">
+              {[
+                ['inApp', 'In-app'],
+                ['email', 'Email'],
+                ['sms', 'SMS']
+              ].map(([key, label]) => (
+                <label className="preference-toggle" key={key}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(notificationPreferences.channels?.[key])}
+                    onChange={(event) => updateNotificationPreference('channels', key, event.target.checked)}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+
+            <div>
+              <strong>Events</strong>
+              <span>Choose which activity can use your enabled channels.</span>
+            </div>
+            <div className="preference-toggle-grid">
+              {[
+                ['bookings', 'Bookings and bids'],
+                ['tracking', 'Tracking and delivery'],
+                ['documents', 'Documents and verification'],
+                ['payments', 'Payments'],
+                ['security', 'Security'],
+                ['system', 'System notices'],
+                ['marketing', 'Product announcements']
+              ].map(([key, label]) => (
+                <label className="preference-toggle" key={key}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(notificationPreferences.categories?.[key])}
+                    onChange={(event) => updateNotificationPreference('categories', key, event.target.checked)}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+
+            <label className="preference-toggle quiet-hours-toggle">
+              <input
+                type="checkbox"
+                checked={Boolean(notificationPreferences.quietHours?.enabled)}
+                onChange={(event) => updateNotificationPreference('quietHours', 'enabled', event.target.checked)}
+              />
+              <span>Use quiet hours</span>
+            </label>
+            {notificationPreferences.quietHours?.enabled ? (
+              <div className="form-grid">
+                <label className="field">
+                  <span>From</span>
+                  <input
+                    type="time"
+                    value={notificationPreferences.quietHours.start}
+                    onChange={(event) => updateNotificationPreference('quietHours', 'start', event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Until</span>
+                  <input
+                    type="time"
+                    value={notificationPreferences.quietHours.end}
+                    onChange={(event) => updateNotificationPreference('quietHours', 'end', event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Timezone</span>
+                  <input
+                    value={notificationPreferences.quietHours.timezone}
+                    onChange={(event) => updateNotificationPreference('quietHours', 'timezone', event.target.value)}
+                  />
+                </label>
+                <label className="preference-toggle">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(notificationPreferences.quietHours.allowHighPriority)}
+                    onChange={(event) =>
+                      updateNotificationPreference('quietHours', 'allowHighPriority', event.target.checked)
+                    }
+                  />
+                  <span>Allow urgent alerts during quiet hours</span>
+                </label>
+              </div>
+            ) : null}
+            <div className="notification-preference-actions">
+              <button className="primary" type="submit" disabled={notificationPreferencesSaving}>
+                {notificationPreferencesSaving ? 'Saving...' : 'Save preferences'}
+              </button>
+              <button className="ghost" type="button" disabled={notificationTestBusy} onClick={sendNotificationTest}>
+                {notificationTestBusy ? 'Queuing...' : 'Send test'}
+              </button>
+            </div>
+          </form>
         </Panel>
       ) : null}
       {signedIn ? (
@@ -7577,11 +7825,8 @@ function AppShell() {
   }, [loadNotifications]);
 
   function markAllRead() {
-    const persistedIds = notifications.map((note) => note.id).filter((id) => /^[a-f0-9]{24}$/i.test(String(id)));
     setNotifications((ns) => ns.map((n) => ({ ...n, read: true })));
-    persistedIds.forEach((id) => {
-      api.markNotificationRead(id).catch(() => {});
-    });
+    api.markAllNotificationsRead().catch(() => {});
   }
 
   // Global search
@@ -7623,59 +7868,77 @@ function AppShell() {
     socket.on('notification:new', addNotification);
     socket.on('document:updated', addDocumentNotification);
     socket.on('document-updated', addDocumentNotification);
-    socket.on('profile:verified', (payload = {}) =>
-      addNotification({
-        id: notificationId('profile'),
-        type: 'profile.verified',
-        title: payload.title || (payload.isVerified ? 'Profile verified' : 'Profile held for review'),
-        message: payload.message || 'Your profile review status changed.',
-        link: '/app/profile'
-      })
+    socket.on(
+      'profile:verified',
+      (payload = {}) =>
+        !payload.silent &&
+        addNotification({
+          id: notificationId('profile'),
+          type: 'profile.verified',
+          title: payload.title || (payload.isVerified ? 'Profile verified' : 'Profile held for review'),
+          message: payload.message || 'Your profile review status changed.',
+          link: '/app/profile'
+        })
     );
-    socket.on('truck:verified', (payload = {}) =>
-      addNotification({
-        id: notificationId('truck'),
-        type: 'truck.verified',
-        title: payload.title || (payload.isVerified ? 'Vehicle verified' : 'Vehicle held for review'),
-        message: payload.message || payload.plateNumber || 'Vehicle review status changed.',
-        link: '/app/vehicles'
-      })
+    socket.on(
+      'truck:verified',
+      (payload = {}) =>
+        !payload.silent &&
+        addNotification({
+          id: notificationId('truck'),
+          type: 'truck.verified',
+          title: payload.title || (payload.isVerified ? 'Vehicle verified' : 'Vehicle held for review'),
+          message: payload.message || payload.plateNumber || 'Vehicle review status changed.',
+          link: '/app/vehicles'
+        })
     );
-    socket.on('bid-created', (booking = {}) =>
-      addNotification({
-        id: notificationId('bid'),
-        type: 'bid.created',
-        title: `New carrier bid on ${bookingRef(booking)}`,
-        message: bookingRoute(booking),
-        link: '/app/bids'
-      })
+    socket.on(
+      'bid-created',
+      (booking = {}) =>
+        !booking.silent &&
+        addNotification({
+          id: notificationId('bid'),
+          type: 'bid.created',
+          title: `New carrier bid on ${bookingRef(booking)}`,
+          message: bookingRoute(booking),
+          link: '/app/bids'
+        })
     );
-    socket.on('bid-accepted', (booking = {}) =>
-      addNotification({
-        id: notificationId('bid'),
-        type: 'bid.accepted',
-        title: `Bid accepted on ${bookingRef(booking)}`,
-        message: bookingRoute(booking),
-        link: '/app/bids'
-      })
+    socket.on(
+      'bid-accepted',
+      (booking = {}) =>
+        !booking.silent &&
+        addNotification({
+          id: notificationId('bid'),
+          type: 'bid.accepted',
+          title: `Bid accepted on ${bookingRef(booking)}`,
+          message: bookingRoute(booking),
+          link: '/app/bids'
+        })
     );
-    socket.on('status-update', (booking = {}) =>
-      addNotification({
-        id: notificationId('status'),
-        type: 'shipment.status',
-        title: `${bookingRef(booking)} ${statusLabel(booking.status || 'updated')}`,
-        message: bookingRoute(booking),
-        link: '/app/tracking'
-      })
+    socket.on(
+      'status-update',
+      (booking = {}) =>
+        !booking.silent &&
+        addNotification({
+          id: notificationId('status'),
+          type: 'shipment.status',
+          title: `${bookingRef(booking)} ${statusLabel(booking.status || 'updated')}`,
+          message: bookingRoute(booking),
+          link: '/app/tracking'
+        })
     );
-    socket.on('delivery-confirmed', (booking = {}) =>
-      addNotification({
-        id: notificationId('delivery'),
-        type: 'shipment.delivered',
-        title: `${bookingRef(booking)} delivered`,
-        message: bookingRoute(booking),
-        link: '/app/tracking'
-      })
+    socket.on(
+      'delivery-confirmed',
+      (booking = {}) =>
+        !booking.silent &&
+        addNotification({
+          id: notificationId('delivery'),
+          type: 'shipment.delivered',
+          title: `${bookingRef(booking)} delivered`,
+          message: bookingRoute(booking),
+          link: '/app/tracking'
+        })
     );
 
     return () => {

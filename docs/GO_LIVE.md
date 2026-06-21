@@ -12,7 +12,8 @@
 - Finish deeper dashboard actions against real API data, including counteroffers, bid expiry/withdrawal, rejection reasons, and carrier acknowledgement.
 - Add production routing/geocoding for road polylines, ETA, route deviation, and live markers. The current map is an embed, not a live routing engine.
 - Expand shipment proof of delivery into receiver e-signature or OTP, immutable cargo-photo metadata, chain of custody, and dispute review.
-- Add client/owner notification preferences, quiet hours, email/SMS event routing, retries, and web push.
+- Add web push and provider delivery-receipt callbacks; preferences, quiet hours, email/SMS routing, durable retries,
+  and operator controls are implemented.
 - Add a complete admin dispute/support queue with ownership, SLA, escalation, comments, and resolution history.
 - Replace the placeholder auto-assignment result with verified-truck ranking and assignment.
 - Add a dedicated driver identity/session and driver-to-truck/job assignment flow.
@@ -51,10 +52,15 @@
 - In-app notification persistence and Socket.IO delivery are implemented.
 - Resend, SendGrid, SMTP, and Africa's Talking provider adapters are implemented.
 - Password-reset email uses the configured email provider.
-- Remaining work is to route operational booking events through email/SMS based on user preferences, enforce quiet
-  hours, record provider delivery outcomes, retry transient failures, and implement web push.
-- The current admin broadcast route records a queued audit event but does not yet deliver a real multi-channel
-  broadcast.
+- Booking, document, tracking, payment, message, and system events route through user-controlled in-app, email, and SMS
+  preferences.
+- Quiet hours delay non-urgent external delivery while urgent alerts can be allowed through.
+- MongoDB delivery records support atomic worker leases, exponential retries, retention, admin visibility, and manual
+  retry.
+- Admin broadcasts can target selected roles, users, or countries and respect recipient preferences.
+- Scheduled scans mark expired documents, send 30/7/1-day expiry reminders, and alert booking parties about stale
+  tracking.
+- Web push and provider delivery-receipt callbacks remain future upgrades.
 
 ## Operations And Support
 
@@ -62,6 +68,8 @@
 - Before public launch, add admin assignment, case status transitions, SLA timers, comments, escalation, resolution
   evidence, and controlled disputed-booking outcomes.
 - Configure error monitoring, metrics, alerts, uptime checks, MongoDB backup/restore testing, and an incident runbook.
+- Keep background jobs enabled on at least one live instance and verify delivery/operations intervals in deployment
+  configuration.
 
 ## Payments
 

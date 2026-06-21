@@ -245,9 +245,12 @@ function cleanBookingPayload(body) {
   return payload;
 }
 
-function emitBooking(req, bookingId, event, booking) {
+function emitBooking(req, bookingId, event, booking, options = {}) {
   const io = req.app.get('io');
-  if (io?.emitToBooking) io.emitToBooking(bookingId, event, booking);
+  if (!io?.emitToBooking) return;
+  const payload = booking?.toObject ? booking.toObject() : { ...booking };
+  if (options.silent) payload.silent = true;
+  io.emitToBooking(bookingId, event, payload);
 }
 
 function emitTracking(req, booking, updates) {
@@ -259,7 +262,10 @@ function emitTracking(req, booking, updates) {
     updates,
     booking
   });
-  io.emitToBooking(booking._id, 'status-update', booking);
+  io.emitToBooking(booking._id, 'status-update', {
+    ...(booking?.toObject ? booking.toObject() : booking),
+    silent: true
+  });
 }
 
 async function biddingTruckForOwner(req) {
@@ -478,7 +484,7 @@ router.post('/:id/bids', restrictTo('owner', 'admin'), submitBidSchema, validate
       },
       req.app.get('io')
     );
-    emitBooking(req, booking._id, 'bid-created', booking);
+    emitBooking(req, booking._id, 'bid-created', booking, { silent: true });
     res.json({ booking });
   } catch (err) {
     next(err);
@@ -521,7 +527,7 @@ router.patch(
         },
         req.app.get('io')
       );
-      emitBooking(req, booking._id, 'bid-accepted', booking);
+      emitBooking(req, booking._id, 'bid-accepted', booking, { silent: true });
       res.json({ booking });
     } catch (err) {
       next(err);
@@ -575,7 +581,7 @@ router.patch(
         },
         req.app.get('io')
       );
-      emitBooking(req, booking._id, 'delivery-confirmed', booking);
+      emitBooking(req, booking._id, 'delivery-confirmed', booking, { silent: true });
       res.json({ booking });
     } catch (err) {
       next(err);
@@ -699,7 +705,7 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
       },
       req.app.get('io')
     );
-    emitBooking(req, booking._id, 'status-update', booking);
+    emitBooking(req, booking._id, 'status-update', booking, { silent: true });
     res.json({ booking });
   } catch (err) {
     next(err);

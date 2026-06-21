@@ -41,13 +41,16 @@ Implemented:
 - PDF document generation for waybill, POD, invoice, and customs documents.
 - Owner-scoped live tracking ingestion with single-point and batch GPS endpoints, Socket.io booking-room updates, offline driver telemetry queueing, and compressed sync.
 - PWA manifest, install icons, service worker caching, and offline fallback page.
+- User-controlled in-app, email, and SMS notification preferences with quiet hours.
+- MongoDB-backed notification delivery queue with atomic worker leases, retries, delivery history, and admin retry controls.
+- Scheduled document-expiry and stale-tracking alerts with cross-instance deduplication.
 - Dockerfile, docker-compose setup, Nginx config, Render config, and GitHub Actions checks.
 - Jest/Supertest backend tests, including security and authorization regressions.
 
 Still in progress before full business launch:
 
 - Production certification, live-account validation, refund/dispute handling, and owner payout execution for Stripe, M-Pesa, and MTN MoMo.
-- Event-level email/SMS notification delivery, user notification preferences, quiet hours, retries, and web push.
+- Web push delivery and provider delivery-receipt callbacks.
 - Production routing/geocoding integration for custom live markers, road polylines, route deviation, and ETA.
 - A complete dispute/support case workflow with assignment, SLA, escalation, resolution, and evidence history.
 - Receiver e-signature or OTP proof, richer evidence metadata, and a full chain-of-custody trail.
@@ -56,7 +59,7 @@ Still in progress before full business launch:
 - Production monitoring, analytics, alerting, backup/restore validation, and incident response.
 - Browser end-to-end tests, MongoDB/Redis integration tests, and higher backend branch coverage.
 
-The latest engineering audit, including an explanation of why `60.95%` is a test-coverage figure rather than a
+The latest engineering audit, including an explanation of why `62.27%` is a test-coverage figure rather than a
 product-completion score, is in `docs/ENGINEERING_AUDIT_2026-06-21.md`.
 
 ## Tech Stack
@@ -454,6 +457,10 @@ SMTP_SECURE=false
 Email delivery auto-selects Resend, SendGrid, or SMTP from the configured credentials. Set `EMAIL_PROVIDER`
 to `resend`, `sendgrid`, or `smtp` to choose explicitly. `EMAIL_PROVIDER_MODULE` remains available for a custom
 provider that exports `send(message)`.
+
+The API process also runs the notification delivery worker and operational reminder scans. Tune them with
+`NOTIFICATION_WORKER_INTERVAL_MS`, `NOTIFICATION_WORKER_BATCH_SIZE`, `OPERATIONS_SCAN_INTERVAL_MS`, and
+`TRACKING_STALE_MINUTES`. Set `DISABLE_BACKGROUND_JOBS=true` only when another process owns those jobs.
 
 Frontend workspace variables:
 

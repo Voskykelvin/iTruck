@@ -59,3 +59,15 @@ services:
         sync: false
       - key: SMTP_URL
         sync: false
+      - key: NOTIFICATION_WORKER_INTERVAL_MS
+        value: "15000"
+      - key: NOTIFICATION_WORKER_BATCH_SIZE
+        value: "20"
+      - key: OPERATIONS_SCAN_INTERVAL_MS
+        value: "900000"
+      - key: TRACKING_STALE_MINUTES
+        value: "45"
+      - key: EMAIL_TIMEOUT_MS
+        value: "15000"
+      - key: SMS_TIMEOUT_MS
+        value: "15000"

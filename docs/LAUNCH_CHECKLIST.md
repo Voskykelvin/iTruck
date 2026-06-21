@@ -72,6 +72,8 @@
 - [ ] In-app notifications show and realtime events arrive
 - [ ] Email/SMS booking events respect preferences and quiet hours
 - [ ] Notification provider failures are retried and visible to operators
+- [ ] Admin can retry a failed delivery and send a role/country-targeted broadcast
+- [ ] Document-expiry and stale-tracking scans create one deduplicated alert per threshold
 - [ ] Admin dashboard loads
 - [ ] Issue reports can be assigned, investigated, escalated, resolved, and reopened
 - [ ] Receiver acceptance captures an e-signature or OTP plus evidence metadata
@@ -101,10 +103,10 @@ execution.
 - [ ] Certify Stripe payment and webhook flows with a live account
 - [ ] Certify M-Pesa and MTN MoMo collection/callback flows
 - [ ] Implement and certify owner payouts, refunds, and disputes
-- [ ] Wire booking events to Africa's Talking SMS and certify delivery
-- [ ] Wire booking events to Resend, SendGrid, or SMTP email and certify delivery
+- [ ] Certify Africa's Talking SMS delivery from live booking events
+- [ ] Certify Resend, SendGrid, or SMTP delivery from live booking events
 - [ ] Add routing/geocoding, live markers, road polylines, ETA, and deviation alerts
-- [ ] Add user notification preferences, quiet hours, retries, and web push
+- [ ] Add web push and provider delivery-receipt callbacks
 - [ ] WhatsApp/SMS-assisted driver workflow
 - [ ] Dedicated driver accounts, vehicle assignment, and job-scoped permissions
 - [ ] Full support/dispute case lifecycle with SLA and resolution history

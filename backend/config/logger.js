@@ -46,7 +46,9 @@ const logger = pino({
       'MOMO_WEBHOOK_SECRET',
       'AFRICASTALKING_API_KEY',
       'SENDGRID_API_KEY',
-      'RESEND_API_KEY'
+      'RESEND_API_KEY',
+      'SMTP_URL',
+      'SMTP_PASS'
     ],
     censor: '[redacted]'
   }

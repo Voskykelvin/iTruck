@@ -20,6 +20,11 @@ function normalizePhoneNumber(value, defaultCountryCode = process.env.SMS_DEFAUL
   return raw;
 }
 
+function smsTimeoutMs() {
+  const configured = Number(process.env.SMS_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 15_000;
+}
+
 class AfricasTalkingSmsProvider {
   constructor(options = {}) {
     this.apiKey = options.apiKey || process.env.AFRICASTALKING_API_KEY;
@@ -52,6 +57,7 @@ class AfricasTalkingSmsProvider {
 
     const response = await fetch(`${this.baseUrl}/version1/messaging`, {
       method: 'POST',
+      signal: AbortSignal.timeout(smsTimeoutMs()),
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/x-www-form-urlencoded',

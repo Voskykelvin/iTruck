@@ -6,6 +6,8 @@ const Transaction = require('../models/Transaction');
 const AuditLog = require('../models/AuditLog');
 const Document = require('../models/Document');
 const RefreshToken = require('../models/RefreshToken');
+const NotificationDelivery = require('../models/NotificationDelivery');
+const Notification = require('../models/Notification');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
@@ -14,6 +16,8 @@ const notifications = require('../services/notifications');
 const {
   documentReviewSchema,
   notifySchema,
+  notificationDeliveryListSchema,
+  notificationDeliveryRetrySchema,
   truckVerificationSchema,
   userDeletionSchema,
   userStatusSchema,
@@ -180,6 +184,55 @@ router.get('/audit-logs', async (req, res, next) => {
   }
 });
 
+router.get('/notification-deliveries', notificationDeliveryListSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.json({ deliveries: [], mode: 'memory' });
+
+    const filter = req.query.status ? { status: req.query.status } : {};
+    const deliveries = await NotificationDelivery.find(filter)
+      .populate('user', 'firstName lastName email phone role')
+      .populate('notification', 'type category title message priority')
+      .sort('-createdAt')
+      .limit(req.query.limit || 100);
+    res.json({ deliveries });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/notification-deliveries/:id/retry', notificationDeliveryRetrySchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.status(404).json({ message: 'Delivery not found', mode: 'memory' });
+
+    const delivery = await NotificationDelivery.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          status: 'retry',
+          attempts: 0,
+          nextAttemptAt: new Date()
+        },
+        $unset: {
+          failedAt: 1,
+          leaseUntil: 1,
+          lastError: 1
+        }
+      },
+      { new: true, runValidators: true }
+    );
+    if (!delivery) return res.status(404).json({ message: 'Delivery not found' });
+    await recordAudit(req, 'notification.delivery.retried', 'notification', delivery.notification, {
+      delivery: delivery._id,
+      channel: delivery.channel
+    });
+    res.json({ delivery });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch('/users/:id/status', userStatusSchema, validate, async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
@@ -259,7 +312,7 @@ router.delete('/users/:id', userDeletionSchema, validate, async (req, res, next)
       });
     }
 
-    const [documentResult, truckResult, tokenResult] = await Promise.all([
+    const [documentResult, truckResult, tokenResult, notificationResult, deliveryResult] = await Promise.all([
       Document.deleteMany({
         $or: [
           { targetType: 'user', target: user._id },
@@ -267,7 +320,9 @@ router.delete('/users/:id', userDeletionSchema, validate, async (req, res, next)
         ]
       }),
       Truck.deleteMany({ owner: user._id }),
-      RefreshToken.deleteMany({ user: user._id })
+      RefreshToken.deleteMany({ user: user._id }),
+      Notification.deleteMany({ user: user._id }),
+      NotificationDelivery.deleteMany({ user: user._id })
     ]);
 
     await User.deleteOne({ _id: user._id });
@@ -278,7 +333,9 @@ router.delete('/users/:id', userDeletionSchema, validate, async (req, res, next)
       role: user.role,
       removedTrucks: truckResult.deletedCount || 0,
       removedDocuments: documentResult.deletedCount || 0,
-      removedSessions: tokenResult.deletedCount || 0
+      removedSessions: tokenResult.deletedCount || 0,
+      removedNotifications: notificationResult.deletedCount || 0,
+      removedDeliveries: deliveryResult.deletedCount || 0
     });
 
     res.json({
@@ -287,7 +344,9 @@ router.delete('/users/:id', userDeletionSchema, validate, async (req, res, next)
         users: 1,
         trucks: truckResult.deletedCount || 0,
         documents: documentResult.deletedCount || 0,
-        sessions: tokenResult.deletedCount || 0
+        sessions: tokenResult.deletedCount || 0,
+        notifications: notificationResult.deletedCount || 0,
+        notificationDeliveries: deliveryResult.deletedCount || 0
       }
     });
   } catch (err) {
@@ -323,7 +382,8 @@ router.patch('/users/:id/verification', userVerificationSchema, validate, async 
     if (io?.emitToUser) {
       io.emitToUser(user._id, 'profile:verified', {
         title: user.isVerified ? 'Profile verified' : 'Profile held for review',
-        isVerified: user.isVerified
+        isVerified: user.isVerified,
+        silent: true
       });
     }
 
@@ -368,7 +428,8 @@ router.patch('/trucks/:id/verification', truckVerificationSchema, validate, asyn
         title: truck.isVerified ? 'Vehicle verified' : 'Vehicle held for review',
         truckId: truck._id,
         plateNumber: truck.plateNumber,
-        isVerified: truck.isVerified
+        isVerified: truck.isVerified,
+        silent: true
       });
     }
 
@@ -419,7 +480,8 @@ router.patch('/users/:id/documents/:documentType', documentReviewSchema, validat
         message: `Your ${labelFromType(documentType)} document was marked ${req.body.status}.`,
         link: '/app/profile',
         documentType,
-        status: req.body.status
+        status: req.body.status,
+        silent: true
       },
       io
     );
@@ -480,7 +542,8 @@ router.patch('/trucks/:id/documents/:documentType', documentReviewSchema, valida
         link: '/app/vehicles',
         documentType,
         status: req.body.status,
-        truckId: truck._id
+        truckId: truck._id,
+        silent: true
       },
       io
     );
@@ -571,8 +634,40 @@ router.patch('/bookings/:id/documents/:documentType', documentReviewSchema, vali
 
 router.post('/notify', notifySchema, validate, async (req, res, next) => {
   try {
-    await recordAudit(req, 'notification.broadcast.queued', 'notification', 'broadcast', { payload: req.body });
-    res.json({ message: 'Broadcast queued', payload: req.body });
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) {
+      return res.json({
+        message: 'Broadcast accepted in demo mode',
+        summary: { targeted: 1, created: 1 },
+        mode: 'memory'
+      });
+    }
+
+    const filter = { isActive: { $ne: false } };
+    if (req.body.userIds?.length) filter._id = { $in: req.body.userIds };
+    else if (req.body.roles?.length) filter.role = { $in: req.body.roles };
+    else filter._id = req.user._id;
+    if (req.body.country) filter.country = req.body.country;
+
+    const users = await User.find(filter)
+      .select('firstName lastName email phone countryCode role isActive notificationPreferences')
+      .limit(1000);
+    const summary = await notifications.broadcast({
+      users,
+      data: {
+        title: req.body.title,
+        message: req.body.message,
+        priority: req.body.priority || 'normal',
+        category: req.body.category || 'system',
+        link: req.body.link || '/app'
+      },
+      io: req.app.get('io')
+    });
+    await recordAudit(req, 'notification.broadcast.queued', 'notification', 'broadcast', {
+      payload: req.body,
+      summary
+    });
+    res.status(202).json({ message: 'Broadcast queued', summary });
   } catch (err) {
     next(err);
   }

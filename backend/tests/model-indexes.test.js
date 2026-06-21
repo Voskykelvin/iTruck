@@ -10,6 +10,9 @@ const Truck = require('../models/Truck');
 const User = require('../models/User');
 const Idempotency = require('../models/Idempotency');
 const Document = require('../models/Document');
+const Notification = require('../models/Notification');
+const NotificationDelivery = require('../models/NotificationDelivery');
+const WorkerLease = require('../models/WorkerLease');
 
 function hasIndex(Model, keys, options = {}) {
   return Model.schema
@@ -100,6 +103,16 @@ test('document records index every upload and generated booking document', () =>
   expect(hasIndex(Document, { booking: 1, type: 1 })).toBe(true);
   expect(hasIndex(Document, { truck: 1, type: 1 })).toBe(true);
   expect(hasIndex(Document, { source: 1, updatedAt: -1 })).toBe(true);
+});
+
+test('notification delivery indexes support dedupe, leasing, and retention', () => {
+  expect(hasIndex(Notification, { user: 1, dedupeKey: 1 }, { unique: true, sparse: true })).toBe(true);
+  expect(hasIndex(NotificationDelivery, { notification: 1, channel: 1 }, { unique: true })).toBe(true);
+  expect(hasIndex(NotificationDelivery, { status: 1, nextAttemptAt: 1, leaseUntil: 1 })).toBe(true);
+  expect(hasIndex(NotificationDelivery, { expiresAt: 1 }, { expireAfterSeconds: 0 })).toBe(true);
+  expect(hasIndex(WorkerLease, { key: 1 }, { unique: true })).toBe(true);
+  expect(User.schema.path('notificationPreferences.channels.email')).toBeDefined();
+  expect(User.schema.path('notificationPreferences.quietHours.timezone')).toBeDefined();
 });
 
 test('document records accept all normalized site document slugs', () => {

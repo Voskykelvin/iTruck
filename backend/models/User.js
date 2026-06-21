@@ -11,6 +11,33 @@ const userDocumentSchema = new mongoose.Schema({
   reviewedAt: Date
 });
 
+const notificationPreferencesSchema = new mongoose.Schema(
+  {
+    channels: {
+      inApp: { type: Boolean, default: true },
+      email: { type: Boolean, default: false },
+      sms: { type: Boolean, default: false }
+    },
+    categories: {
+      bookings: { type: Boolean, default: true },
+      tracking: { type: Boolean, default: true },
+      documents: { type: Boolean, default: true },
+      payments: { type: Boolean, default: true },
+      security: { type: Boolean, default: true },
+      marketing: { type: Boolean, default: false },
+      system: { type: Boolean, default: true }
+    },
+    quietHours: {
+      enabled: { type: Boolean, default: false },
+      start: { type: String, default: '21:00', match: /^([01]\d|2[0-3]):[0-5]\d$/ },
+      end: { type: String, default: '07:00', match: /^([01]\d|2[0-3]):[0-5]\d$/ },
+      timezone: { type: String, default: 'Africa/Nairobi', maxlength: 80 },
+      allowHighPriority: { type: Boolean, default: true }
+    }
+  },
+  { _id: false }
+);
+
 const userSchema = new mongoose.Schema(
   {
     firstName: { type: String, required: true, trim: true },
@@ -30,6 +57,7 @@ const userSchema = new mongoose.Schema(
     ratingCount: { type: Number, default: 0, min: 0 },
     totalTrips: { type: Number, default: 0 },
     documents: [userDocumentSchema],
+    notificationPreferences: { type: notificationPreferencesSchema, default: () => ({}) },
     pushSubscription: Object,
     lastLogin: Date,
     passwordResetToken: { type: String, select: false },
