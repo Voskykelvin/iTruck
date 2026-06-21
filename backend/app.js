@@ -128,6 +128,7 @@ app.use('/api', apiLimiter);
 app.use('/api/auth', authLimiter, require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/trucks', require('./routes/trucks'));
+app.use('/api/bookings', require('./routes/deliveryProof'));
 app.use('/api/bookings', require('./routes/bookings'));
 app.use('/api/payments', require('./routes/payments'));
 app.use('/api/documents', require('./routes/documents'));

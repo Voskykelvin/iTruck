@@ -29,6 +29,10 @@ jest.mock('../models/Idempotency', () => ({
   findOneAndUpdate: jest.fn()
 }));
 
+jest.mock('../services/deliveryProof', () => ({
+  assertDeliveryProofIntegrity: jest.fn(async () => ({ chain: { valid: true } }))
+}));
+
 const Wallet = require('../models/Wallet');
 const Transaction = require('../models/Transaction');
 const Booking = require('../models/Booking');
@@ -225,7 +229,7 @@ test('wallet payment release requires approved delivery proof', async () => {
 
   const wallet = new WalletService();
   await expect(wallet.releaseBookingPayment('booking-1', 'admin-1')).rejects.toThrow(
-    'Approve proof of delivery or receiver confirmation before releasing payment'
+    'Receiver-grade delivery proof is required before releasing payment'
   );
 
   expect(Booking.findOneAndUpdate).not.toHaveBeenCalled();
@@ -240,7 +244,14 @@ test('wallet payment release credits owner after approved delivery proof', async
     status: 'delivered',
     paymentStatus: 'escrowed',
     paymentAmount: 1260,
-    documents: [{ type: 'receiver-confirmation', status: 'approved', url: 'https://example.com/receiver.pdf' }]
+    documents: [{ type: 'receiver-confirmation', status: 'approved', url: 'https://example.com/receiver.pdf' }],
+    deliveryProof: {
+      proof: 'proof-1',
+      recordHash: 'a'.repeat(64),
+      verificationMethod: 'sms_otp',
+      verifiedAt: new Date(),
+      photoCount: 1
+    }
   };
   const reserved = {
     ...booking,

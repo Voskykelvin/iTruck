@@ -7,6 +7,7 @@ const Booking = require('../models/Booking');
 const Idempotency = require('../models/Idempotency');
 const logger = require('../config/logger');
 const { assertDeliveryProofForPaymentRelease } = require('./operationsPolicy');
+const { assertDeliveryProofIntegrity } = require('./deliveryProof');
 
 const IDEMPOTENCY_TTL_MINUTES = 60;
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_.:-]+$/;
@@ -941,6 +942,7 @@ class WalletService {
     }
 
     assertDeliveryProofForPaymentRelease(booking);
+    await assertDeliveryProofIntegrity(booking);
 
     if (!booking.owner) {
       throw appError('Booking has no assigned owner', 409);

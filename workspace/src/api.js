@@ -179,6 +179,22 @@ async function uploadCargoFiles(files) {
   return request('/upload/cargo', { method: 'POST', body: filesBody('files', files) });
 }
 
+async function uploadDeliveryProofPhotos(bookingId, files, metadata) {
+  const list = Array.from(files || []);
+  if (!list.length) throw new Error('At least one delivery photo is required');
+  list.forEach((file) => assertUploadFile(file, imageUploadTypes, 'Delivery photo'));
+
+  const body = filesBody('files', list);
+  body.set('capturedAt', metadata.capturedAt);
+  body.set('lat', metadata.lat);
+  body.set('lng', metadata.lng);
+  if (metadata.accuracy !== undefined && metadata.accuracy !== null) body.set('accuracy', metadata.accuracy);
+  return request(`/bookings/${encodeURIComponent(bookingId)}/delivery-proof/assets`, {
+    method: 'POST',
+    body
+  });
+}
+
 async function uploadDocument(path, documentType, file) {
   return uploadDocuments(path, documentType, [file]);
 }
@@ -223,6 +239,15 @@ export const api = {
     request(`/bookings/${encodeURIComponent(bookingId)}/confirm-delivery`, {
       method: 'PATCH',
       ...(Object.keys(payload || {}).length ? { body: JSON.stringify(payload) } : {})
+    }),
+  getDeliveryProof: (bookingId) => request(`/bookings/${encodeURIComponent(bookingId)}/delivery-proof`),
+  requestDeliveryOtp: (bookingId) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/delivery-proof/otp`, { method: 'POST' }),
+  uploadDeliveryProofPhotos,
+  finalizeDeliveryProof: (bookingId, payload) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/delivery-proof/finalize`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
     }),
   sendTrackingUpdate: (bookingId, payload) =>
     request(`/bookings/${encodeURIComponent(bookingId)}/tracking`, {

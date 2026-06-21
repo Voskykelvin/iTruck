@@ -2,6 +2,7 @@ const {
   assertDeliveryProofForDelivery,
   assertDeliveryProofForPaymentRelease,
   assertDeliveryGeofence,
+  assertReceiverGradeDeliveryProof,
   assertOwnerCanBid,
   geoDistanceMeters,
   missingApprovedDocuments
@@ -52,17 +53,29 @@ test('approved verification status without document evidence is still incomplete
   expect(missingApprovedDocuments([{ type: 'insurance', status: 'approved' }], ['insurance'])).toEqual(['insurance']);
 });
 
-test('delivery proof policy allows pending proof for delivery but approved proof for release', () => {
+test('delivery proof policy allows legacy trip closeout but requires receiver-grade proof for release', () => {
   const booking = {
     documents: [{ type: 'pod', status: 'pending', url: 'https://example.com/pod.pdf' }]
   };
 
   expect(() => assertDeliveryProofForDelivery(booking)).not.toThrow();
   expect(() => assertDeliveryProofForPaymentRelease(booking)).toThrow(
-    'Approve proof of delivery or receiver confirmation before releasing payment'
+    'Receiver-grade delivery proof is required before releasing payment'
   );
 
   booking.documents[0].status = 'approved';
+  expect(() => assertDeliveryProofForPaymentRelease(booking)).toThrow(
+    'Receiver-grade delivery proof is required before releasing payment'
+  );
+
+  booking.deliveryProof = {
+    proof: 'proof-1',
+    recordHash: 'a'.repeat(64),
+    verificationMethod: 'sms_otp',
+    verifiedAt: new Date(),
+    photoCount: 2
+  };
+  expect(() => assertReceiverGradeDeliveryProof(booking)).not.toThrow();
   expect(() => assertDeliveryProofForPaymentRelease(booking)).not.toThrow();
 });
 

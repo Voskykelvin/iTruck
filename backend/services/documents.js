@@ -76,36 +76,40 @@ function createWaybill(booking) {
 }
 
 function createPOD(booking) {
+  const proof = booking.deliveryProof || {};
   return createDocument('Proof of Delivery', booking, [
     {
       heading: 'Delivery Confirmation',
       items: [
-        ['Delivered to', booking.receiver || 'Receiving officer'],
-        ['Delivery time', booking.deliveredAt || new Date().toISOString()],
+        ['Delivered to', proof.receiverName || booking.receiverName || booking.receiver || 'Receiving officer'],
+        ['Delivery time', booking.deliveredAt || proof.verifiedAt || new Date().toISOString()],
         ['Condition', booking.condition || 'Received in good condition'],
-        ['Confirmed by', booking.confirmedBy || 'Client representative']
+        ['Receiver verified', proof.verifiedAt || 'Verification pending']
       ]
     },
     {
       heading: 'Evidence',
       items: [
         ['GPS trail', 'Available in tracking history'],
-        ['Photos', 'Cargo photos attached in shipment record'],
-        ['Signature', 'Digital confirmation recorded']
+        ['Hashed delivery photos', String(proof.photoCount || 0)],
+        ['Signature', proof.verificationMethod === 'sms_otp' ? 'Electronic signature + receiver OTP' : 'Pending'],
+        ['Proof hash', proof.recordHash || 'Pending'],
+        ['Custody-chain head', proof.chainHeadHash || 'Pending']
       ]
     }
   ]);
 }
 
 function createReceiverConfirmation(booking) {
+  const proof = booking.deliveryProof || {};
   return createDocument('Receiver Confirmation', booking, [
     {
       heading: 'Receiver',
       items: [
-        ['Receiver name', booking.receiverName || booking.receiver || 'Receiving officer'],
-        ['Receiver phone', booking.receiverPhone || 'Not provided'],
+        ['Receiver name', proof.receiverName || booking.receiverName || booking.receiver || 'Receiving officer'],
+        ['Receiver phone', proof.receiverPhoneLast4 ? `Ending ${proof.receiverPhoneLast4}` : 'Not verified'],
         ['Destination', booking.destination || 'Delivery destination'],
-        ['Expected handover', booking.pickupWindow || booking.deliveredAt || 'To be confirmed']
+        ['Verified at', proof.verifiedAt || booking.deliveredAt || 'To be confirmed']
       ]
     },
     {
@@ -113,8 +117,11 @@ function createReceiverConfirmation(booking) {
       items: [
         ['Cargo', booking.cargo || 'General cargo'],
         ['Condition', booking.condition || 'To be confirmed at delivery'],
-        ['Confirmation method', booking.communicationPreference || 'Digital confirmation'],
-        ['Signature', 'Pending receiver signature']
+        ['Confirmation method', proof.verificationMethod === 'sms_otp' ? 'SMS OTP' : 'Pending'],
+        ['Signature', proof.verifiedAt ? 'Electronic signature recorded' : 'Pending receiver signature'],
+        ['Hashed photos', String(proof.photoCount || 0)],
+        ['Proof hash', proof.recordHash || 'Pending'],
+        ['Custody-chain head', proof.chainHeadHash || 'Pending']
       ]
     }
   ]);
