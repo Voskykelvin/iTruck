@@ -146,4 +146,6 @@ These services are deployment-ready structurally but not yet business-live:
 - SMS/OTP currently uses simple generated OTP helpers.
 - Payment providers include wallet behavior, payment-release gates, Stripe verification, and M-Pesa/MTN initiation plus reconciliation. Real credentials, provider certification, callback delivery monitoring, refunds/disputes, and payout execution still need live validation before money movement.
 - LTL currently has booking, estimate, and cluster foundations; full dispatch allocation and multi-stop sequencing still need product workflows.
-- Tracking currently has production ingestion, owner workspace capture, offline queueing, and realtime booking events. Google Maps JavaScript markers, route polylines, and ETA calculation remain the next map upgrade.
+- Tracking currently has production ingestion, owner workspace capture, offline queueing, and realtime booking events.
+  A routing/geocoding integration is still needed for road polylines, calculated ETA, route deviation, and live map
+  markers; the current route view is an embed rather than a routing engine.

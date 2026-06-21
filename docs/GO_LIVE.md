@@ -9,10 +9,13 @@
 - Production safeguards now enforce verified owner/truck bidding, delivery-proof-gated completion, approved-proof payment release, and payment-release audit logs.
 - LTL booking fields, shared-capacity estimates, and protected marketplace route clustering are available for controlled SME pilots.
 - Live tracking now supports owner-scoped single/batch GPS ingestion, offline queueing in the workspace, compressed sync, and booking-room realtime updates for the selected shipment.
-- Finish deeper dashboard actions against real API data, including counteroffers, rejection reasons, dispute queues, route preferences, and expanded document review.
-- Add production Google Maps integration with a Google Cloud API key.
-- Expand shipment proof of delivery into receiver e-signature, cargo-photo evidence trails, and dispute review.
-- Add client/owner notification preferences.
+- Finish deeper dashboard actions against real API data, including counteroffers, bid expiry/withdrawal, rejection reasons, and carrier acknowledgement.
+- Add production routing/geocoding for road polylines, ETA, route deviation, and live markers. The current map is an embed, not a live routing engine.
+- Expand shipment proof of delivery into receiver e-signature or OTP, immutable cargo-photo metadata, chain of custody, and dispute review.
+- Add client/owner notification preferences, quiet hours, email/SMS event routing, retries, and web push.
+- Add a complete admin dispute/support queue with ownership, SLA, escalation, comments, and resolution history.
+- Replace the placeholder auto-assignment result with verified-truck ranking and assignment.
+- Add a dedicated driver identity/session and driver-to-truck/job assignment flow.
 - Public and owner fleet listings exclude archived trucks; use the archive endpoint instead of hard-deleting vehicles.
 
 ## Infrastructure
@@ -40,8 +43,25 @@
 
 - Google Maps Embed API is enough for the first public route view.
 - Current live tracking displays the latest driver GPS point and syncs updates through backend booking rooms.
-- Google Maps JavaScript API is the next step for custom markers, route polylines, geocoding, and live vehicle updates.
+- A routing/geocoding API is still required for custom markers, road polylines, route deviation, and calculated ETA.
 - Store the API key server-side or inject it at build/deploy time.
+
+## Notifications
+
+- In-app notification persistence and Socket.IO delivery are implemented.
+- Resend, SendGrid, SMTP, and Africa's Talking provider adapters are implemented.
+- Password-reset email uses the configured email provider.
+- Remaining work is to route operational booking events through email/SMS based on user preferences, enforce quiet
+  hours, record provider delivery outcomes, retry transient failures, and implement web push.
+- The current admin broadcast route records a queued audit event but does not yet deliver a real multi-channel
+  broadcast.
+
+## Operations And Support
+
+- Issue reports can be submitted and stored against bookings.
+- Before public launch, add admin assignment, case status transitions, SLA timers, comments, escalation, resolution
+  evidence, and controlled disputed-booking outcomes.
+- Configure error monitoring, metrics, alerts, uptime checks, MongoDB backup/restore testing, and an incident runbook.
 
 ## Payments
 
