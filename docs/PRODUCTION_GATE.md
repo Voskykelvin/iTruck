@@ -100,4 +100,9 @@ These are not complete until verified against real services:
 - Render or hosting rollback path.
 - Cloudinary upload and document caching.
 - Stripe dashboard webhook delivery and retries.
+- Africa's Talking SMS delivery from real booking events.
+- Resend, SendGrid, or SMTP delivery from real booking events.
+- Routing/geocoding accuracy, ETA behavior, quota controls, and key restrictions.
+- Notification retry and delivery-failure visibility.
+- Support/dispute ownership, SLA, escalation, and resolution operations.
 - Error monitoring/alerting destination.

@@ -47,11 +47,17 @@ Implemented:
 Still in progress before full business launch:
 
 - Production certification, live-account validation, refund/dispute handling, and owner payout execution for Stripe, M-Pesa, and MTN MoMo.
-- Real SMS and email delivery providers.
-- Production Google Maps JavaScript integration for custom live route markers, route polylines, and ETA calculation.
-- Deeper admin workflows for bid awards, dispute handling, document review, and payment release.
-- Full audit logging for high-risk admin actions.
-- Production monitoring, analytics, and incident alerting.
+- Event-level email/SMS notification delivery, user notification preferences, quiet hours, retries, and web push.
+- Production routing/geocoding integration for custom live markers, road polylines, route deviation, and ETA.
+- A complete dispute/support case workflow with assignment, SLA, escalation, resolution, and evidence history.
+- Receiver e-signature or OTP proof, richer evidence metadata, and a full chain-of-custody trail.
+- Counteroffers, bid expiry/withdrawal/rejection reasons, automated matching, and full LTL dispatch allocation.
+- A dedicated driver role and driver-to-vehicle/job assignment workflow.
+- Production monitoring, analytics, alerting, backup/restore validation, and incident response.
+- Browser end-to-end tests, MongoDB/Redis integration tests, and higher backend branch coverage.
+
+The latest engineering audit, including an explanation of why `60.95%` is a test-coverage figure rather than a
+product-completion score, is in `docs/ENGINEERING_AUDIT_2026-06-21.md`.
 
 ## Tech Stack
 
@@ -59,7 +65,7 @@ Still in progress before full business launch:
 
 - Static landing/PWA assets in `frontend/`.
 - React 18 workspace in `workspace/`.
-- Vite 5 for workspace development and builds.
+- Vite 8 for workspace development and builds.
 - Lucide React icons.
 - CSS custom properties for theme tokens.
 - Progressive Web App assets through `manifest.json`, icons, and `sw.js`.

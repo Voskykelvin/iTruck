@@ -84,4 +84,5 @@ Date: 2026-05-25
 - Receiver e-signature, richer cargo photo evidence, and dispute evidence trails around proof of delivery.
 - Duplicate load/truck detection in marketplace results.
 - Low-data mode for maps and tracking: text milestones, SMS share links, map fallback, and driver-side WhatsApp/SMS update bridges.
-- Production maps upgrade: Google Maps JavaScript markers, route polylines, ETA, and optional geocoding once API keys and quota rules are ready.
+- Production maps upgrade: add routing/geocoding, live markers, road polylines, calculated ETA, and route-deviation
+  detection once API keys and quota rules are ready.
