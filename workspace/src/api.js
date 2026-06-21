@@ -274,6 +274,13 @@ export const api = {
     }),
   listMessages: (bookingId) => request(`/workflow/messages?booking=${encodeURIComponent(bookingId)}`),
   sendMessage: (payload) => request('/workflow/messages', { method: 'POST', body: JSON.stringify(payload) }),
+  listCases: (params = {}) => request(`/cases${queryString(params)}`),
+  createCase: (payload) => request('/cases', { method: 'POST', body: JSON.stringify(payload) }),
+  caseDetails: (id) => request(`/cases/${encodeURIComponent(id)}`),
+  addCaseComment: (id, payload) =>
+    request(`/cases/${encodeURIComponent(id)}/comments`, { method: 'POST', body: JSON.stringify(payload) }),
+  reopenCase: (id, payload = {}) =>
+    request(`/cases/${encodeURIComponent(id)}/reopen`, { method: 'POST', body: JSON.stringify(payload) }),
   listNotifications: (options = 20) => {
     const limit = typeof options === 'object' ? options.limit : options;
     return request(`/notifications?limit=${encodeURIComponent(limit || 20)}`);
@@ -331,6 +338,32 @@ export const api = {
   adminListBookings: () => request('/admin/bookings'),
   adminListPayments: () => request('/admin/payments'),
   adminAuditLogs: () => request('/admin/audit-logs'),
+  adminCases: (params = {}) => request(`/admin/cases${queryString(params)}`),
+  adminAssignCase: (id, payload) =>
+    request(`/admin/cases/${encodeURIComponent(id)}/assign`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
+  adminUpdateCaseStatus: (id, payload) =>
+    request(`/admin/cases/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
+  adminAddCaseComment: (id, payload) =>
+    request(`/admin/cases/${encodeURIComponent(id)}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  adminResolveCase: (id, payload) =>
+    request(`/admin/cases/${encodeURIComponent(id)}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  adminReopenCase: (id, payload = {}) =>
+    request(`/admin/cases/${encodeURIComponent(id)}/reopen`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
   adminNotificationDeliveries: (status = '') =>
     request(`/admin/notification-deliveries${status ? `?status=${encodeURIComponent(status)}` : ''}`),
   adminRetryNotificationDelivery: (id) =>
@@ -372,7 +405,7 @@ export const api = {
     }),
   submitBookingBid: (bookingId, payload) =>
     request(`/bookings/${encodeURIComponent(bookingId)}/bids`, { method: 'POST', body: JSON.stringify(payload) }),
-  reportIssue: (payload) => request('/workflow/reports', { method: 'POST', body: JSON.stringify(payload) }),
+  reportIssue: (payload) => request('/cases', { method: 'POST', body: JSON.stringify(payload) }),
   login: (payload) =>
     request('/auth/login', { method: 'POST', body: JSON.stringify({ ...payload, deviceId: getDeviceId() }) }),
   requestPasswordReset: (payload) =>

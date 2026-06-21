@@ -61,7 +61,18 @@ const createReportSchema = [
     if (text.length > 2000) throw new Error('Report message is too long');
     return true;
   }),
-  body('severity').optional({ checkFalsy: true }).isIn(['low', 'normal', 'high']).withMessage('Severity is invalid'),
+  body('kind').optional({ checkFalsy: true }).isIn(['support', 'dispute']).withMessage('kind is invalid'),
+  body('severity')
+    .optional({ checkFalsy: true })
+    .isIn(['low', 'normal', 'high', 'critical'])
+    .withMessage('Severity is invalid'),
+  body('priority')
+    .optional({ checkFalsy: true })
+    .isIn(['low', 'normal', 'high', 'urgent'])
+    .withMessage('Priority is invalid'),
+  optionalString('title', 200),
+  optionalString('category', 80),
+  optionalString('issueType', 80),
   body('evidenceUrls')
     .optional({ checkFalsy: true })
     .isArray({ max: 5 })
@@ -69,10 +80,10 @@ const createReportSchema = [
     .bail()
     .custom((urls) => urls.every(isDocumentUrl))
     .withMessage('evidenceUrls must contain valid upload URLs'),
-  body('status')
+  body('evidenceFileNames')
     .optional({ checkFalsy: true })
-    .isIn(['submitted', 'reviewing', 'resolved', 'dismissed'])
-    .withMessage('Status is invalid')
+    .isArray({ max: 5 })
+    .withMessage('evidenceFileNames must contain at most 5 items')
 ];
 
 const listRecordsSchema = [

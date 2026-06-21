@@ -8,6 +8,7 @@ const Document = require('../models/Document');
 const RefreshToken = require('../models/RefreshToken');
 const NotificationDelivery = require('../models/NotificationDelivery');
 const Notification = require('../models/Notification');
+const IssueReport = require('../models/IssueReport');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
@@ -309,6 +310,18 @@ router.delete('/users/:id', userDeletionSchema, validate, async (req, res, next)
       return res.status(409).json({
         message: `Resolve ${activeBookings} active booking${activeBookings === 1 ? '' : 's'} before deleting this profile`,
         activeBookings
+      });
+    }
+    const activeCases = await IssueReport.countDocuments({
+      status: {
+        $in: ['submitted', 'reviewing', 'open', 'triaged', 'in_progress', 'waiting_on_user', 'waiting_on_carrier']
+      },
+      $or: [{ user: user._id }, { participants: user._id }, { assignedTo: user._id }]
+    });
+    if (activeCases > 0) {
+      return res.status(409).json({
+        message: `Resolve or reassign ${activeCases} active support case${activeCases === 1 ? '' : 's'} before deleting this profile`,
+        activeCases
       });
     }
 

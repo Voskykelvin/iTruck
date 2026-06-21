@@ -89,6 +89,11 @@ Then verify:
 - Repeating a payment, withdrawal, or release request with the same `Idempotency-Key` does not create duplicate ledger entries.
 - Documents generate only for users who can see the booking.
 - Notifications only mark current-user records as read.
+- Support cases expose internal comments only to admins.
+- Formal disputes hold the booking and only case resolution can resume, cancel, or confirm it.
+- Funded dispute cancellations require the `refund_required` outcome and remain `refund_pending` until provider
+  reconciliation completes.
+- SLA breach scans escalate once per breach type, and solved cases auto-close after the configured window.
 - Uploads reject unsupported or MIME-spoofed file types and store allowed files.
 - Local/demo upload URLs are not served in live mode.
 
@@ -105,5 +110,5 @@ These are not complete until verified against real services:
 - Routing/geocoding accuracy, ETA behavior, quota controls, and key restrictions.
 - Background worker activity on the deployed topology, including retry timing and one active operational-scan lease.
 - Provider delivery receipts and bounce/failure callbacks when those integrations are added.
-- Support/dispute ownership, SLA, escalation, and resolution operations.
+- Live support staffing, SLA target acceptance, escalation routing, and refund-required case reconciliation.
 - Error monitoring/alerting destination.

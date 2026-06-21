@@ -1,5 +1,6 @@
 const Document = require('../models/Document');
 const Booking = require('../models/Booking');
+const IssueReport = require('../models/IssueReport');
 const User = require('../models/User');
 const Truck = require('../models/Truck');
 const logger = require('../config/logger');
@@ -7,6 +8,15 @@ const notifications = require('./notifications');
 
 const ACTIVE_TRACKING_STATUSES = ['in_transit', 'delivery_pending'];
 const DAY_MS = 24 * 60 * 60 * 1000;
+const ACTIVE_CASE_STATUSES = [
+  'submitted',
+  'reviewing',
+  'open',
+  'triaged',
+  'in_progress',
+  'waiting_on_user',
+  'waiting_on_carrier'
+];
 
 function dayKey(date) {
   return date.toISOString().slice(0, 10);
@@ -151,15 +161,198 @@ async function notifyStaleTracking(now = new Date(), io) {
   return notified;
 }
 
+async function escalateBreachedCases(now = new Date(), io) {
+  const cases = await IssueReport.find({
+    status: { $in: ACTIVE_CASE_STATUSES },
+    slaPausedAt: { $exists: false },
+    $or: [
+      {
+        firstRespondedAt: { $exists: false },
+        firstResponseBreachedAt: { $exists: false },
+        firstResponseDueAt: { $lte: now }
+      },
+      {
+        resolutionBreachedAt: { $exists: false },
+        resolutionDueAt: { $lte: now }
+      }
+    ]
+  })
+    .select(
+      '_id caseNumber title message kind category priority status assignedTo firstRespondedAt firstResponseDueAt firstResponseBreachedAt resolutionDueAt resolutionBreachedAt escalationLevel timeline booking'
+    )
+    .limit(100);
+
+  if (!cases.length) return 0;
+  const admins = await User.find({ role: 'admin', isActive: { $ne: false } })
+    .select('firstName lastName email phone countryCode role isActive notificationPreferences')
+    .limit(100);
+  let escalated = 0;
+
+  for (const record of cases) {
+    try {
+      const firstResponseBreach =
+        !record.firstRespondedAt &&
+        !record.firstResponseBreachedAt &&
+        record.firstResponseDueAt &&
+        record.firstResponseDueAt <= now;
+      const resolutionBreach = !record.resolutionBreachedAt && record.resolutionDueAt && record.resolutionDueAt <= now;
+      if (!firstResponseBreach && !resolutionBreach) continue;
+
+      const breachTypes = [];
+      const update = {
+        lastEscalatedAt: now,
+        lastActivityAt: now,
+        escalationLevel: Math.min(Number(record.escalationLevel || 0) + 1, 5)
+      };
+      if (firstResponseBreach) {
+        update.firstResponseBreachedAt = now;
+        breachTypes.push('first-response');
+      }
+      if (resolutionBreach) {
+        update.resolutionBreachedAt = now;
+        breachTypes.push('resolution');
+      }
+      const breachFilter = [];
+      if (firstResponseBreach) {
+        breachFilter.push({
+          firstRespondedAt: { $exists: false },
+          firstResponseBreachedAt: { $exists: false },
+          firstResponseDueAt: { $lte: now }
+        });
+      }
+      if (resolutionBreach) {
+        breachFilter.push({
+          resolutionBreachedAt: { $exists: false },
+          resolutionDueAt: { $lte: now }
+        });
+      }
+      const result = await IssueReport.updateOne(
+        {
+          _id: record._id,
+          status: { $in: ACTIVE_CASE_STATUSES },
+          slaPausedAt: { $exists: false },
+          $or: breachFilter
+        },
+        {
+          $set: update,
+          $push: {
+            timeline: {
+              action: 'case.sla.breached',
+              visibility: 'internal',
+              note: `${breachTypes.join(' and ')} SLA breached`,
+              metadata: { breachTypes, escalationLevel: update.escalationLevel },
+              createdAt: now
+            }
+          }
+        }
+      );
+      if (!result.modifiedCount) continue;
+
+      const recipients = record.assignedTo
+        ? [record.assignedTo, ...admins.filter((admin) => String(admin._id) !== String(record.assignedTo))]
+        : admins;
+      await notifications.broadcast({
+        users: recipients,
+        type: 'case.sla-breached',
+        data: {
+          title: `${record.caseNumber || record._id} SLA breached`,
+          message: `${breachTypes.join(' and ')} target missed for ${record.title || record.message || 'support case'}.`,
+          link: '/app/admin',
+          priority: 'high',
+          caseId: record._id,
+          caseNumber: record.caseNumber,
+          bookingId: record.booking,
+          breachTypes,
+          escalationLevel: update.escalationLevel,
+          dedupeKey: `case-sla:${record._id}:${breachTypes.join('+')}`
+        },
+        io
+      });
+      escalated += 1;
+    } catch (err) {
+      logger.error({ err, caseId: record._id }, 'Case SLA escalation failed');
+    }
+  }
+
+  return escalated;
+}
+
+async function closeResolvedCases(now = new Date(), io) {
+  const configuredDays = Number(process.env.CASE_AUTO_CLOSE_DAYS);
+  const autoCloseDays = Number.isFinite(configuredDays) && configuredDays > 0 ? configuredDays : 7;
+  const cutoff = new Date(now.getTime() - autoCloseDays * DAY_MS);
+  const eligibleFilter = {
+    status: { $in: ['resolved', 'dismissed'] },
+    $or: [{ resolvedAt: { $lte: cutoff } }, { resolvedAt: { $exists: false }, updatedAt: { $lte: cutoff } }]
+  };
+  const cases = await IssueReport.find(eligibleFilter)
+    .select('_id caseNumber status participants booking timeline')
+    .limit(100);
+  let closed = 0;
+
+  for (const record of cases) {
+    try {
+      const previous = record.status;
+      const result = await IssueReport.updateOne(
+        { _id: record._id, ...eligibleFilter },
+        {
+          $set: { status: 'closed', closedAt: now, lastActivityAt: now },
+          $push: {
+            timeline: {
+              action: 'case.auto-closed',
+              fromStatus: previous,
+              toStatus: 'closed',
+              visibility: 'participants',
+              note: `Automatically closed ${autoCloseDays} days after resolution`,
+              createdAt: now
+            }
+          }
+        }
+      );
+      if (!result.modifiedCount) continue;
+      await Promise.allSettled(
+        (record.participants || []).map((participant) =>
+          notifications.deliver(
+            participant,
+            'case.closed',
+            {
+              title: `${record.caseNumber || record._id} closed`,
+              message: 'This case was closed after the resolution period ended.',
+              link: '/app/tracking',
+              caseId: record._id,
+              caseNumber: record.caseNumber,
+              bookingId: record.booking,
+              dedupeKey: `case-closed:${record._id}`
+            },
+            io
+          )
+        )
+      );
+      closed += 1;
+    } catch (err) {
+      logger.error({ err, caseId: record._id }, 'Resolved case auto-close failed');
+    }
+  }
+  return closed;
+}
+
 async function runOperationalNotificationScan(options = {}) {
   const now = options.now || new Date();
   const io = options.io;
   const tasks = [
     ['expired', () => expireDocuments(now, io)],
     ['expiring', () => notifyExpiringDocuments(now, io)],
-    ['staleTracking', () => notifyStaleTracking(now, io)]
+    ['staleTracking', () => notifyStaleTracking(now, io)],
+    ['caseSlaBreaches', () => escalateBreachedCases(now, io)],
+    ['casesAutoClosed', () => closeResolvedCases(now, io)]
   ];
-  const summary = { expired: 0, expiring: 0, staleTracking: 0 };
+  const summary = {
+    expired: 0,
+    expiring: 0,
+    staleTracking: 0,
+    caseSlaBreaches: 0,
+    casesAutoClosed: 0
+  };
   for (const [key, task] of tasks) {
     try {
       summary[key] = await task();
@@ -172,6 +365,8 @@ async function runOperationalNotificationScan(options = {}) {
 }
 
 module.exports = {
+  closeResolvedCases,
+  escalateBreachedCases,
   expireDocuments,
   expiryWindow,
   notifyExpiringDocuments,

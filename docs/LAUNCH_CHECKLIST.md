@@ -75,7 +75,9 @@
 - [ ] Admin can retry a failed delivery and send a role/country-targeted broadcast
 - [ ] Document-expiry and stale-tracking scans create one deduplicated alert per threshold
 - [ ] Admin dashboard loads
-- [ ] Issue reports can be assigned, investigated, escalated, resolved, and reopened
+- [x] Issue reports can be assigned, investigated, escalated, resolved, and reopened
+- [ ] Validate case SLA targets, escalation recipients, and automatic closure with the live support team
+- [ ] Execute and reconcile provider refunds for cases marked `refund_required`
 - [ ] Receiver acceptance captures an e-signature or OTP plus evidence metadata
 - [ ] Route view calculates road ETA and route deviation from live GPS
 
@@ -109,7 +111,8 @@ execution.
 - [ ] Add web push and provider delivery-receipt callbacks
 - [ ] WhatsApp/SMS-assisted driver workflow
 - [ ] Dedicated driver accounts, vehicle assignment, and job-scoped permissions
-- [ ] Full support/dispute case lifecycle with SLA and resolution history
+- [x] Full support/dispute case lifecycle with SLA and resolution history
+- [ ] Business-hours and holiday-aware SLA calendars if contractual support hours require them
 - [ ] Receiver e-signature or OTP and immutable evidence metadata
 - [ ] Counteroffers, bid withdrawal/expiry, rejection reasons, and carrier acknowledgement
 - [ ] Replace placeholder auto-assignment with verified-truck ranking and assignment

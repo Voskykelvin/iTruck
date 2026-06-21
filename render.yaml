@@ -71,3 +71,23 @@ services:
         value: "15000"
       - key: SMS_TIMEOUT_MS
         value: "15000"
+      - key: CASE_SLA_FIRST_RESPONSE_MINUTES_LOW
+        value: "480"
+      - key: CASE_SLA_FIRST_RESPONSE_MINUTES_NORMAL
+        value: "240"
+      - key: CASE_SLA_FIRST_RESPONSE_MINUTES_HIGH
+        value: "60"
+      - key: CASE_SLA_FIRST_RESPONSE_MINUTES_URGENT
+        value: "30"
+      - key: CASE_SLA_RESOLUTION_MINUTES_LOW
+        value: "7200"
+      - key: CASE_SLA_RESOLUTION_MINUTES_NORMAL
+        value: "4320"
+      - key: CASE_SLA_RESOLUTION_MINUTES_HIGH
+        value: "1440"
+      - key: CASE_SLA_RESOLUTION_MINUTES_URGENT
+        value: "480"
+      - key: CASE_REOPEN_DAYS
+        value: "14"
+      - key: CASE_AUTO_CLOSE_DAYS
+        value: "7"

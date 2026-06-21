@@ -31,6 +31,24 @@ Date: 2026-05-25
 - Kept the existing single-write batch GPS design instead of adding a duplicate tracking collection. Incoming batches are now ordered by recorded time and atomically update both the bounded route history and a cached `lastKnownLocation`.
 - Kept the centralized Express error boundary and enriched it with structured validation details plus request method, IP, and request ID logging context.
 
+## Support And Dispute Case Batch - 2026-06-21
+
+- Evolved the existing issue-report collection into the canonical support/dispute case system instead of creating a
+  parallel ticket store.
+- Used Mongoose transactions for case/booking dispute mutations when the connected MongoDB topology supports them,
+  following the official transaction guidance for isolated multi-operation changes.
+- Modeled waiting-on-participant states as SLA pauses, with priority-based first-response and resolution targets,
+  breach escalation, and operator visibility. This follows Jira Service Management's start/pause/stop SLA pattern;
+  iTruck currently counts elapsed time rather than business calendars.
+- Kept resolved cases reopenable for a configurable period and made closed cases immutable. Automatic closure defaults
+  to seven days, consistent with common solved-to-closed support lifecycle patterns.
+- Formal disputes hold the booking. Resolution can resume, cancel, or confirm it; funded cancellations must use
+  `refund_required`, which records `refund_pending` until a payment provider confirms the real refund.
+- Sources reviewed: [Mongoose transactions](https://mongoosejs.com/docs/transactions.html),
+  [Atlassian SLA conditions](https://support.atlassian.com/jira-service-management-cloud/docs/set-up-sla-conditions/),
+  [Zendesk ticket lifecycle](https://support.zendesk.com/hc/en-us/articles/8263915942938-About-the-ticket-lifecycle-and-ticket-statuses),
+  and [Stripe disputes](https://docs.stripe.com/disputes).
+
 ## Research Inputs
 
 - Uber Freight app and shipper pages emphasize instant booking, upfront pricing, facility details, POD upload, real-time tracking, 24/7 support, carrier ratings, multi-stop shipment support, and one workspace for quote/book/track/pay.
@@ -80,7 +98,6 @@ Date: 2026-05-25
 - Bid comparison persistence: award bid, counteroffer, rejection reason, and carrier acceptance should become real API-backed workflows.
 - Full LTL dispatch and capacity allocation: pickup windows, truck capacity remaining, cargo compatibility, and multi-stop sequencing.
 - Facility and depot ratings: wait time, detention history, contact reliability, and loading constraints.
-- Support case tracking: status, owner, SLA timer, escalation trail, and issue categories tied to shipment IDs.
 - Receiver e-signature, richer cargo photo evidence, and dispute evidence trails around proof of delivery.
 - Duplicate load/truck detection in marketplace results.
 - Low-data mode for maps and tracking: text milestones, SMS share links, map fallback, and driver-side WhatsApp/SMS update bridges.

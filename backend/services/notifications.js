@@ -37,6 +37,8 @@ const CATEGORY_PREFIXES = [
   ['profile.', 'documents'],
   ['truck.', 'documents'],
   ['security.', 'security'],
+  ['support.', 'system'],
+  ['case.', 'system'],
   ['admin.broadcast', 'marketing']
 ];
 

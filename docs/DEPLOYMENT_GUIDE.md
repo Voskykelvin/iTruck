@@ -24,12 +24,12 @@ Before deploying, ensure all production secrets are configured:
 
 ### 2. Code Readiness
 
-- [ ] Backend tests passing: `npm.cmd --prefix backend test` - 145 tests pass
+- [ ] Backend tests passing: `npm.cmd --prefix backend test` - 165 tests pass
 - [ ] Code linting: `npm run lint` ✅ Passes
 - [ ] Build artifacts generated: `npm run app:build` ✅ In `frontend/app/`
 - [ ] No `DEMO_MODE` in production code
 
-Current backend verification: `npm.cmd --prefix backend test` passes with 145 tests.
+Current backend verification: `npm.cmd --prefix backend test` passes with 165 tests.
 
 ### 3. Database Setup
 

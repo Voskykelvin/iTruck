@@ -10,7 +10,16 @@ const STATUSES = [
   'cancelled',
   'disputed'
 ];
-const PAYMENT_STATUSES = ['unpaid', 'pending', 'escrowed', 'release_pending', 'released', 'failed', 'refunded'];
+const PAYMENT_STATUSES = [
+  'unpaid',
+  'pending',
+  'escrowed',
+  'release_pending',
+  'released',
+  'refund_pending',
+  'failed',
+  'refunded'
+];
 const LOAD_MODES = ['full-truck', 'ltl'];
 const STATUS_TRANSITIONS = {
   pending: ['bidding', 'cancelled', 'disputed'],
@@ -92,6 +101,11 @@ const bookingSchema = new mongoose.Schema(
     paidAt: Date,
     releasedAt: Date,
     deliveredAt: Date,
+    disputeStatusBefore: String,
+    disputedAt: Date,
+    disputeCase: { type: mongoose.Schema.Types.ObjectId, ref: 'IssueReport' },
+    disputeResolvedAt: Date,
+    disputeResolution: String,
     estimate: mongoose.Schema.Types.Mixed,
     quoteAcknowledged: { type: Boolean, default: false },
     status: {
@@ -172,6 +186,7 @@ bookingSchema.index({ owner: 1, status: 1, createdAt: -1 });
 bookingSchema.index({ status: 1, createdAt: -1 });
 bookingSchema.index({ status: 1, owner: 1, createdAt: -1 });
 bookingSchema.index({ paymentStatus: 1, updatedAt: -1 });
+bookingSchema.index({ disputeCase: 1 }, { sparse: true });
 bookingSchema.index({ paymentReference: 1 }, { sparse: true });
 bookingSchema.index({ truck: 1, createdAt: -1 });
 bookingSchema.index({ 'bids.owner': 1, createdAt: -1 });

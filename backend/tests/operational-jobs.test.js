@@ -4,15 +4,28 @@ jest.mock('../models/Document', () => ({
 jest.mock('../models/Booking', () => ({
   find: jest.fn()
 }));
+jest.mock('../models/IssueReport', () => ({
+  find: jest.fn(),
+  updateOne: jest.fn()
+}));
+jest.mock('../models/User', () => ({
+  find: jest.fn(),
+  updateOne: jest.fn()
+}));
 jest.mock('../services/notifications', () => ({
+  broadcast: jest.fn().mockResolvedValue({ targeted: 0, created: 0 }),
   deliver: jest.fn().mockResolvedValue({}),
   notifyBookingParties: jest.fn().mockResolvedValue([])
 }));
 
 const Document = require('../models/Document');
 const Booking = require('../models/Booking');
+const IssueReport = require('../models/IssueReport');
+const User = require('../models/User');
 const notifications = require('../services/notifications');
 const {
+  closeResolvedCases,
+  escalateBreachedCases,
   expireDocuments,
   expiryWindow,
   notifyExpiringDocuments,
@@ -30,6 +43,8 @@ function queryResult(items) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  User.find.mockReturnValue(queryResult([]));
+  IssueReport.updateOne.mockResolvedValue({ modifiedCount: 1 });
 });
 
 test('expiry windows provide 30, 7, and 1 day dedupe boundaries', () => {
@@ -131,4 +146,114 @@ test('operational scans continue after one recipient fails', async () => {
 
   await expect(notifyExpiringDocuments(now)).resolves.toBe(1);
   expect(notifications.deliver).toHaveBeenCalledTimes(2);
+});
+
+test('case SLA scans mark breaches once and notify operators', async () => {
+  const now = new Date('2026-06-21T12:00:00.000Z');
+  const record = {
+    _id: 'case-1',
+    caseNumber: 'ITC-260621-ABC123',
+    title: 'Cargo damage',
+    priority: 'high',
+    assignedTo: 'admin-1',
+    firstResponseDueAt: new Date('2026-06-21T10:00:00.000Z'),
+    resolutionDueAt: new Date('2026-06-21T11:00:00.000Z'),
+    escalationLevel: 0,
+    timeline: []
+  };
+  IssueReport.find.mockReturnValue(queryResult([record]));
+  User.find.mockReturnValue(
+    queryResult([
+      { _id: 'admin-1', role: 'admin' },
+      { _id: 'admin-2', role: 'admin' }
+    ])
+  );
+
+  await expect(escalateBreachedCases(now)).resolves.toBe(1);
+  expect(IssueReport.updateOne).toHaveBeenCalledWith(
+    expect.objectContaining({ _id: 'case-1', status: expect.any(Object) }),
+    expect.objectContaining({
+      $set: expect.objectContaining({
+        firstResponseBreachedAt: now,
+        resolutionBreachedAt: now,
+        escalationLevel: 1
+      }),
+      $push: {
+        timeline: expect.objectContaining({
+          action: 'case.sla.breached',
+          visibility: 'internal'
+        })
+      }
+    })
+  );
+  expect(notifications.broadcast).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: 'case.sla-breached',
+      data: expect.objectContaining({ dedupeKey: 'case-sla:case-1:first-response+resolution' })
+    })
+  );
+});
+
+test('case SLA scans skip notifications when the case changes before the atomic update', async () => {
+  const now = new Date('2026-06-21T12:00:00.000Z');
+  IssueReport.find.mockReturnValue(
+    queryResult([
+      {
+        _id: 'case-raced',
+        caseNumber: 'ITC-260621-RACED1',
+        title: 'Case resolved during scan',
+        firstResponseDueAt: new Date('2026-06-21T10:00:00.000Z'),
+        resolutionDueAt: new Date('2026-06-22T10:00:00.000Z'),
+        escalationLevel: 0
+      }
+    ])
+  );
+  IssueReport.updateOne.mockResolvedValue({ modifiedCount: 0 });
+
+  await expect(escalateBreachedCases(now)).resolves.toBe(0);
+  expect(notifications.broadcast).not.toHaveBeenCalled();
+});
+
+test('resolved cases auto-close after the configured resolution period', async () => {
+  const now = new Date('2026-06-21T12:00:00.000Z');
+  const record = {
+    _id: 'case-2',
+    caseNumber: 'ITC-260610-CLOSED',
+    status: 'resolved',
+    participants: ['user-1'],
+    timeline: []
+  };
+  IssueReport.find.mockReturnValue(queryResult([record]));
+
+  await expect(closeResolvedCases(now)).resolves.toBe(1);
+  expect(IssueReport.updateOne).toHaveBeenCalledWith(
+    expect.objectContaining({ _id: 'case-2', status: { $in: ['resolved', 'dismissed'] } }),
+    expect.objectContaining({
+      $set: expect.objectContaining({ status: 'closed', closedAt: now }),
+      $push: { timeline: expect.objectContaining({ action: 'case.auto-closed' }) }
+    })
+  );
+  expect(notifications.deliver).toHaveBeenCalledWith(
+    'user-1',
+    'case.closed',
+    expect.objectContaining({ dedupeKey: 'case-closed:case-2' }),
+    undefined
+  );
+});
+
+test('auto-close does not overwrite a case reopened during the scan', async () => {
+  IssueReport.find.mockReturnValue(
+    queryResult([
+      {
+        _id: 'case-reopened',
+        caseNumber: 'ITC-260610-REOPEN',
+        status: 'resolved',
+        participants: ['user-1']
+      }
+    ])
+  );
+  IssueReport.updateOne.mockResolvedValue({ modifiedCount: 0 });
+
+  await expect(closeResolvedCases(new Date('2026-06-21T12:00:00.000Z'))).resolves.toBe(0);
+  expect(notifications.deliver).not.toHaveBeenCalled();
 });

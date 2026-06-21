@@ -45,6 +45,10 @@ test('workflow model indexes match list and booking thread queries', () => {
   expect(hasIndex(BookingMessage, { booking: 1, createdAt: 1 })).toBe(true);
   expect(hasIndex(BookingMessage, { user: 1, booking: 1, createdAt: -1 })).toBe(true);
   expect(hasIndex(IssueReport, { user: 1, booking: 1, createdAt: -1 })).toBe(true);
+  expect(hasIndex(IssueReport, { caseNumber: 1 }, { unique: true, sparse: true })).toBe(true);
+  expect(hasIndex(IssueReport, { status: 1, priorityRank: -1, createdAt: -1 })).toBe(true);
+  expect(hasIndex(IssueReport, { assignedTo: 1, status: 1, resolutionDueAt: 1 })).toBe(true);
+  expect(hasIndex(IssueReport, { status: 1, firstResponseDueAt: 1, resolutionDueAt: 1 })).toBe(true);
 });
 
 test('booking indexes cover client owner status dashboards', () => {
@@ -61,6 +65,8 @@ test('booking indexes cover client owner status dashboards', () => {
   expect(Booking.schema.path('destinationCoordinates.lat')).toBeDefined();
   expect(Booking.schema.path('deliveryGeofenceMeters')).toBeDefined();
   expect(Booking.schema.path('lastKnownLocation.recordedAt')).toBeDefined();
+  expect(Booking.schema.path('disputeCase')).toBeDefined();
+  expect(Booking.schema.path('disputeStatusBefore')).toBeDefined();
   expect(
     new Booking({
       documents: [{ type: 'pod', status: 'approved', generatedAt: new Date() }]
@@ -182,6 +188,16 @@ test('new models enforce their required fields without a database connection', (
     new IssueReport({ user: oid(), severity: 'high', message: 'Delayed at border' }).validateSync()
   ).toBeUndefined();
   expect(
+    new IssueReport({
+      user: oid(),
+      caseNumber: 'ITC-260621-ABC123',
+      kind: 'dispute',
+      category: 'damage',
+      priority: 'urgent',
+      comments: [{ author: oid(), body: 'Evidence reviewed', visibility: 'internal' }]
+    }).validateSync()
+  ).toBeUndefined();
+  expect(
     new Document({
       user: oid(),
       target: oid(),
@@ -201,7 +217,7 @@ test('new models reject invalid enum values', () => {
   expect(
     new BookingMessage({ user: oid(), text: 'Hello', status: 'archived' }).validateSync().errors.status
   ).toBeDefined();
-  expect(new IssueReport({ user: oid(), severity: 'critical' }).validateSync().errors.severity).toBeDefined();
+  expect(new IssueReport({ user: oid(), severity: 'emergency' }).validateSync().errors.severity).toBeDefined();
   expect(
     new Document({
       user: oid(),
