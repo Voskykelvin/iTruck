@@ -433,11 +433,21 @@ MTN_MOMO_CALLBACK_URL=https://your-domain.example/api/payments/webhooks/mtn/requ
 MTN_MOMO_WEBHOOK_SECRET=
 AFRICASTALKING_USERNAME=
 AFRICASTALKING_API_KEY=
+EMAIL_PROVIDER=
+EMAIL_FROM=iTruck <no-reply@your-domain.example>
+RESEND_API_KEY=
+SENDGRID_API_KEY=
+SMTP_URL=
 SMTP_HOST=
 SMTP_PORT=
 SMTP_USER=
 SMTP_PASS=
+SMTP_SECURE=false
 ```
+
+Email delivery auto-selects Resend, SendGrid, or SMTP from the configured credentials. Set `EMAIL_PROVIDER`
+to `resend`, `sendgrid`, or `smtp` to choose explicitly. `EMAIL_PROVIDER_MODULE` remains available for a custom
+provider that exports `send(message)`.
 
 Frontend workspace variables:
 

@@ -55,7 +55,18 @@ function handleValidationError(err) {
   return new AppError(`Validation failed: ${errors.map((error) => error.message).join('. ')}`, 422, { errors });
 }
 
+function handleMulterError(err) {
+  const messages = {
+    LIMIT_FILE_SIZE: 'Uploaded file exceeds the 10 MB limit.',
+    LIMIT_FILE_COUNT: 'Too many files were uploaded.',
+    LIMIT_UNEXPECTED_FILE: 'Unexpected upload field or too many files.'
+  };
+  const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+  return new AppError(messages[err.code] || 'Invalid file upload.', status);
+}
+
 function normalizeError(err) {
+  if (err.name === 'MulterError') return handleMulterError(err);
   if (err.name === 'CastError') return handleCastError(err);
   if (err.code === 11000) return handleDuplicateKey(err);
   if (err.name === 'ValidationError') return handleValidationError(err);

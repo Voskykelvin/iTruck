@@ -34,14 +34,16 @@ export function useServiceWorkerUpdate() {
       })
       .catch(() => {});
 
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
+    const handleControllerChange = () => {
       if (refreshingRef.current) return;
       refreshingRef.current = true;
       window.location.reload();
-    });
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
 
     return () => {
       mounted = false;
+      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
     };
   }, []);
 

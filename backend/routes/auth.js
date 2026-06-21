@@ -146,6 +146,7 @@ async function sendAuthResponse(user, req, res, status = 200) {
 async function register(role, req, res, next) {
   try {
     if (requireDatabase(req, res)) return;
+    const { deviceId: _deviceId, ...userInput } = req.body;
     if (!mongoReady()) {
       if (!demoModeEnabled()) return res.status(503).json({ message: 'Demo registration disabled' });
       const exists = memoryUsers.find((user) => user.email === req.body.email);
@@ -153,7 +154,7 @@ async function register(role, req, res, next) {
 
       const user = {
         _id: `demo-${role}-${Date.now()}`,
-        ...req.body,
+        ...userInput,
         role,
         isVerified: false,
         walletBalance: 0
@@ -163,7 +164,7 @@ async function register(role, req, res, next) {
       return res.status(201).json({ token: signToken(user), user: safeUser(user), mode: 'memory' });
     }
 
-    const user = await User.create({ ...req.body, role });
+    const user = await User.create({ ...userInput, role });
     return sendAuthResponse(user, req, res, 201);
   } catch (err) {
     next(err);
@@ -257,10 +258,6 @@ router.post(
     return res.json({ message: 'Password updated. Sign in with your new password.' });
   })
 );
-
-router.get('/google/start', (_req, res) => {
-  res.status(501).json({ message: 'Google sign-in is not configured yet' });
-});
 
 router.post(
   '/refresh',

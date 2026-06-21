@@ -65,6 +65,7 @@ test('go-live check requires external provider integrations', () => {
   process.env.AFRICASTALKING_API_KEY = 'sms-key';
   process.env.AFRICASTALKING_USERNAME = 'itruck';
   process.env.RESEND_API_KEY = 'email-key';
+  process.env.EMAIL_FROM = 'iTruck <no-reply@itruck.example>';
   process.env.GOOGLE_MAPS_API_KEY = 'maps-key';
 
   expect(runtime.assertGoLiveIntegrations()).toBe(true);
@@ -96,6 +97,7 @@ test('go-live check requires callback authentication for mobile money providers'
   process.env.AFRICASTALKING_API_KEY = 'sms-key';
   process.env.AFRICASTALKING_USERNAME = 'itruck';
   process.env.RESEND_API_KEY = 'email-key';
+  process.env.EMAIL_FROM = 'iTruck <no-reply@itruck.example>';
   process.env.GOOGLE_MAPS_API_KEY = 'maps-key';
 
   expect(() => runtime.assertGoLiveIntegrations()).toThrow('callback authentication secret');

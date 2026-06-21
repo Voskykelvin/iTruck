@@ -9,7 +9,7 @@ const LOCAL_STORAGE_PREFIX = 'itruck_tracking_queue_';
 
 let dbPromise;
 
-export function distanceMeters(pos1, pos2) {
+function distanceMeters(pos1, pos2) {
   if (!pos1 || !pos2) return Infinity;
   const lat1 = Number(pos1.lat);
   const lng1 = Number(pos1.lng);
@@ -61,7 +61,7 @@ function headingDelta(a, b) {
   return delta > 180 ? 360 - delta : delta;
 }
 
-export function simplifyTrajectory(points = []) {
+function simplifyTrajectory(points = []) {
   const list = points
     .filter((point) => Number.isFinite(Number(point.lat)) && Number.isFinite(Number(point.lng)))
     .sort((a, b) => new Date(a.timestamp || a.queuedAt || 0) - new Date(b.timestamp || b.queuedAt || 0));
@@ -152,7 +152,7 @@ export async function queueTelemetryPoint(bookingId, point) {
   });
 }
 
-export async function readTelemetryQueue(bookingId) {
+async function readTelemetryQueue(bookingId) {
   const store = await storeRequest('readonly');
   if (!store) return readLocalQueue(bookingId);
   return new Promise((resolve, reject) => {
@@ -164,7 +164,7 @@ export async function readTelemetryQueue(bookingId) {
   });
 }
 
-export async function clearTelemetryQueue(bookingId) {
+async function clearTelemetryQueue(bookingId) {
   const store = await storeRequest('readwrite');
   if (!store) return writeLocalQueue(bookingId, []);
   return new Promise((resolve, reject) => {
