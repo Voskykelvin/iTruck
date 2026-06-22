@@ -4,7 +4,8 @@ const Booking = require('../models/Booking');
 const User = require('../models/User');
 const logger = require('../config/logger');
 const { mongoReady } = require('../config/runtime');
-const socketRoles = new Set(['admin', 'client', 'owner']);
+const { ACCESS_COOKIE } = require('../services/authCookies');
+const socketRoles = new Set(['admin', 'client', 'owner', 'driver']);
 
 function socketUserFromToken(token) {
   if (!token) throw new Error('Authentication required');
@@ -25,6 +26,7 @@ function bookingRoomQuery(user, bookingId) {
       $or: [{ owner: user._id }, { 'bids.owner': user._id }]
     };
   }
+  if (user.role === 'driver') return { _id: bookingId, driver: user._id };
   return null;
 }
 
@@ -52,7 +54,12 @@ function attachSocket(server) {
   function tokenFromHandshake(socket) {
     const header = socket.handshake.headers.authorization || '';
     if (header.startsWith('Bearer ')) return header.slice(7);
-    return socket.handshake.auth?.token || socket.handshake.query?.token || '';
+    const cookieHeader = socket.handshake.headers.cookie || '';
+    const cookieToken = cookieHeader
+      .split(';')
+      .map((part) => part.trim().split('='))
+      .find(([name]) => name === ACCESS_COOKIE)?.[1];
+    return socket.handshake.auth?.token || socket.handshake.query?.token || decodeURIComponent(cookieToken || '');
   }
 
   function validRoomId(id) {

@@ -16,6 +16,29 @@ jobs:
     name: Lint, test, and build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      RUN_INFRA_INTEGRATION: 'true'
+      CI_MONGODB_URI: mongodb://127.0.0.1:27017/itruck_ci
+      CI_REDIS_URL: redis://127.0.0.1:6379
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,3 +55,23 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high --prefix backend
       - run: npm audit --omit=dev --audit-level=high --prefix workspace
       - run: npm run ci:check
+
+  browser-e2e:
+    name: Chromium E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            workspace/package-lock.json
+      - run: npm ci --prefix backend
+      - run: npm ci --include=dev --prefix workspace
+      - run: npx playwright install --with-deps chromium
+        working-directory: workspace
+      - run: npm run test:e2e
+        working-directory: workspace

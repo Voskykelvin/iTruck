@@ -37,6 +37,8 @@ const {
 } = require('../validators/bookings');
 const { normalizeBookingDocumentType } = require('../utils/documentTypes');
 const maps = require('../services/maps');
+const { bookingQueryForUser, bookingVisibleTo, canManageBookingStatus } = require('../services/bookingAccess');
+const { recordAudit } = require('../services/audit');
 
 const router = express.Router();
 router.use(protect);
@@ -85,25 +87,8 @@ const memoryBookings = [
   }
 ];
 
-function bookingVisibleTo(user, booking) {
-  if (user.role === 'admin') return true;
-  if (user.role === 'client') return String(booking.client) === String(user._id);
-  if (user.role === 'owner') {
-    return (
-      String(booking.owner) === String(user._id) ||
-      (booking.bids || []).some((bid) => String(bid.owner) === String(user._id))
-    );
-  }
-  return false;
-}
-
 function bookingOpenForBids(booking) {
   return ['pending', 'bidding'].includes(booking.status) && !booking.owner;
-}
-
-function canManageBookingStatus(user, booking) {
-  if (user.role === 'admin') return true;
-  return user.role === 'owner' && String(booking.owner) === String(user._id);
 }
 
 function canAcceptBid(user, booking) {
@@ -381,16 +366,12 @@ router.get('/', listBookingsSchema, validate, async (req, res, next) => {
       });
     }
 
-    const q =
-      req.user.role === 'client'
-        ? { client: req.user._id }
-        : req.user.role === 'owner'
-          ? { $or: [{ owner: req.user._id }, { 'bids.owner': req.user._id }] }
-          : {};
+    const q = bookingQueryForUser(req.user);
 
     if (req.query.status) q.status = req.query.status;
     res.json({
       bookings: await Booking.find(q)
+        .populate('driver', 'firstName lastName email phone role')
         .populate('bids.owner', 'firstName lastName company rating ratingCount isVerified')
         .populate('bids.truck', 'type make model plateNumber capacityTonnes ratingAverage ratingCount isVerified')
         .sort('-createdAt')
@@ -439,7 +420,7 @@ router.get('/:id', bookingIdSchema, validate, async (req, res, next) => {
     }
 
     const booking = await Booking.findById(req.params.id)
-      .populate('truck owner client')
+      .populate('truck owner client driver')
       .populate('bids.owner', 'firstName lastName company rating ratingCount isVerified')
       .populate('bids.truck', 'type make model plateNumber capacityTonnes ratingAverage ratingCount isVerified');
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
@@ -851,15 +832,45 @@ router.post('/:id/ratings', bookingRatingSchema, validate, async (req, res, next
   }
 });
 
-router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, validate, async (req, res, next) => {
-  try {
-    if (requireDatabase(req, res)) return;
-    if (!req.body.status && !req.body.location) {
-      return res.status(400).json({ message: 'Status or location is required' });
-    }
+router.patch(
+  '/:id/status',
+  restrictTo('owner', 'driver', 'admin'),
+  updateStatusSchema,
+  validate,
+  async (req, res, next) => {
+    try {
+      if (requireDatabase(req, res)) return;
+      if (!req.body.status && !req.body.location) {
+        return res.status(400).json({ message: 'Status or location is required' });
+      }
 
-    if (!mongoReady()) {
-      const booking = memoryBookings.find((item) => item._id === req.params.id);
+      if (!mongoReady()) {
+        const booking = memoryBookings.find((item) => item._id === req.params.id);
+        if (!booking) return res.status(404).json({ message: 'Booking not found' });
+        if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+        if (req.body.status === 'delivered' && req.user.role !== 'admin') {
+          return res.status(403).json({ message: 'The shipper or an administrator must confirm final delivery' });
+        }
+
+        if (req.body.status === 'delivery_pending') {
+          assertDeliveryGeofence(booking, req.body.location);
+          assertDeliveryProofForDelivery(booking);
+        }
+        if (req.body.status) {
+          Booking.assertStatusTransition(booking.status, req.body.status);
+          booking.status = req.body.status;
+        }
+        if (req.body.location) {
+          const location = normalizeTrackingPoint(req.body.location);
+          booking.tracking = booking.tracking || [];
+          booking.tracking.push(location);
+          recordLatestLocation(booking, location);
+        }
+        emitBooking(req, booking._id, 'status-update', booking);
+        return res.json({ booking, mode: 'memory' });
+      }
+
+      const booking = await Booking.findById(req.params.id);
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
       if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
       if (req.body.status === 'delivered' && req.user.role !== 'admin') {
@@ -870,70 +881,50 @@ router.patch('/:id/status', restrictTo('owner', 'admin'), updateStatusSchema, va
         assertDeliveryGeofence(booking, req.body.location);
         assertDeliveryProofForDelivery(booking);
       }
-      if (req.body.status) {
-        Booking.assertStatusTransition(booking.status, req.body.status);
-        booking.status = req.body.status;
+      if (req.body.status === 'delivered') {
+        assertDeliveryGeofence(booking, req.body.location);
+        assertReceiverGradeDeliveryProof(booking);
       }
+      if (req.body.status) booking.transitionTo(req.body.status);
       if (req.body.location) {
         const location = normalizeTrackingPoint(req.body.location);
-        booking.tracking = booking.tracking || [];
         booking.tracking.push(location);
         recordLatestLocation(booking, location);
       }
-      emitBooking(req, booking._id, 'status-update', booking);
-      return res.json({ booking, mode: 'memory' });
-    }
-
-    const booking = await Booking.findById(req.params.id);
-    if (!booking) return res.status(404).json({ message: 'Booking not found' });
-    if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
-    if (req.body.status === 'delivered' && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'The shipper or an administrator must confirm final delivery' });
-    }
-
-    if (req.body.status === 'delivery_pending') {
-      assertDeliveryGeofence(booking, req.body.location);
-      assertDeliveryProofForDelivery(booking);
-    }
-    if (req.body.status === 'delivered') {
-      assertDeliveryGeofence(booking, req.body.location);
-      assertReceiverGradeDeliveryProof(booking);
-    }
-    if (req.body.status) booking.transitionTo(req.body.status);
-    if (req.body.location) {
-      const location = normalizeTrackingPoint(req.body.location);
-      booking.tracking.push(location);
-      recordLatestLocation(booking, location);
-    }
-    await booking.save();
-    if (req.body.status === 'delivered') {
-      await recordDeliveryConfirmation({ booking, actor: req.user });
       await booking.save();
-    }
-    if (['delivered', 'cancelled'].includes(req.body.status)) {
-      await matching.releaseAssignment(booking, req.body.status).catch((err) => {
-        req.log?.error({ err, bookingId: booking._id }, 'Dispatch capacity release failed after status update');
+      await recordAudit?.(req, 'booking.status.updated', 'booking', booking._id, {
+        status: booking.status,
+        locationRecorded: Boolean(req.body.location)
       });
-    }
+      if (req.body.status === 'delivered') {
+        await recordDeliveryConfirmation({ booking, actor: req.user });
+        await booking.save();
+      }
+      if (['delivered', 'cancelled'].includes(req.body.status)) {
+        await matching.releaseAssignment(booking, req.body.status).catch((err) => {
+          req.log?.error({ err, bookingId: booking._id }, 'Dispatch capacity release failed after status update');
+        });
+      }
 
-    await notifications.notifyBookingParties(
-      booking,
-      'shipment.status',
-      {
-        title: `${booking._id} ${booking.status.replaceAll('_', ' ')}`,
-        message: `${booking.pickup || 'Pickup'} to ${booking.destination || 'delivery'} status changed.`,
-        link: '/app/tracking',
-        bookingId: booking._id,
-        status: booking.status
-      },
-      req.app.get('io')
-    );
-    emitBooking(req, booking._id, 'status-update', booking, { silent: true });
-    res.json({ booking });
-  } catch (err) {
-    next(err);
+      await notifications.notifyBookingParties(
+        booking,
+        'shipment.status',
+        {
+          title: `${booking._id} ${booking.status.replaceAll('_', ' ')}`,
+          message: `${booking.pickup || 'Pickup'} to ${booking.destination || 'delivery'} status changed.`,
+          link: '/app/tracking',
+          bookingId: booking._id,
+          status: booking.status
+        },
+        req.app.get('io')
+      );
+      emitBooking(req, booking._id, 'status-update', booking, { silent: true });
+      res.json({ booking });
+    } catch (err) {
+      next(err);
+    }
   }
-});
+);
 
 async function appendTrackingUpdates(req, res, next, updates) {
   try {
@@ -1026,17 +1017,26 @@ async function appendTrackingUpdates(req, res, next, updates) {
   }
 }
 
-router.post('/:id/tracking', restrictTo('owner', 'admin'), trackingLocationSchema, validate, (req, res, next) =>
-  appendTrackingUpdates(req, res, next, [normalizeTrackingPoint(req.body)])
+router.post(
+  '/:id/tracking',
+  restrictTo('owner', 'driver', 'admin'),
+  trackingLocationSchema,
+  validate,
+  (req, res, next) => appendTrackingUpdates(req, res, next, [normalizeTrackingPoint(req.body)])
 );
 
-router.post('/:id/tracking/batch', restrictTo('owner', 'admin'), trackingBatchSchema, validate, (req, res, next) =>
-  appendTrackingUpdates(
-    req,
-    res,
-    next,
-    req.body.updates.map((item) => normalizeTrackingPoint(item))
-  )
+router.post(
+  '/:id/tracking/batch',
+  restrictTo('owner', 'driver', 'admin'),
+  trackingBatchSchema,
+  validate,
+  (req, res, next) =>
+    appendTrackingUpdates(
+      req,
+      res,
+      next,
+      req.body.updates.map((item) => normalizeTrackingPoint(item))
+    )
 );
 
 router.patch('/:id/documents/:documentType', bookingDocumentUploadSchema, validate, async (req, res, next) => {

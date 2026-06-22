@@ -60,6 +60,9 @@ Then verify:
 - The container image runs the backend as the non-root `node` user.
 - A staged frontend deployment shows the update prompt when a new service worker is waiting.
 - Register, login, refresh, logout, and session revocation work with secure cookies.
+- Browser mutations reject missing or mismatched CSRF tokens, while bearer-token integrations remain supported.
+- Driver invitations, truck assignments, booking assignments, GPS, documents, chat, cases, and delivery proof are
+  restricted to the assigned job.
 - Changing a password revokes existing refresh sessions.
 - Concurrent expired-access-token requests trigger one refresh operation and recover without signing the user out.
 - Unauthenticated Socket.IO clients are rejected.

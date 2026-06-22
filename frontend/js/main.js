@@ -112,7 +112,7 @@ function bindAuthForms() {
 
       try {
         const data = await API.register(form.dataset.authForm, formData(form));
-        API.setToken(data.token);
+        API.setToken();
         localStorage.setItem('itruck_user', JSON.stringify(data.user));
         toast('Account created');
         setTimeout(() => {
@@ -135,7 +135,7 @@ function bindAuthForms() {
 
     try {
       const data = await API.login(formData(event.target));
-      API.setToken(data.token);
+      API.setToken();
       localStorage.setItem('itruck_user', JSON.stringify(data.user));
       toast('Welcome back');
       setTimeout(() => {

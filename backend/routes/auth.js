@@ -3,7 +3,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const RefreshToken = require('../models/RefreshToken');
-const { demoModeEnabled, isLiveMode, mongoReady, requireDatabase } = require('../config/runtime');
+const { demoModeEnabled, mongoReady, requireDatabase } = require('../config/runtime');
 const asyncHandler = require('../config/asyncHandler');
 const logger = require('../config/logger');
 const { protect } = require('../middleware/auth');
@@ -14,30 +14,18 @@ const { sendMail } = require('../services/email');
 const AppError = require('../utils/AppError');
 const { parseDevice } = require('../utils/deviceParser');
 const { demoUsers, safeUser } = require('../data/demo-users');
+const {
+  assertCsrf,
+  clearAuthCookies,
+  parseDurationMs,
+  refreshTokenFromRequest,
+  setAuthCookies
+} = require('../services/authCookies');
 
 const router = express.Router();
 const memoryUsers = [...demoUsers];
-const REFRESH_COOKIE = process.env.REFRESH_COOKIE_NAME || 'itruck_refresh';
 const PASSWORD_RESET_MS = 60 * 60 * 1000;
 const PASSWORD_RESET_MESSAGE = 'If that email exists, password reset instructions have been sent.';
-
-function parseDurationMs(value, fallbackMs) {
-  const input = String(value || '').trim();
-  const match = input.match(/^(\d+)(ms|s|m|h|d)?$/);
-  if (!match) return fallbackMs;
-
-  const amount = Number(match[1]);
-  const unit = match[2] || 'ms';
-  const multipliers = {
-    ms: 1,
-    s: 1000,
-    m: 60 * 1000,
-    h: 60 * 60 * 1000,
-    d: 24 * 60 * 60 * 1000
-  };
-
-  return amount * multipliers[unit];
-}
 
 function accessTokenExpiry() {
   return process.env.JWT_ACCESS_EXPIRES || process.env.JWT_EXPIRES || '7d';
@@ -69,27 +57,6 @@ function safe(user) {
   const output = user.toObject ? user.toObject() : { ...user };
   delete output.password;
   return output;
-}
-
-function refreshCookieOptions() {
-  const maxAge = parseDurationMs(refreshTokenExpiry(), 7 * 24 * 60 * 60 * 1000);
-  return {
-    httpOnly: true,
-    secure: isLiveMode(),
-    sameSite: process.env.REFRESH_COOKIE_SAMESITE || (isLiveMode() ? 'none' : 'lax'),
-    path: '/api/auth',
-    maxAge
-  };
-}
-
-function clearRefreshCookie(res) {
-  const options = refreshCookieOptions();
-  delete options.maxAge;
-  res.clearCookie(REFRESH_COOKIE, options);
-}
-
-function getRefreshToken(req) {
-  return req.cookies?.[REFRESH_COOKIE] || req.body?.refreshToken || null;
 }
 
 function getDeviceId(req) {
@@ -139,8 +106,14 @@ async function createRefreshSession(user, req, options = {}) {
 async function sendAuthResponse(user, req, res, status = 200) {
   const token = signToken(user);
   const { refreshToken } = await createRefreshSession(user, req);
-  res.cookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions());
-  res.status(status).json({ token, user: safe(user) });
+  setAuthCookies(res, { accessToken: token, refreshToken });
+  res.status(status).json({ user: safe(user) });
+}
+
+function sendMemoryAuthResponse(user, res, status = 200) {
+  const token = signToken(user);
+  setAuthCookies(res, { accessToken: token });
+  return res.status(status).json({ user: safeUser(user), mode: 'memory' });
 }
 
 async function register(role, req, res, next) {
@@ -161,7 +134,7 @@ async function register(role, req, res, next) {
       };
 
       memoryUsers.push(user);
-      return res.status(201).json({ token: signToken(user), user: safeUser(user), mode: 'memory' });
+      return sendMemoryAuthResponse(user, res, 201);
     }
 
     const user = await User.create({ ...userInput, role });
@@ -187,7 +160,7 @@ router.post(
         return res.status(401).json({ message: 'Invalid email or password' });
       }
 
-      return res.json({ token: signToken(user), user: safeUser(user), mode: 'memory' });
+      return sendMemoryAuthResponse(user, res);
     }
 
     const user = await User.findOne({ email: req.body.email }).select('+password');
@@ -265,10 +238,13 @@ router.post(
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) throw AppError.unauthorized('Refresh is unavailable until a database session exists');
 
-    const refreshToken = getRefreshToken(req);
+    const refreshToken = refreshTokenFromRequest(req);
     const deviceId = getDeviceId(req);
     if (!refreshToken) throw AppError.unauthorized('Refresh token required');
     if (!deviceId) throw AppError.unauthorized('Device id required');
+    if (req.cookies?.[process.env.REFRESH_COOKIE_NAME || 'itruck_refresh']) {
+      assertCsrf(req, 'cookie');
+    }
 
     let decoded;
     try {
@@ -288,14 +264,14 @@ router.post(
       const compromised = await RefreshToken.findOne({ _id: decoded.sid, user: decoded.id, tokenHash });
       if (compromised?.revokedAt || compromised?.replacedByTokenHash) {
         await RefreshToken.revokeAll(compromised.user);
-        clearRefreshCookie(res);
+        clearAuthCookies(res);
       }
       throw AppError.unauthorized('Refresh token revoked or expired');
     }
 
     if (session.deviceId && session.deviceId !== deviceId) {
       await session.revoke();
-      clearRefreshCookie(res);
+      clearAuthCookies(res);
       throw AppError.unauthorized('Device mismatch. Please log in again.');
     }
 
@@ -316,15 +292,19 @@ router.post(
     session.replacedByTokenHash = replacement.tokenHash;
     await session.save();
 
-    res.cookie(REFRESH_COOKIE, replacement.refreshToken, refreshCookieOptions());
-    return res.json({ token: signToken(user), user: safe(user) });
+    const token = signToken(user);
+    setAuthCookies(res, { accessToken: token, refreshToken: replacement.refreshToken });
+    return res.json({ user: safe(user) });
   })
 );
 
 router.post(
   '/logout',
   asyncHandler(async (req, res) => {
-    const refreshToken = getRefreshToken(req);
+    const refreshToken = refreshTokenFromRequest(req);
+    if (req.cookies?.[process.env.REFRESH_COOKIE_NAME || 'itruck_refresh']) {
+      assertCsrf(req, 'cookie');
+    }
 
     if (mongoReady() && refreshToken) {
       try {
@@ -340,7 +320,7 @@ router.post(
       }
     }
 
-    clearRefreshCookie(res);
+    clearAuthCookies(res);
     res.json({ message: 'Logged out' });
   })
 );
@@ -355,7 +335,7 @@ router.get(
     if (!mongoReady()) return res.json({ sessions: [], mode: 'memory' });
 
     const sessions = await RefreshToken.activeSessions(req.user._id);
-    const refreshToken = getRefreshToken(req);
+    const refreshToken = refreshTokenFromRequest(req);
     const current = refreshToken ? await RefreshToken.findActive(hashToken(refreshToken)) : null;
     const currentDeviceId = current?.deviceId || getDeviceId(req);
 
@@ -383,12 +363,12 @@ router.delete(
     if (!mongoReady()) return res.json({ message: 'Sessions cleared', mode: 'memory' });
 
     const everywhere = req.query.everywhere === 'true';
-    const refreshToken = getRefreshToken(req);
+    const refreshToken = refreshTokenFromRequest(req);
     const current = refreshToken ? await RefreshToken.findActive(hashToken(refreshToken)) : null;
     const keepDeviceId = everywhere ? null : current?.deviceId;
 
     await RefreshToken.revokeAll(req.user._id, keepDeviceId);
-    if (everywhere) clearRefreshCookie(res);
+    if (everywhere) clearAuthCookies(res);
     res.json({ message: everywhere ? 'All sessions revoked' : 'All other sessions revoked' });
   })
 );

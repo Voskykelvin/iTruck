@@ -14,6 +14,7 @@ const {
   proofAssetUploadSchema,
   proofBookingIdSchema
 } = require('../validators/deliveryProof');
+const { bookingVisibleTo, canCaptureDeliveryProof } = require('../services/bookingAccess');
 
 const router = express.Router();
 const upload = multer({
@@ -22,16 +23,6 @@ const upload = multer({
 });
 
 router.use(protect);
-
-function bookingVisibleTo(user, booking) {
-  if (user.role === 'admin') return true;
-  if (user.role === 'client') return String(booking.client) === String(user._id);
-  return user.role === 'owner' && String(booking.owner) === String(user._id);
-}
-
-function canCaptureProof(user, booking) {
-  return user.role === 'admin' || (user.role === 'owner' && String(booking.owner) === String(user._id));
-}
 
 function requireProofDatabase(req, res) {
   if (requireDatabase(req, res)) return true;
@@ -65,7 +56,7 @@ router.get('/:id/delivery-proof', proofBookingIdSchema, validate, async (req, re
 
 router.post(
   '/:id/delivery-proof/otp',
-  restrictTo('owner', 'admin'),
+  restrictTo('owner', 'driver', 'admin'),
   deliveryOtpLimiter,
   proofBookingIdSchema,
   validate,
@@ -74,7 +65,7 @@ router.post(
       if (requireProofDatabase(req, res)) return;
       const booking = await bookingForProof(req, res);
       if (!booking) return;
-      if (!canCaptureProof(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+      if (!canCaptureDeliveryProof(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
 
       const challenge = await deliveryProof.requestReceiverOtp({ booking, actor: req.user });
       res.status(201).json({
@@ -94,7 +85,7 @@ router.post(
 
 router.post(
   '/:id/delivery-proof/assets',
-  restrictTo('owner', 'admin'),
+  restrictTo('owner', 'driver', 'admin'),
   upload.array('files', 5),
   proofAssetUploadSchema,
   validate,
@@ -107,7 +98,7 @@ router.post(
 
       const booking = await bookingForProof(req, res);
       if (!booking) return;
-      if (!canCaptureProof(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+      if (!canCaptureDeliveryProof(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
 
       const assets = [];
       for (const file of files) {
@@ -150,7 +141,7 @@ router.post(
 
 router.post(
   '/:id/delivery-proof/finalize',
-  restrictTo('owner', 'admin'),
+  restrictTo('owner', 'driver', 'admin'),
   finalizeDeliveryProofSchema,
   validate,
   async (req, res, next) => {
@@ -158,7 +149,7 @@ router.post(
       if (requireProofDatabase(req, res)) return;
       const booking = await bookingForProof(req, res);
       if (!booking) return;
-      if (!canCaptureProof(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+      if (!canCaptureDeliveryProof(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
 
       const result = await deliveryProof.finalizeDeliveryProof({
         booking,

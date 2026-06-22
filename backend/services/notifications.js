@@ -263,7 +263,7 @@ async function deliver(userInput, type, data = {}, io) {
 
 async function notifyBookingParties(booking, type, data, io) {
   const uniqueUsers = new Map();
-  [booking.client, booking.owner].filter(Boolean).forEach((value) => {
+  [booking.client, booking.owner, booking.driver].filter(Boolean).forEach((value) => {
     uniqueUsers.set(String(userId(value)), value);
   });
   return Promise.all([...uniqueUsers.values()].map((user) => deliver(user, type, data, io)));

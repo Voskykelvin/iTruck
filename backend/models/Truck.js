@@ -14,6 +14,7 @@ const truckDocumentSchema = new mongoose.Schema({
 const truckSchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    assignedDriver: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     type: {
       type: String,
       enum: TRUCK_TYPES,
@@ -55,6 +56,7 @@ truckSchema.index({ plateNumber: 1 }, { unique: true });
 truckSchema.index({ registrationNumber: 1 }, { unique: true, sparse: true });
 truckSchema.index({ chassisNumber: 1 }, { unique: true, sparse: true });
 truckSchema.index({ owner: 1, createdAt: -1 });
+truckSchema.index({ assignedDriver: 1, archivedAt: 1 });
 truckSchema.index({ owner: 1, archivedAt: 1, createdAt: -1 });
 truckSchema.index({ owner: 1, isAvailable: 1, archivedAt: 1, createdAt: -1 });
 truckSchema.index({ type: 1, isVerified: 1, isAvailable: 1, archivedAt: 1 });

@@ -114,6 +114,7 @@ const bookingSchema = new mongoose.Schema(
   {
     client: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    driver: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     truck: { type: mongoose.Schema.Types.ObjectId, ref: 'Truck' },
     pickup: String,
     destination: String,
@@ -294,6 +295,7 @@ bookingSchema.index({ client: 1, createdAt: -1 });
 bookingSchema.index({ client: 1, status: 1, createdAt: -1 });
 bookingSchema.index({ owner: 1, createdAt: -1 });
 bookingSchema.index({ owner: 1, status: 1, createdAt: -1 });
+bookingSchema.index({ driver: 1, status: 1, createdAt: -1 });
 bookingSchema.index({ status: 1, createdAt: -1 });
 bookingSchema.index({ status: 1, owner: 1, createdAt: -1 });
 bookingSchema.index({ paymentStatus: 1, updatedAt: -1 });

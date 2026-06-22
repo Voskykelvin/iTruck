@@ -39,6 +39,9 @@ import {
 import { api, clearSession, currentUser, setSession } from './api.js';
 import ServiceWorkerUpdateToast from './components/ServiceWorkerUpdateToast.jsx';
 import SessionsManager from './components/SessionsManager.jsx';
+import DriverOperationsPanel from './components/DriverOperationsPanel.jsx';
+import DriverInvitationAcceptance from './components/DriverInvitationAcceptance.jsx';
+import ProductionRouteMap from './components/ProductionRouteMap.jsx';
 import { demoDocuments, demoFleet, demoLoads, demoShipments } from './data.js';
 import {
   flushTelemetryQueue,
@@ -46,6 +49,7 @@ import {
   queueTelemetryPoint,
   shouldSendTelemetry
 } from './utils/trackingTelemetry.js';
+import { dashboardPathForRole, roleForUser, roleName, routeAllowedForUser } from './utils/roles.js';
 import io from 'socket.io-client';
 
 const roleNavigation = {
@@ -71,25 +75,16 @@ const roleNavigation = {
     { path: '/app/messages', label: 'Messages', icon: MessageSquare },
     { path: '/app/profile', label: 'Settings', icon: UserRound }
   ],
+  driver: [
+    { path: '/app/tracking', label: 'Assigned Jobs', icon: Map },
+    { path: '/app/documents', label: 'Documents', icon: FileText },
+    { path: '/app/messages', label: 'Messages', icon: MessageSquare },
+    { path: '/app/profile', label: 'Settings', icon: UserRound }
+  ],
   admin: [
     { path: '/app/admin', label: 'Console', icon: BarChart3 },
     { path: '/app/profile', label: 'Settings', icon: UserRound }
   ]
-};
-
-const commonRoutes = [
-  '/app/profile',
-  '/app/onboarding',
-  '/app/documents',
-  '/app/payments',
-  '/app/messages',
-  '/app/tracking'
-];
-const neutralRoutes = ['/app/marketplace'];
-const roleRoutes = {
-  client: ['/app/shipper', '/app/book', '/app/bids', ...commonRoutes],
-  owner: ['/app/owner', '/app/vehicles', '/app/bids', ...commonRoutes],
-  admin: ['/app/admin', '/app/profile']
 };
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
@@ -228,39 +223,8 @@ function routeFromLocation() {
   return `${path}${window.location.search}`;
 }
 
-function pathOnly(route) {
-  return route.split('?')[0];
-}
-
-function roleForUser(user) {
-  return user?.role === 'owner' || user?.role === 'admin' ? user.role : 'client';
-}
-
-function dashboardPathForRole(role) {
-  if (role === 'owner') return '/app/owner';
-  if (role === 'admin') return '/app/admin';
-  return '/app/shipper';
-}
-
 function navForUser(user) {
   return roleNavigation[roleForUser(user)] || roleNavigation.client;
-}
-
-function routeAllowedForUser(route, user) {
-  const role = roleForUser(user);
-  const path = pathOnly(route);
-  if (path === '/app' || path === '/app/') return true;
-  if (role === 'admin') {
-    return roleRoutes.admin.some((allowed) => path === allowed || path.startsWith(`${allowed}/`));
-  }
-  if (neutralRoutes.some((allowed) => path === allowed || path.startsWith(`${allowed}/`))) return true;
-  return (roleRoutes[role] || roleRoutes.client).some((allowed) => path === allowed || path.startsWith(`${allowed}/`));
-}
-
-function roleName(role) {
-  if (role === 'owner') return 'Owner';
-  if (role === 'admin') return 'Admin';
-  return 'Shipper';
 }
 
 function navigate(path) {
@@ -476,7 +440,7 @@ function mergeDocumentIndex(records = [], indexedDocuments = [], targetType) {
 
 function profileDocumentsForRole(role) {
   if (role === 'owner') return ownerProfileDocuments;
-  if (role === 'admin') return [];
+  if (role === 'admin' || role === 'driver') return [];
   return shipperProfileDocuments;
 }
 
@@ -771,9 +735,11 @@ function normalizeBookingShipment(booking) {
     loadMode: booking.loadMode || 'full-truck',
     vehicle: booking.vehicleType || booking.truck?.type || 'Vehicle pending',
     plate: booking.truck?.plateNumber || booking.plate || 'Unassigned',
-    driver: booking.owner
-      ? `${booking.owner.firstName || ''} ${booking.owner.lastName || ''}`.trim()
-      : 'Carrier pending',
+    driver: booking.driver
+      ? `${booking.driver.firstName || ''} ${booking.driver.lastName || ''}`.trim()
+      : booking.owner
+        ? `${booking.owner.firstName || ''} ${booking.owner.lastName || ''}`.trim()
+        : 'Driver pending',
     status: statusLabel(booking.status),
     rawStatus: booking.status || 'pending',
     progress,
@@ -2147,148 +2113,6 @@ function MarketplacePage({ route }) {
   );
 }
 
-let googleMapsLoader;
-
-function loadGoogleMaps(apiKey) {
-  if (window.google?.maps?.importLibrary) return Promise.resolve(window.google.maps);
-  if (googleMapsLoader) return googleMapsLoader;
-  googleMapsLoader = new Promise((resolve, reject) => {
-    const callback = `itruckMapsReady_${Date.now()}`;
-    window[callback] = () => {
-      delete window[callback];
-      resolve(window.google.maps);
-    };
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&loading=async&callback=${callback}`;
-    script.async = true;
-    script.onerror = () => {
-      delete window[callback];
-      googleMapsLoader = null;
-      reject(new Error('Google Maps could not load'));
-    };
-    document.head.appendChild(script);
-  });
-  return googleMapsLoader;
-}
-
-function decodeRoutePolyline(encoded = '') {
-  const points = [];
-  let index = 0;
-  let lat = 0;
-  let lng = 0;
-  while (index < encoded.length) {
-    let shift = 0;
-    let result = 0;
-    let byte;
-    do {
-      byte = encoded.charCodeAt(index++) - 63;
-      result |= (byte & 0x1f) << shift;
-      shift += 5;
-    } while (byte >= 0x20 && index <= encoded.length);
-    lat += result & 1 ? ~(result >> 1) : result >> 1;
-
-    shift = 0;
-    result = 0;
-    do {
-      byte = encoded.charCodeAt(index++) - 63;
-      result |= (byte & 0x1f) << shift;
-      shift += 5;
-    } while (byte >= 0x20 && index <= encoded.length);
-    lng += result & 1 ? ~(result >> 1) : result >> 1;
-    points.push({ lat: lat / 1e5, lng: lng / 1e5 });
-  }
-  return points;
-}
-
-function ProductionRouteMap({ shipment }) {
-  const mapRef = useRef(null);
-  const [fallback, setFallback] = useState(false);
-  const latest = latestTrackingPoint(shipment);
-
-  useEffect(() => {
-    let active = true;
-    const overlays = [];
-
-    async function renderMap() {
-      const config = await api.mapsConfig();
-      if (!config.apiKey || !shipment?.routePlan?.encodedPolyline) {
-        if (active) setFallback(true);
-        return;
-      }
-
-      await loadGoogleMaps(config.apiKey);
-      const [{ Map: GoogleMap, Polyline }, { AdvancedMarkerElement }] = await Promise.all([
-        window.google.maps.importLibrary('maps'),
-        window.google.maps.importLibrary('marker')
-      ]);
-      if (!active || !mapRef.current) return;
-
-      const path = decodeRoutePolyline(shipment.routePlan.encodedPolyline);
-      const center = latest || path[0] || shipment.pickupCoordinates || shipment.destinationCoordinates;
-      const map = new GoogleMap(mapRef.current, {
-        center,
-        zoom: 7,
-        mapId: config.mapId || 'DEMO_MAP_ID',
-        streetViewControl: false,
-        mapTypeControl: false,
-        fullscreenControl: true
-      });
-      const routeLine = new Polyline({
-        map,
-        path,
-        strokeColor: shipment.routeDeviation?.isDeviated ? '#dc2626' : '#0b7a53',
-        strokeOpacity: 0.9,
-        strokeWeight: 5
-      });
-      overlays.push(routeLine);
-
-      const markers = [
-        [shipment.pickupCoordinates || path[0], `Pickup: ${shipment.origin}`],
-        [shipment.destinationCoordinates || path.at(-1), `Delivery: ${shipment.destination}`],
-        [latest, `Truck: ${shipment.plate}`]
-      ];
-      markers.forEach(([position, title]) => {
-        if (!position) return;
-        const marker = new AdvancedMarkerElement({ map, position, title });
-        overlays.push(marker);
-      });
-
-      const bounds = new window.google.maps.LatLngBounds();
-      path.forEach((point) => bounds.extend(point));
-      if (latest) bounds.extend(latest);
-      if (!bounds.isEmpty()) map.fitBounds(bounds, 42);
-      setFallback(false);
-    }
-
-    renderMap().catch(() => active && setFallback(true));
-    return () => {
-      active = false;
-      overlays.forEach((overlay) => {
-        if ('map' in overlay) overlay.map = null;
-        else overlay.setMap?.(null);
-      });
-    };
-  }, [
-    latest,
-    latest?.lat,
-    latest?.lng,
-    shipment?.bookingId,
-    shipment?.destination,
-    shipment?.destinationCoordinates,
-    shipment?.origin,
-    shipment?.plate,
-    shipment?.pickupCoordinates,
-    shipment?.routeDeviation?.isDeviated,
-    shipment?.routePlan?.encodedPolyline
-  ]);
-
-  if (fallback) {
-    const mapUrl = `https://www.google.com/maps?output=embed&saddr=${encodeURIComponent(shipment.origin)}&daddr=${encodeURIComponent(shipment.destination)}&dirflg=d`;
-    return <iframe title="Shipment route" src={mapUrl} loading="lazy" />;
-  }
-  return <div className="production-route-map" ref={mapRef} aria-label={`Road route for ${shipment.route}`} />;
-}
-
 function useAnimatedTrackingPoint(targetPoint) {
   const [animated, setAnimated] = useState(targetPoint || null);
   const latestRef = useRef(targetPoint || null);
@@ -2615,8 +2439,8 @@ function DeliveryReadinessPanel({ shipment, activeRole, busyType, onConfirmDeliv
     ['in_transit', 'delivery_pending'].includes(rawStatus) &&
     receiverProofReady &&
     gpsReady;
-  const canCapture =
-    ['owner', 'admin'].includes(activeRole) && rawStatus === 'in_transit' && gpsReady && !receiverProofReady;
+  const carrierOperator = ['owner', 'driver', 'admin'].includes(activeRole);
+  const canCapture = carrierOperator && rawStatus === 'in_transit' && gpsReady && !receiverProofReady;
   const releaseReady = delivered && shipment?.paymentStatus === 'escrowed' && receiverProofReady;
   const releaseComplete = shipment?.paymentStatus === 'released';
   const steps = [
@@ -2657,12 +2481,12 @@ function DeliveryReadinessPanel({ shipment, activeRole, busyType, onConfirmDeliv
       tone: releaseComplete || releaseReady || receiverProofReady ? 'success' : proofDoc ? proofMeta.tone : 'warn'
     }
   ];
-  const primaryDisabled = Boolean(busyType) || delivered || (activeRole === 'owner' ? !canCapture : !canConfirm);
+  const primaryDisabled = Boolean(busyType) || delivered || (carrierOperator ? !canCapture : !canConfirm);
   const primaryLabel = delivered
     ? 'Trip Closed'
     : !tripStarted
       ? 'Start GPS First'
-      : activeRole === 'owner'
+      : carrierOperator
         ? receiverProofReady || deliveryPending
           ? 'Awaiting Shipper'
           : gpsReady
@@ -2671,7 +2495,7 @@ function DeliveryReadinessPanel({ shipment, activeRole, busyType, onConfirmDeliv
         : receiverProofReady
           ? 'Confirm Delivery'
           : 'Awaiting Receiver Proof';
-  const primaryAction = activeRole === 'owner' ? onCaptureProof : onConfirmDelivery;
+  const primaryAction = carrierOperator ? onCaptureProof : onConfirmDelivery;
 
   return (
     <div className="delivery-readiness">
@@ -2722,6 +2546,7 @@ function DeliveryReadinessPanel({ shipment, activeRole, busyType, onConfirmDeliv
 
 function TrackingPage({ notify, route, user }) {
   const activeRole = roleForUser(user);
+  const carrierOperator = ['owner', 'driver', 'admin'].includes(activeRole);
   const [selected, setSelected] = useState(0);
   const [shipments, setShipments] = useState(workspaceShipments);
   const [messages, setMessages] = useState([]);
@@ -2814,7 +2639,7 @@ function TrackingPage({ notify, route, user }) {
     if (!shipment?.bookingId) return undefined;
 
     const socket = io(window.location.origin, {
-      auth: { token: localStorage.getItem('itruck_token') || '' },
+      withCredentials: true,
       transports: ['websocket', 'polling']
     });
 
@@ -2971,7 +2796,7 @@ function TrackingPage({ notify, route, user }) {
       notify('Receiver proof needs a synced booking');
       return;
     }
-    if (!['owner', 'admin'].includes(activeRole)) {
+    if (!carrierOperator) {
       notify('Only the assigned carrier or an administrator can capture receiver proof');
       return;
     }
@@ -3180,10 +3005,10 @@ function TrackingPage({ notify, route, user }) {
     );
   }
 
-  const ratingTitle = activeRole === 'owner' ? 'Rate Shipper' : 'Rate Carrier';
-  const contactTarget = activeRole === 'owner' ? 'shipper' : 'driver';
-  const contactLabel = activeRole === 'owner' ? 'Contact Shipper' : 'Contact Driver';
-  const chatTitle = activeRole === 'owner' ? 'Shipper Chat' : 'Driver Chat';
+  const ratingTitle = carrierOperator ? 'Rate Shipper' : 'Rate Carrier';
+  const contactTarget = carrierOperator ? 'shipper' : 'driver';
+  const contactLabel = carrierOperator ? 'Contact Shipper' : 'Contact Driver';
+  const chatTitle = carrierOperator ? 'Shipper Chat' : 'Driver Chat';
   const contactOpen = ['driver', 'shipper'].includes(contactMode);
   const selectedShipmentRoute = `/app/tracking?shipment=${encodeURIComponent(shipment.id)}`;
   const timelineStatus =
@@ -3198,9 +3023,9 @@ function TrackingPage({ notify, route, user }) {
   const trackingDocumentDefinitions = [
     { label: 'Waybill', type: 'waybill', labels: { missing: 'Download', approved: 'Ready' } },
     {
-      label: activeRole === 'owner' ? 'Proof of delivery' : 'Receiver confirmation',
-      type: activeRole === 'owner' ? 'pod' : 'receiver-confirmation',
-      labels: { missing: activeRole === 'owner' ? 'Capture proof' : 'Waiting', approved: 'Ready' }
+      label: carrierOperator ? 'Proof of delivery' : 'Receiver confirmation',
+      type: carrierOperator ? 'pod' : 'receiver-confirmation',
+      labels: { missing: carrierOperator ? 'Capture proof' : 'Waiting', approved: 'Ready' }
     }
   ];
 
@@ -3276,7 +3101,7 @@ function TrackingPage({ notify, route, user }) {
             <div className="progress">
               <span style={{ width: `${shipment.progress}%` }} />
             </div>
-            {activeRole === 'owner' ? (
+            {carrierOperator ? (
               <DriverLiveTracker
                 key={shipment.bookingId || shipment.id}
                 shipment={shipment}
@@ -3307,7 +3132,7 @@ function TrackingPage({ notify, route, user }) {
                       ['pod', 'receiver-confirmation'].includes(definition.type) &&
                       !hasReceiverGradeProof(shipment)
                     ) {
-                      if (activeRole === 'owner') openDeliveryProof();
+                      if (carrierOperator) openDeliveryProof();
                       else notify('Receiver proof is still waiting for carrier capture.');
                       return;
                     }
@@ -3984,6 +3809,7 @@ function OwnerPage({ notify, user }) {
               ))}
             </div>
           </Panel>
+          <DriverOperationsPanel fleet={fleet} notify={notify} />
         </div>
 
         <aside className="side-stack">
@@ -4941,7 +4767,7 @@ function DocumentsPage({ notify, user, setUser }) {
 
   useEffect(() => {
     const socket = io(window.location.origin, {
-      auth: { token: localStorage.getItem('itruck_token') || '' }
+      withCredentials: true
     });
     socketRef.current = socket;
     socket.on('document:updated', refreshDocuments);
@@ -7342,6 +7168,7 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
   const documentInputRef = useRef(null);
   const profileDetailsRef = useRef(null);
   const signedIn = Boolean(user.email);
+  const driverInvitationToken = new URLSearchParams(route.split('?')[1] || '').get('driverInvite') || '';
   const activeUserRole = roleForUser(user);
   const verificationItems = profileDocumentsForRole(activeUserRole);
   const [profileDraft, setProfileDraft] = useState(() => ({
@@ -7602,6 +7429,18 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
     } finally {
       setNotificationTestBusy(false);
     }
+  }
+
+  if (!signedIn && driverInvitationToken) {
+    return (
+      <section className="profile-layout auth-only">
+        <DriverInvitationAcceptance
+          token={driverInvitationToken}
+          notify={notify}
+          onAccepted={() => navigate('/app/profile')}
+        />
+      </section>
+    );
   }
 
   return (
@@ -9245,7 +9084,7 @@ function AppShell() {
     if (!signedIn) return undefined;
 
     const socket = io(window.location.origin, {
-      auth: { token: localStorage.getItem('itruck_token') || '' },
+      withCredentials: true,
       transports: ['websocket', 'polling']
     });
     socketRef.current = socket;
@@ -9425,15 +9264,19 @@ function AppShell() {
     if (route.startsWith('/app/owner') || route.startsWith('/app/vehicles')) return <OwnerPage {...props} />;
     if (route.startsWith('/app/admin')) return <AdminPage {...props} />;
     if (route.startsWith('/app/profile')) return <ProfilePage {...props} signOut={signOut} />;
-    return activeRole === 'owner' ? <OwnerPage {...props} /> : <ShipperPage {...props} />;
+    if (activeRole === 'owner') return <OwnerPage {...props} />;
+    if (activeRole === 'driver') return <TrackingPage {...props} />;
+    return <ShipperPage {...props} />;
   }, [activeRole, notify, route, signOut, user]);
 
   const primaryAction =
     activeRole === 'owner'
       ? { label: 'Find Work', path: '/app/bids', icon: Search }
-      : activeRole === 'admin'
-        ? { label: 'Admin Queue', path: '/app/admin', icon: BarChart3 }
-        : { label: 'New Load', path: '/app/book', icon: Plus };
+      : activeRole === 'driver'
+        ? { label: 'Assigned Jobs', path: '/app/tracking', icon: Navigation }
+        : activeRole === 'admin'
+          ? { label: 'Admin Queue', path: '/app/admin', icon: BarChart3 }
+          : { label: 'New Load', path: '/app/book', icon: Plus };
   const PrimaryActionIcon = primaryAction.icon;
 
   return (
@@ -9496,7 +9339,7 @@ function AppShell() {
         </header>
 
         {/* Onboarding banner */}
-        {user?.email && activeRole !== 'admin' && (
+        {user?.email && !['admin', 'driver'].includes(activeRole) && (
           <OnboardingBanner
             user={user}
             role={activeRole}

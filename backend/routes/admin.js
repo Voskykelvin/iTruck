@@ -177,7 +177,10 @@ router.get('/audit-logs', async (req, res, next) => {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) return res.json({ logs: [], mode: 'memory' });
 
-    const logs = await AuditLog.find().populate('admin', 'firstName lastName email role').sort('-createdAt').limit(100);
+    const logs = await AuditLog.find()
+      .populate('admin actor', 'firstName lastName email role')
+      .sort('-createdAt')
+      .limit(100);
 
     res.json({ logs });
   } catch (err) {

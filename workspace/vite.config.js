@@ -5,6 +5,14 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   base: '/app/',
   plugins: [react(), tailwindcss()],
+  test: {
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.js',
+    include: ['src/**/*.{test,spec}.{js,jsx}'],
+    coverage: {
+      reporter: ['text', 'json-summary', 'html']
+    }
+  },
   build: {
     outDir: '../frontend/app',
     emptyOutDir: true
