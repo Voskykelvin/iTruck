@@ -13,6 +13,7 @@ const { stripeRouter } = require('./routes/webhooks');
 const AppError = require('./utils/AppError');
 const { redactUrlSecrets } = require('./utils/redactUrl');
 const { isLiveMode } = require('./config/runtime');
+const { auditMutations } = require('./middleware/audit');
 
 const app = express();
 const frontendDir = path.join(__dirname, '../frontend');
@@ -124,9 +125,11 @@ app.use(cookieParser());
 app.use(mongoSanitize());
 app.use(hpp());
 app.use('/api', apiLimiter);
+app.use('/api', auditMutations);
 
 app.use('/api/auth', authLimiter, require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api/drivers', require('./routes/drivers'));
 app.use('/api/trucks', require('./routes/trucks'));
 app.use('/api/maps', require('./routes/maps'));
 app.use('/api/bookings', require('./routes/deliveryProof'));

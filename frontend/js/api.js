@@ -64,7 +64,7 @@ class ITruckAPI {
   constructor() {
     this.base =
       localStorage.getItem('itruck_api_base') || (location.protocol === 'file:' ? 'http://localhost:5000/api' : '/api');
-    this.token = localStorage.getItem('itruck_token') || '';
+    localStorage.removeItem('itruck_token');
   }
 
   deviceId() {
@@ -76,11 +76,22 @@ class ITruckAPI {
     return id;
   }
 
+  csrfHeader() {
+    const csrf = document.cookie
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith('itruck_csrf='))
+      ?.split('=')
+      .slice(1)
+      .join('=');
+    return csrf ? { 'X-CSRF-Token': decodeURIComponent(csrf) } : {};
+  }
+
   headers(extra = {}) {
     return {
       'Content-Type': 'application/json',
       'X-Device-Id': this.deviceId(),
-      ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+      ...this.csrfHeader(),
       ...extra
     };
   }
@@ -90,7 +101,7 @@ class ITruckAPI {
     const headers = isFormData
       ? {
           'X-Device-Id': this.deviceId(),
-          ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+          ...this.csrfHeader(),
           ...(options.headers || {})
         }
       : this.headers(options.headers || {});
@@ -108,13 +119,11 @@ class ITruckAPI {
     return data;
   }
 
-  setToken(token) {
-    this.token = token;
-    localStorage.setItem('itruck_token', token);
+  setToken() {
+    localStorage.removeItem('itruck_token');
   }
 
   clear() {
-    this.token = '';
     localStorage.removeItem('itruck_token');
     localStorage.removeItem('itruck_user');
   }
@@ -257,7 +266,7 @@ class ITruckAPI {
     try {
       res = await fetch(`${this.base}/documents/${type}/${bookingId}`, {
         credentials: 'include',
-        headers: { 'X-Device-Id': this.deviceId(), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) }
+        headers: { 'X-Device-Id': this.deviceId(), ...this.csrfHeader() }
       });
     } catch (err) {
       throw new Error('Document download failed');

@@ -19,6 +19,7 @@ const {
   listRecordsSchema,
   submitWorkflowBidSchema
 } = require('../validators/workflow');
+const { bookingQueryForUser } = require('../services/bookingAccess');
 
 const router = express.Router();
 router.use(protect);
@@ -77,10 +78,7 @@ function serialize(type, item) {
 
 async function bookingVisibleToUser(user, bookingId) {
   if (user.role === 'admin') return true;
-  return Booking.exists({
-    _id: bookingId,
-    $or: [{ client: user._id }, { owner: user._id }, { 'bids.owner': user._id }]
-  });
+  return Booking.exists({ _id: bookingId, ...bookingQueryForUser(user) });
 }
 
 function bookingOpenForBids(booking) {

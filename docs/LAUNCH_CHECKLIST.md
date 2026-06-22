@@ -110,7 +110,7 @@ execution.
 - [ ] Add routing/geocoding, live markers, road polylines, ETA, and deviation alerts
 - [ ] Add web push and provider delivery-receipt callbacks
 - [ ] WhatsApp/SMS-assisted driver workflow
-- [ ] Dedicated driver accounts, vehicle assignment, and job-scoped permissions
+- [x] Dedicated driver accounts, vehicle assignment, and job-scoped permissions
 - [x] Full support/dispute case lifecycle with SLA and resolution history
 - [ ] Business-hours and holiday-aware SLA calendars if contractual support hours require them
 - [ ] Receiver e-signature or OTP and immutable evidence metadata

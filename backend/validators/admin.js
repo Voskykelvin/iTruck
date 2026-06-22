@@ -33,7 +33,7 @@ const notifySchema = [
     .optional()
     .isArray({ min: 1, max: 3 })
     .withMessage('roles must be a list')
-    .custom((roles) => roles.every((role) => ['client', 'owner', 'admin'].includes(role)))
+    .custom((roles) => roles.every((role) => ['client', 'owner', 'driver', 'admin'].includes(role)))
     .withMessage('roles contains an invalid role'),
   body('userIds')
     .optional()

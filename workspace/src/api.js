@@ -7,8 +7,28 @@ const documentUploadTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'a
 const imageUploadTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 let refreshPromise = null;
 
-function token() {
-  return localStorage.getItem('itruck_token') || '';
+function cookieValue(name) {
+  if (typeof document === 'undefined') return '';
+  const prefix = `${encodeURIComponent(name)}=`;
+  const value = document.cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix));
+  return value ? decodeURIComponent(value.slice(prefix.length)) : '';
+}
+
+function csrfHeaders() {
+  const csrf = cookieValue('itruck_csrf');
+  return csrf ? { 'X-CSRF-Token': csrf } : {};
+}
+
+function hasSessionHint() {
+  if (cookieValue('itruck_csrf')) return true;
+  try {
+    return Boolean(JSON.parse(localStorage.getItem('itruck_user') || '{}')?.email);
+  } catch (_err) {
+    return false;
+  }
 }
 
 function idempotencyKey(scope) {
@@ -60,12 +80,12 @@ async function refreshSession() {
     const response = await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'X-Device-Id': getDeviceId() }
+      headers: { 'X-Device-Id': getDeviceId(), ...csrfHeaders() }
     });
     if (!response.ok) return false;
     const data = await response.json();
     setSession(data);
-    return Boolean(data.token);
+    return Boolean(data.user);
   } catch (_err) {
     return false;
   }
@@ -85,13 +105,13 @@ async function request(path, options = {}, retry = true) {
   const headers = isForm
     ? {
         'X-Device-Id': getDeviceId(),
-        ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
+        ...csrfHeaders(),
         ...(options.headers || {})
       }
     : {
         'Content-Type': 'application/json',
         'X-Device-Id': getDeviceId(),
-        ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
+        ...csrfHeaders(),
         ...(options.headers || {})
       };
 
@@ -103,7 +123,7 @@ async function request(path, options = {}, retry = true) {
   }
 
   if (response.status === 401 && retry && !path.startsWith('/auth/login') && path !== '/auth/refresh') {
-    const refreshed = await tryRefresh();
+    const refreshed = hasSessionHint() ? await tryRefresh() : false;
     if (refreshed) return request(path, options, false);
     clearSession();
   }
@@ -124,7 +144,7 @@ async function downloadFile(path, filename, options = {}, retry = true) {
       headers: {
         ...(options.body && !isForm ? { 'Content-Type': 'application/json' } : {}),
         'X-Device-Id': getDeviceId(),
-        ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
+        ...csrfHeaders(),
         ...(options.headers || {})
       }
     });
@@ -133,7 +153,7 @@ async function downloadFile(path, filename, options = {}, retry = true) {
   }
 
   if (response.status === 401 && retry) {
-    const refreshed = await tryRefresh();
+    const refreshed = hasSessionHint() ? await tryRefresh() : false;
     if (refreshed) return downloadFile(path, filename, options, false);
     clearSession();
   }
@@ -460,6 +480,31 @@ export const api = {
   autoAssignBooking: (bookingId) =>
     request(`/marketplace/auto-assign/${encodeURIComponent(bookingId)}`, { method: 'POST' }),
   bookingDispatch: (bookingId) => request(`/marketplace/dispatch/${encodeURIComponent(bookingId)}`),
+  listDrivers: () => request('/drivers'),
+  inviteDriver: (payload) => request('/drivers/invitations', { method: 'POST', body: JSON.stringify(payload) }),
+  revokeDriverInvitation: (invitationId) =>
+    request(`/drivers/invitations/${encodeURIComponent(invitationId)}`, { method: 'DELETE' }),
+  driverInvitation: (token) => request(`/drivers/invitations/${encodeURIComponent(token)}`),
+  acceptDriverInvitation: (token, payload) =>
+    request(`/drivers/invitations/${encodeURIComponent(token)}/accept`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  assignDriverTruck: (driverId, truckId) =>
+    request(`/drivers/${encodeURIComponent(driverId)}/truck`, {
+      method: 'PATCH',
+      body: JSON.stringify({ truckId })
+    }),
+  unassignDriverTruck: (driverId, reason = '') =>
+    request(`/drivers/${encodeURIComponent(driverId)}/truck`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason })
+    }),
+  assignBookingDriver: (bookingId, driverId) =>
+    request(`/drivers/bookings/${encodeURIComponent(bookingId)}/driver`, {
+      method: 'PATCH',
+      body: JSON.stringify({ driverId })
+    }),
   submitBookingBid: (bookingId, payload) =>
     request(`/bookings/${encodeURIComponent(bookingId)}/bids`, { method: 'POST', body: JSON.stringify(payload) }),
   reportIssue: (payload) => request('/cases', { method: 'POST', body: JSON.stringify(payload) }),
@@ -481,12 +526,10 @@ export const api = {
 };
 
 export function setSession(data) {
-  if (data?.token || data?.accessToken) localStorage.setItem('itruck_token', data.token || data.accessToken);
   if (data?.user) localStorage.setItem('itruck_user', JSON.stringify(data.user));
 }
 
 export function clearSession() {
-  localStorage.removeItem('itruck_token');
   localStorage.removeItem('itruck_user');
 }
 

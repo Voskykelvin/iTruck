@@ -17,7 +17,7 @@
 - Validate the implemented admin dispute/support queue with real operators, including assignment, elapsed-time SLA
   targets, participant/internal comments, evidence, escalation, resolution, reopening, and automatic closure.
 - Replace the placeholder auto-assignment result with verified-truck ranking and assignment.
-- Add a dedicated driver identity/session and driver-to-truck/job assignment flow.
+- Driver accounts are invitation-only, tied to a fleet owner and active truck, and authorized only for assigned jobs.
 - Public and owner fleet listings exclude archived trucks; use the archive endpoint instead of hard-deleting vehicles.
 
 ## Infrastructure
@@ -110,9 +110,10 @@
 - In live mode, the API exits if MongoDB cannot connect.
 - In live mode, protected routes return `503` instead of serving in-memory demo data if the database is unavailable.
 - In live mode, upload routes fail instead of returning mock local URLs if Cloudinary is not configured.
-- Login/register issue the existing access token response plus an httpOnly refresh cookie when MongoDB is available.
+- Login/register issue HttpOnly access and refresh cookies plus a readable CSRF cookie. Browser access tokens are not
+  returned to JavaScript or stored in local storage; bearer authentication remains available for trusted integrations.
 - Owner bids require approved profile and truck documents in live MongoDB-backed flows.
-- Tracking updates require an assigned owner/admin and a confirmed or in-transit booking.
+- Tracking updates require an assigned owner, driver, or admin and a confirmed or in-transit booking.
 - The workspace queues driver GPS updates offline and syncs compressed batches after connectivity returns.
 - Delivery confirmation and generated POD output enforce destination geofence checks when destination coordinates are present.
 - Payment release requires approved delivery proof and writes an admin audit log.

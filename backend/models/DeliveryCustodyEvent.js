@@ -21,7 +21,7 @@ const deliveryCustodyEventSchema = new mongoose.Schema(
     },
     actorRole: {
       type: String,
-      enum: ['client', 'owner', 'admin'],
+      enum: ['client', 'owner', 'driver', 'admin'],
       required: true
     },
     occurredAt: { type: Date, required: true },

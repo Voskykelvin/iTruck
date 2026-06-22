@@ -13,6 +13,7 @@ const {
   listCasesSchema,
   reopenCaseSchema
 } = require('../validators/cases');
+const { bookingQueryForUser } = require('../services/bookingAccess');
 
 const router = express.Router();
 router.use(protect);
@@ -84,10 +85,7 @@ function pageOptions(query = {}) {
 async function bookingVisibleToUser(user, bookingId) {
   if (!bookingId || user.role === 'admin') return true;
   if (!mongoose.Types.ObjectId.isValid(bookingId)) return false;
-  return Booking.exists({
-    _id: bookingId,
-    $or: [{ client: user._id }, { owner: user._id }, { 'bids.owner': user._id }]
-  });
+  return Booking.exists({ _id: bookingId, ...bookingQueryForUser(user) });
 }
 
 function populateCase(query) {

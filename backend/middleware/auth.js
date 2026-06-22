@@ -2,10 +2,10 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { demoModeEnabled, mongoReady } = require('../config/runtime');
 const { demoUsers, safeUser } = require('../data/demo-users');
+const { accessTokenFromRequest, assertCsrf } = require('../services/authCookies');
 
 async function protect(req, res, next) {
-  const header = req.headers.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  const { token, source } = accessTokenFromRequest(req);
   if (!token) return res.status(401).json({ message: 'Authentication required' });
 
   let decoded;
@@ -16,6 +16,9 @@ async function protect(req, res, next) {
   }
 
   try {
+    req.authSource = source;
+    assertCsrf(req, source);
+
     if (!mongoReady()) {
       if (!demoModeEnabled()) {
         return res

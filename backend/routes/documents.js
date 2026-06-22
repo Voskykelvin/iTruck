@@ -11,6 +11,7 @@ const cloudinary = require('../services/cloudinary');
 const validate = require('../middleware/validate');
 const { bookingDocumentSchema, documentListSchema } = require('../validators/documents');
 const { normalizeBookingDocumentType } = require('../utils/documentTypes');
+const { bookingQueryForUser, bookingVisibleTo } = require('../services/bookingAccess');
 
 const router = express.Router();
 router.use(protect);
@@ -65,8 +66,8 @@ function bookingPayload(booking) {
     deliveryProof: booking.deliveryProof,
     communicationPreference: booking.communicationPreference,
     vehicle: booking.vehicleType || booking.truck?.plateNumber || 'Assigned vehicle',
-    driver: booking.owner
-      ? `${booking.owner.firstName || ''} ${booking.owner.lastName || ''}`.trim()
+    driver: booking.driver
+      ? `${booking.driver.firstName || ''} ${booking.driver.lastName || ''}`.trim()
       : 'Assigned driver',
     amount: booking.budget || booking.estimate?.total || 0,
     paymentMethod: booking.paymentMethod
@@ -94,23 +95,10 @@ function draftPayload(body = {}) {
   };
 }
 
-function bookingVisibleTo(user, booking) {
-  if (user.role === 'admin') return true;
-  if (user.role === 'client') return String(booking.client?._id || booking.client) === String(user._id);
-  if (user.role === 'owner') {
-    return (
-      String(booking.owner?._id || booking.owner) === String(user._id) ||
-      (booking.bids || []).some((bid) => String(bid.owner?._id || bid.owner) === String(user._id))
-    );
-  }
-  return false;
-}
-
 async function visibleDocumentFilter(user) {
   if (user.role === 'admin') return {};
 
-  const bookingQuery =
-    user.role === 'client' ? { client: user._id } : { $or: [{ owner: user._id }, { 'bids.owner': user._id }] };
+  const bookingQuery = bookingQueryForUser(user);
   const [bookings, trucks] = await Promise.all([
     Booking.find(bookingQuery).select('_id').limit(500),
     user.role === 'owner' ? Truck.find({ owner: user._id }).select('_id').limit(500) : []
@@ -133,7 +121,7 @@ async function loadBooking(req, res) {
   if (requireDatabase(req, res)) return null;
   if (!mongoReady()) return { payload: demoBooking(req), record: null };
 
-  const booking = await Booking.findById(req.params.bookingId).populate('truck owner client');
+  const booking = await Booking.findById(req.params.bookingId).populate('truck owner client driver');
   if (!booking) {
     res.status(404).json({ message: 'Booking not found' });
     return null;

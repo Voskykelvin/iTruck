@@ -465,6 +465,7 @@ async function reserveAssignment(booking, truck, options = {}) {
     matchScore: options.matchScore
   };
   booking.reservedCapacityTonnes = required;
+  booking.driver = truck.assignedDriver || claimedTruck.assignedDriver || booking.driver;
 
   const truckRemaining = capacity - Number(claimedTruck.reservedCapacityTonnes || 0);
   await Truck.updateOne(

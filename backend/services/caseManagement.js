@@ -240,7 +240,8 @@ async function createCase(input, options = {}) {
     }
 
     if (kind === 'dispute' && booking) {
-      const directParticipant = sameId(input.user, booking.client) || sameId(input.user, booking.owner);
+      const directParticipant =
+        sameId(input.user, booking.client) || sameId(input.user, booking.owner) || sameId(input.user, booking.driver);
       if (!options.isAdmin && !directParticipant) {
         const err = new Error('Only the booking client or assigned carrier can open a formal dispute');
         err.status = 403;
@@ -267,7 +268,11 @@ async function createCase(input, options = {}) {
     }
 
     const directParticipant =
-      booking && (sameId(input.user, booking.client) || sameId(input.user, booking.owner) || options.isAdmin);
+      booking &&
+      (sameId(input.user, booking.client) ||
+        sameId(input.user, booking.owner) ||
+        sameId(input.user, booking.driver) ||
+        options.isAdmin);
     const participants = uniqueIds([input.user, ...(directParticipant ? [booking?.client, booking?.owner] : [])]);
     const payload = {
       user: input.user,

@@ -8,6 +8,7 @@ const notifications = require('../services/notifications');
 const validate = require('../middleware/validate');
 const { bookingMatchSchema, clusterSchema, estimateSchema } = require('../validators/marketplace');
 const { isLiveMode } = require('../config/runtime');
+const { bookingVisibleTo } = require('../services/bookingAccess');
 
 const router = express.Router();
 
@@ -230,10 +231,7 @@ router.get('/dispatch/:bookingId', protect, bookingMatchSchema, validate, async 
     if (!mongoReady()) return res.json({ dispatchPlan: null, mode: 'memory' });
     const booking = await Booking.findById(req.params.bookingId);
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
-    const visible =
-      req.user.role === 'admin' ||
-      String(booking.client) === String(req.user._id) ||
-      String(booking.owner) === String(req.user._id);
+    const visible = bookingVisibleTo(req.user, booking);
     if (!visible) return res.status(403).json({ message: 'Forbidden' });
     const plan = booking.dispatchPlan
       ? await DispatchPlan.findById(booking.dispatchPlan).populate('truck owner assignments.booking')

@@ -46,7 +46,7 @@ const userSchema = new mongoose.Schema(
     phone: { type: String, required: true },
     countryCode: { type: String, default: '+254' },
     password: { type: String, required: true, minlength: 8, select: false },
-    role: { type: String, enum: ['client', 'owner', 'admin'], required: true },
+    role: { type: String, enum: ['client', 'owner', 'driver', 'admin'], required: true },
     country: { type: String, required: true },
     accountType: { type: String, enum: ['personal', 'business', 'ngo'], default: 'personal' },
     company: String,
@@ -59,6 +59,12 @@ const userSchema = new mongoose.Schema(
     documents: [userDocumentSchema],
     notificationPreferences: { type: notificationPreferencesSchema, default: () => ({}) },
     pushSubscription: Object,
+    driverProfile: {
+      owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      invitation: { type: mongoose.Schema.Types.ObjectId, ref: 'DriverInvitation' },
+      licenseNumber: { type: String, trim: true, uppercase: true, maxlength: 80 },
+      joinedAt: Date
+    },
     lastLogin: Date,
     passwordResetToken: { type: String, select: false },
     passwordResetExpires: { type: Date, select: false }
@@ -67,6 +73,7 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.index({ role: 1, country: 1 });
+userSchema.index({ 'driverProfile.owner': 1, role: 1, isActive: 1 });
 
 userSchema.pre('save', async function hashPassword(next) {
   if (!this.isModified('password')) return next();

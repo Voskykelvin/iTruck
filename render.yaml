@@ -19,6 +19,14 @@ services:
         value: 15m
       - key: JWT_REFRESH_EXPIRES
         value: 7d
+      - key: ACCESS_COOKIE_NAME
+        value: itruck_access
+      - key: REFRESH_COOKIE_NAME
+        value: itruck_refresh
+      - key: CSRF_COOKIE_NAME
+        value: itruck_csrf
+      - key: AUTH_COOKIE_SAMESITE
+        value: none
       - key: MONGODB_URI
         sync: false
       - key: JWT_SECRET

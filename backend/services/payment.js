@@ -8,6 +8,7 @@ const Idempotency = require('../models/Idempotency');
 const logger = require('../config/logger');
 const { assertDeliveryProofForPaymentRelease } = require('./operationsPolicy');
 const { assertDeliveryProofIntegrity } = require('./deliveryProof');
+const { createOne, runInTransaction, sessionOptions } = require('./transactions');
 
 const IDEMPOTENCY_TTL_MINUTES = 60;
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_.:-]+$/;
@@ -654,7 +655,7 @@ class WalletService {
     return Number(user?.walletBalance || 0);
   }
 
-  async ensureWallet(userId) {
+  async ensureWallet(userId, session = null) {
     const startingBalance = await this.legacyStartingBalance(userId);
     return Wallet.findOneAndUpdate(
       { user: userId },
@@ -665,7 +666,7 @@ class WalletService {
           currency: 'USD'
         }
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
+      sessionOptions(session, { new: true, upsert: true, setDefaultsOnInsert: true })
     );
   }
 
@@ -690,27 +691,35 @@ class WalletService {
 
   async createCredit(userId, amount, description = 'Wallet credit', reference = 'manual') {
     const amountNum = parsePositiveAmount(amount);
-    const wallet = await Wallet.findOneAndUpdate(
-      { user: userId },
-      {
-        $inc: { balance: amountNum, version: 1 },
-        $setOnInsert: { user: userId, currency: 'USD' }
-      },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
-    );
-
-    const transaction = await Transaction.create({
-      user: userId,
-      type: 'credit',
-      amount: amountNum,
-      description,
-      reference,
-      status: 'completed',
-      metadata: { walletBalance: wallet.balance }
+    return runInTransaction(async (session) => {
+      const wallet = await Wallet.findOneAndUpdate(
+        { user: userId },
+        {
+          $inc: { balance: amountNum, version: 1 },
+          $setOnInsert: { user: userId, currency: 'USD' }
+        },
+        sessionOptions(session, { new: true, upsert: true, setDefaultsOnInsert: true })
+      );
+      const transaction = await createOne(
+        Transaction,
+        {
+          user: userId,
+          type: 'credit',
+          amount: amountNum,
+          description,
+          reference,
+          status: 'completed',
+          metadata: { walletBalance: wallet.balance }
+        },
+        session
+      );
+      if (session) {
+        await Wallet.updateOne({ _id: wallet._id }, { lastTransaction: transaction._id }, { session });
+      } else {
+        await Wallet.updateOne({ _id: wallet._id }, { lastTransaction: transaction._id });
+      }
+      return transaction;
     });
-
-    await Wallet.updateOne({ _id: wallet._id }, { lastTransaction: transaction._id });
-    return transaction;
   }
 
   async debit(userId, amount, description = 'Wallet debit', reference = 'manual', options = {}) {
@@ -724,30 +733,34 @@ class WalletService {
 
   async createDebit(userId, amount, description = 'Wallet debit', reference = 'manual') {
     const amountNum = parsePositiveAmount(amount);
-    await this.ensureWallet(userId);
-
-    const wallet = await Wallet.findOneAndUpdate(
-      { user: userId, balance: { $gte: amountNum } },
-      { $inc: { balance: -amountNum, version: 1 } },
-      { new: true }
-    );
-
-    if (!wallet) {
-      throw appError('Insufficient wallet balance', 400);
-    }
-
-    const transaction = await Transaction.create({
-      user: userId,
-      type: 'debit',
-      amount: amountNum,
-      description,
-      reference,
-      status: 'completed',
-      metadata: { walletBalance: wallet.balance }
+    return runInTransaction(async (session) => {
+      await this.ensureWallet(userId, session);
+      const wallet = await Wallet.findOneAndUpdate(
+        { user: userId, balance: { $gte: amountNum } },
+        { $inc: { balance: -amountNum, version: 1 } },
+        sessionOptions(session, { new: true })
+      );
+      if (!wallet) throw appError('Insufficient wallet balance', 400);
+      const transaction = await createOne(
+        Transaction,
+        {
+          user: userId,
+          type: 'debit',
+          amount: amountNum,
+          description,
+          reference,
+          status: 'completed',
+          metadata: { walletBalance: wallet.balance }
+        },
+        session
+      );
+      if (session) {
+        await Wallet.updateOne({ _id: wallet._id }, { lastTransaction: transaction._id }, { session });
+      } else {
+        await Wallet.updateOne({ _id: wallet._id }, { lastTransaction: transaction._id });
+      }
+      return transaction;
     });
-
-    await Wallet.updateOne({ _id: wallet._id }, { lastTransaction: transaction._id });
-    return transaction;
   }
 
   async withdraw(
@@ -774,35 +787,39 @@ class WalletService {
     description = 'Owner wallet withdrawal'
   ) {
     const amountNum = parsePositiveAmount(amount);
-    await this.ensureWallet(userId);
-
-    const wallet = await Wallet.findOneAndUpdate(
-      { user: userId, balance: { $gte: amountNum } },
-      { $inc: { balance: -amountNum, version: 1 } },
-      { new: true }
-    );
-
-    if (!wallet) {
-      throw appError('Insufficient wallet balance', 400);
-    }
-
-    const transaction = await Transaction.create({
-      user: userId,
-      type: 'withdrawal',
-      method,
-      amount: amountNum,
-      description,
-      reference: `wd-${Date.now()}`,
-      status: 'pending',
-      metadata: {
-        payoutDetails,
-        requestedAt: new Date().toISOString(),
-        walletBalance: wallet.balance
+    return runInTransaction(async (session) => {
+      await this.ensureWallet(userId, session);
+      const wallet = await Wallet.findOneAndUpdate(
+        { user: userId, balance: { $gte: amountNum } },
+        { $inc: { balance: -amountNum, version: 1 } },
+        sessionOptions(session, { new: true })
+      );
+      if (!wallet) throw appError('Insufficient wallet balance', 400);
+      const transaction = await createOne(
+        Transaction,
+        {
+          user: userId,
+          type: 'withdrawal',
+          method,
+          amount: amountNum,
+          description,
+          reference: `wd-${Date.now()}`,
+          status: 'pending',
+          metadata: {
+            payoutDetails,
+            requestedAt: new Date().toISOString(),
+            walletBalance: wallet.balance
+          }
+        },
+        session
+      );
+      if (session) {
+        await Wallet.updateOne({ _id: wallet._id }, { lastTransaction: transaction._id }, { session });
+      } else {
+        await Wallet.updateOne({ _id: wallet._id }, { lastTransaction: transaction._id });
       }
+      return transaction;
     });
-
-    await Wallet.updateOne({ _id: wallet._id }, { lastTransaction: transaction._id });
-    return transaction;
   }
 
   async fundBookingEscrow(bookingId, payerId, options = {}) {
