@@ -4,7 +4,7 @@ const logger = require('../config/logger');
 const { redactUrlSecrets } = require('../utils/redactUrl');
 
 function redisStore(prefix) {
-  if (!process.env.REDIS_URL) return undefined;
+  if (!process.env.REDIS_URL || process.env.DISABLE_REDIS === 'true') return undefined;
 
   const { createClient } = require('redis');
   const { RedisStore } = require('rate-limit-redis');

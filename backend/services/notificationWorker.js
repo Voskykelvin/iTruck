@@ -5,6 +5,8 @@ const logger = require('../config/logger');
 const { mongoReady } = require('../config/runtime');
 const { sendMail } = require('./email');
 const { sendSMS } = require('./sms');
+const { sendPush } = require('./push');
+const User = require('../models/User');
 
 const WORKER_ID = `${process.pid}:${crypto.randomBytes(6).toString('hex')}`;
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 60 * 60_000];
@@ -62,6 +64,16 @@ async function sendDelivery(delivery, providers = {}) {
   if (delivery.channel === 'sms') {
     return smsSender(delivery.recipient, delivery.payload?.message);
   }
+  if (delivery.channel === 'push') {
+    const pushSender = providers.sendPush || sendPush;
+    const user = await User.findById(delivery.user).select('pushSubscription');
+    if (!user?.pushSubscription?.endpoint) {
+      const err = new Error('Push subscription is no longer available');
+      err.permanent = true;
+      throw err;
+    }
+    return pushSender(user.pushSubscription, delivery.payload);
+  }
   throw new Error(`Unsupported notification channel: ${delivery.channel}`);
 }
 
@@ -78,7 +90,7 @@ async function processDelivery(delivery, providers = {}, now = new Date()) {
     await delivery.save();
     return { status: 'sent', delivery };
   } catch (err) {
-    const exhausted = delivery.attempts >= delivery.maxAttempts;
+    const exhausted = err.permanent === true || delivery.attempts >= delivery.maxAttempts;
     delivery.status = exhausted ? 'failed' : 'retry';
     delivery.failedAt = exhausted ? now : undefined;
     delivery.nextAttemptAt = exhausted
@@ -89,6 +101,9 @@ async function processDelivery(delivery, providers = {}, now = new Date()) {
     delivery.leaseUntil = undefined;
     delivery.lastError = String(err.message || err).slice(0, 1000);
     await delivery.save();
+    if (delivery.channel === 'push' && err.permanent === true) {
+      await User.updateOne({ _id: delivery.user }, { $unset: { pushSubscription: 1 } });
+    }
     logger.warn(
       { err, deliveryId: delivery._id, channel: delivery.channel, attempts: delivery.attempts, exhausted },
       'Notification delivery failed'

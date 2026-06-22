@@ -6,6 +6,7 @@ const logger = require('../config/logger');
 const DEFAULT_PREFERENCES = Object.freeze({
   channels: {
     inApp: true,
+    push: false,
     email: false,
     sms: false
   },
@@ -131,7 +132,7 @@ function notificationPayload(notification, type, data) {
 async function resolveUser(user) {
   if (user && typeof user === 'object' && (user.email || user.phone || user.notificationPreferences)) return user;
   return User.findById(userId(user)).select(
-    'firstName lastName email phone countryCode role isActive notificationPreferences'
+    'firstName lastName email phone countryCode role isActive notificationPreferences pushSubscription'
   );
 }
 
@@ -148,6 +149,20 @@ function deliveryPayload(channel, recipient, notification, data) {
         subject: notification.title || 'iTruck update',
         text,
         html: `<p><strong>${title}</strong></p><p>${message}</p>`
+      }
+    };
+  }
+
+  if (channel === 'push') {
+    return {
+      recipient,
+      payload: {
+        title: notification.title || 'iTruck update',
+        message: notification.message || '',
+        link: data.link || '/app',
+        priority: notification.priority || 'normal',
+        notificationId: notification._id,
+        data
       }
     };
   }
@@ -178,7 +193,8 @@ function smsRecipient(user) {
 }
 
 async function createDelivery(notification, user, channel, scheduledFor, data) {
-  const recipient = channel === 'email' ? user.email : smsRecipient(user);
+  const recipient =
+    channel === 'email' ? user.email : channel === 'push' ? user.pushSubscription?.endpoint : smsRecipient(user);
   if (!recipient) return null;
   const content = deliveryPayload(channel, recipient, notification, data);
 
@@ -221,7 +237,7 @@ async function deliver(userInput, type, data = {}, io) {
   const priority = data.priority || 'normal';
   const channels = {
     inApp: categoryEnabled && preferences.channels.inApp !== false,
-    push: false,
+    push: categoryEnabled && preferences.channels.push === true && Boolean(user.pushSubscription?.endpoint),
     email: categoryEnabled && preferences.channels.email === true && Boolean(user.email),
     sms: categoryEnabled && preferences.channels.sms === true && Boolean(user.phone)
   };
@@ -253,7 +269,7 @@ async function deliver(userInput, type, data = {}, io) {
 
   const scheduledFor = nextAllowedDeliveryAt(new Date(), preferences.quietHours, priority);
   await Promise.all(
-    ['email', 'sms']
+    ['email', 'sms', 'push']
       .filter((channel) => channels[channel])
       .map((channel) => createDelivery(notification, user, channel, scheduledFor, data))
   );

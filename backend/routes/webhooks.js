@@ -31,6 +31,7 @@ stripeRouter.post('/', async (req, res, next) => {
 
   try {
     await payment.payments.reconcileStripeEvent(event);
+    await payment.providerOperations.reconcileStripeEvent(event);
     logger.info({ eventId: event.id, eventType: event.type }, 'Stripe webhook reconciled');
     return res.json({ received: true });
   } catch (err) {

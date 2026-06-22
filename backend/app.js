@@ -14,6 +14,7 @@ const AppError = require('./utils/AppError');
 const { redactUrlSecrets } = require('./utils/redactUrl');
 const { isLiveMode } = require('./config/runtime');
 const { auditMutations } = require('./middleware/audit');
+const metrics = require('./services/metrics');
 
 const app = express();
 const frontendDir = path.join(__dirname, '../frontend');
@@ -114,6 +115,7 @@ app.use(
           }
   })
 );
+app.use('/api', metrics.middleware);
 app.use('/api/webhooks/stripe', apiLimiter, express.raw({ type: 'application/json', limit: '2mb' }), stripeRouter);
 app.use('/api/uploads/local', (req, res, next) => {
   if (isLiveMode()) return next(AppError.notFound('Local uploads are disabled in live mode.'));
@@ -124,6 +126,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(mongoSanitize());
 app.use(hpp());
+app.use('/api', require('./routes/operations'));
 app.use('/api', apiLimiter);
 app.use('/api', auditMutations);
 

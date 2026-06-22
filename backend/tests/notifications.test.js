@@ -89,6 +89,30 @@ test('deliver queues email and normalized SMS when the user enables them', async
   );
 });
 
+test('deliver queues web push only when the user has enabled a subscription', async () => {
+  await notifications.deliver(
+    user({
+      pushSubscription: {
+        endpoint: 'https://push.example.com/subscription',
+        keys: { p256dh: 'public-key', auth: 'auth-secret' }
+      },
+      notificationPreferences: {
+        channels: { inApp: true, push: true }
+      }
+    }),
+    'tracking.updated',
+    { title: 'Truck moved', message: 'Your delivery is approaching', link: '/app/tracking' }
+  );
+
+  expect(NotificationDelivery.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      channel: 'push',
+      recipient: 'https://push.example.com/subscription',
+      payload: expect.objectContaining({ title: 'Truck moved', link: '/app/tracking' })
+    })
+  );
+});
+
 test('disabled categories create a suppressed audit record without deliveries', async () => {
   const note = await notifications.deliver(
     user({

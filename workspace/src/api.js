@@ -337,6 +337,13 @@ export const api = {
   updateNotificationPreferences: (payload) =>
     request('/notifications/preferences', { method: 'PATCH', body: JSON.stringify(payload) }),
   sendTestNotification: () => request('/notifications/test', { method: 'POST' }),
+  pushConfig: () => request('/notifications/push/config'),
+  subscribePush: (subscription) =>
+    request('/notifications/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ subscription })
+    }),
+  unsubscribePush: () => request('/notifications/push/subscribe', { method: 'DELETE' }),
   markAllNotificationsRead: () => request('/notifications/read-all', { method: 'PATCH' }),
   markNotificationRead: (id) => request(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' }),
   listDocuments: (params = {}) => request(`/documents${queryString(params)}`),

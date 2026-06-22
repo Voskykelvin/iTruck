@@ -133,6 +133,18 @@ function goLiveIntegrationStatus() {
   const mapsReady = Boolean(
     process.env.GOOGLE_MAPS_API_KEY && (process.env.GOOGLE_MAPS_BROWSER_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY)
   );
+  const payoutReady = Boolean(
+    stripeReady ||
+    (process.env.MPESA_B2C_INITIATOR_NAME &&
+      process.env.MPESA_B2C_SECURITY_CREDENTIAL &&
+      process.env.MPESA_B2C_RESULT_URL &&
+      process.env.MPESA_B2C_TIMEOUT_URL) ||
+    ((process.env.MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY || process.env.MOMO_DISB_SUBSCRIBER_KEY) &&
+      (process.env.MTN_MOMO_DISBURSEMENT_API_USER || process.env.MOMO_DISB_USER_ID) &&
+      (process.env.MTN_MOMO_DISBURSEMENT_API_KEY || process.env.MOMO_DISB_API_KEY))
+  );
+  const pushReady = hasAllEnv(['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT']);
+  const receiptsReady = Boolean(process.env.NOTIFICATION_RECEIPT_SECRET);
 
   return [
     {
@@ -154,12 +166,30 @@ function goLiveIntegrationStatus() {
       name: 'maps',
       configured: mapsReady,
       hint: 'configure GOOGLE_MAPS_API_KEY plus a referrer-restricted GOOGLE_MAPS_BROWSER_KEY'
+    },
+    {
+      name: 'payouts',
+      configured: payoutReady,
+      required: false,
+      hint: 'configure Stripe Connect, M-Pesa B2C, or MTN MoMo disbursement credentials'
+    },
+    {
+      name: 'push',
+      configured: pushReady,
+      required: false,
+      hint: 'configure VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, and VAPID_SUBJECT'
+    },
+    {
+      name: 'deliveryReceipts',
+      configured: receiptsReady,
+      required: false,
+      hint: 'configure NOTIFICATION_RECEIPT_SECRET and provider receipt callbacks'
     }
   ];
 }
 
 function assertGoLiveIntegrations() {
-  const missing = goLiveIntegrationStatus().filter((item) => !item.configured);
+  const missing = goLiveIntegrationStatus().filter((item) => item.required !== false && !item.configured);
   if (missing.length) {
     throw runtimeConfigError(
       `Missing go-live integrations: ${missing.map((item) => `${item.name} (${item.hint})`).join('; ')}.`

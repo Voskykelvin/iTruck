@@ -2,7 +2,8 @@ jest.mock('../models/Document', () => ({
   find: jest.fn()
 }));
 jest.mock('../models/Booking', () => ({
-  find: jest.fn()
+  find: jest.fn(),
+  updateOne: jest.fn()
 }));
 jest.mock('../models/IssueReport', () => ({
   find: jest.fn(),
@@ -25,6 +26,7 @@ const User = require('../models/User');
 const notifications = require('../services/notifications');
 const {
   closeResolvedCases,
+  cleanupAbandonedBookings,
   escalateBreachedCases,
   expireDocuments,
   expireCarrierBids,
@@ -46,6 +48,41 @@ beforeEach(() => {
   jest.clearAllMocks();
   User.find.mockReturnValue(queryResult([]));
   IssueReport.updateOne.mockResolvedValue({ modifiedCount: 1 });
+  Booking.updateOne.mockResolvedValue({ modifiedCount: 1 });
+});
+
+test('abandoned unpaid bookings are cancelled only after active bids are gone', async () => {
+  Booking.find.mockReturnValue(
+    queryResult([
+      {
+        _id: 'booking-abandoned',
+        client: 'client-1',
+        pickup: 'Nairobi',
+        destination: 'Mombasa',
+        status: 'bidding',
+        updatedAt: new Date('2026-06-18T00:00:00.000Z')
+      }
+    ])
+  );
+
+  await expect(cleanupAbandonedBookings(new Date('2026-06-22T12:00:00.000Z'))).resolves.toBe(1);
+  expect(Booking.find).toHaveBeenCalledWith(
+    expect.objectContaining({
+      owner: null,
+      paymentStatus: { $in: ['unpaid', 'failed'] },
+      bids: { $not: { $elemMatch: { status: expect.any(Object) } } }
+    })
+  );
+  expect(Booking.updateOne).toHaveBeenCalledWith(
+    expect.objectContaining({ _id: 'booking-abandoned', status: 'bidding' }),
+    { $set: { status: 'cancelled' } }
+  );
+  expect(notifications.deliver).toHaveBeenCalledWith(
+    'client-1',
+    'booking.abandoned-cancelled',
+    expect.objectContaining({ dedupeKey: 'booking-abandoned:booking-abandoned' }),
+    undefined
+  );
 });
 
 test('expiry windows provide 30, 7, and 1 day dedupe boundaries', () => {

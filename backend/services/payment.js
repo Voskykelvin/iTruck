@@ -1,10 +1,12 @@
 const crypto = require('crypto');
 const mongoose = require('mongoose');
+const Stripe = require('stripe');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const Transaction = require('../models/Transaction');
 const Booking = require('../models/Booking');
 const Idempotency = require('../models/Idempotency');
+const ProviderOperation = require('../models/ProviderOperation');
 const logger = require('../config/logger');
 const { assertDeliveryProofForPaymentRelease } = require('./operationsPolicy');
 const { assertDeliveryProofIntegrity } = require('./deliveryProof');
@@ -533,6 +535,75 @@ class MpesaService {
       response: data
     };
   }
+
+  async initiateB2CPayout({ amount, phone, remarks, occasion }) {
+    const token = await this.accessToken();
+    const payload = {
+      InitiatorName: requireEnv('M-Pesa B2C initiator name', 'MPESA_B2C_INITIATOR_NAME'),
+      SecurityCredential: requireEnv('M-Pesa B2C security credential', 'MPESA_B2C_SECURITY_CREDENTIAL'),
+      CommandID: process.env.MPESA_B2C_COMMAND_ID || 'BusinessPayment',
+      Amount: providerAmount(amount),
+      PartyA: requireEnv('M-Pesa B2C shortcode', 'MPESA_B2C_SHORTCODE', 'MPESA_SHORTCODE'),
+      PartyB: normalizeMpesaPhone(phone),
+      Remarks: String(remarks || 'iTruck carrier payout').slice(0, 100),
+      QueueTimeOutURL: authenticateProviderCallback(
+        requireEnv('M-Pesa B2C timeout URL', 'MPESA_B2C_TIMEOUT_URL'),
+        'mpesa'
+      ),
+      ResultURL: authenticateProviderCallback(requireEnv('M-Pesa B2C result URL', 'MPESA_B2C_RESULT_URL'), 'mpesa'),
+      Occasion: String(occasion || 'iTruck payout').slice(0, 100)
+    };
+    const endpoint = process.env.MPESA_B2C_ENDPOINT || '/mpesa/b2c/v3/paymentrequest';
+    const data = await fetchJson(`${this.baseUrl()}${endpoint}`, {
+      fetchImpl: this.fetchImpl,
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const providerReference = data.OriginatorConversationID || data.ConversationID;
+    if (!providerReference) throw appError('M-Pesa B2C response did not include a conversation reference', 502);
+    return { provider: 'mpesa', providerReference, response: data, status: 'pending' };
+  }
+
+  async reverseTransaction({ transactionId, amount, remarks }) {
+    const token = await this.accessToken();
+    const payload = {
+      Initiator: requireEnv(
+        'M-Pesa reversal initiator name',
+        'MPESA_REVERSAL_INITIATOR_NAME',
+        'MPESA_B2C_INITIATOR_NAME'
+      ),
+      SecurityCredential: requireEnv(
+        'M-Pesa reversal security credential',
+        'MPESA_REVERSAL_SECURITY_CREDENTIAL',
+        'MPESA_B2C_SECURITY_CREDENTIAL'
+      ),
+      CommandID: 'TransactionReversal',
+      TransactionID: String(transactionId),
+      Amount: providerAmount(amount),
+      ReceiverParty: requireEnv('M-Pesa shortcode', 'MPESA_SHORTCODE'),
+      RecieverIdentifierType: process.env.MPESA_REVERSAL_RECEIVER_TYPE || '11',
+      ResultURL: authenticateProviderCallback(
+        requireEnv('M-Pesa reversal result URL', 'MPESA_REVERSAL_RESULT_URL'),
+        'mpesa'
+      ),
+      QueueTimeOutURL: authenticateProviderCallback(
+        requireEnv('M-Pesa reversal timeout URL', 'MPESA_REVERSAL_TIMEOUT_URL'),
+        'mpesa'
+      ),
+      Remarks: String(remarks || 'iTruck payment refund').slice(0, 100),
+      Occasion: 'iTruck refund'
+    };
+    const data = await fetchJson(`${this.baseUrl()}/mpesa/reversal/v1/request`, {
+      fetchImpl: this.fetchImpl,
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const providerReference = data.OriginatorConversationID || data.ConversationID;
+    if (!providerReference) throw appError('M-Pesa reversal response did not include a conversation reference', 502);
+    return { provider: 'mpesa', providerReference, response: data, status: 'pending' };
+  }
 }
 
 class MTNMoMoService {
@@ -639,6 +710,123 @@ class MTNMoMoService {
         'Ocp-Apim-Subscription-Key': this.subscriptionKey('collection')
       }
     });
+  }
+
+  async transfer({ amount, phone, externalId, payerMessage, payeeNote, callbackUrl }) {
+    const referenceId = crypto.randomUUID();
+    const token = await this.accessToken('disbursement');
+    const payload = {
+      amount: String(providerAmount(amount)),
+      currency: this.currency(),
+      externalId: String(externalId),
+      payee: { partyIdType: 'MSISDN', partyId: normalizeInternationalPhone(phone) },
+      payerMessage: String(payerMessage || 'iTruck carrier payout').slice(0, 160),
+      payeeNote: String(payeeNote || 'iTruck payout').slice(0, 160)
+    };
+    const configuredCallback =
+      callbackUrl ||
+      process.env.MTN_MOMO_DISBURSEMENT_CALLBACK_URL ||
+      `${publicBaseUrl()}/api/payments/webhooks/mtn/disbursement/${referenceId}`;
+    await fetchJson(`${this.baseUrl()}/disbursement/v1_0/transfer`, {
+      fetchImpl: this.fetchImpl,
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Reference-Id': referenceId,
+        'X-Target-Environment': this.targetEnvironment(),
+        'X-Callback-Url': authenticateProviderCallback(configuredCallback, 'mtn'),
+        'Ocp-Apim-Subscription-Key': this.subscriptionKey('disbursement'),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    return { provider: 'mtn', providerReference: referenceId, response: {}, status: 'pending' };
+  }
+
+  async transferStatus(referenceId) {
+    const token = await this.accessToken('disbursement');
+    return fetchJson(`${this.baseUrl()}/disbursement/v1_0/transfer/${encodeURIComponent(referenceId)}`, {
+      fetchImpl: this.fetchImpl,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Target-Environment': this.targetEnvironment(),
+        'Ocp-Apim-Subscription-Key': this.subscriptionKey('disbursement')
+      }
+    });
+  }
+
+  async refund({ amount, originalReference, externalId, payerMessage, payeeNote, callbackUrl }) {
+    const referenceId = crypto.randomUUID();
+    const token = await this.accessToken('collection');
+    const payload = {
+      amount: String(providerAmount(amount)),
+      currency: this.currency(),
+      externalId: String(externalId),
+      payerMessage: String(payerMessage || 'iTruck payment refund').slice(0, 160),
+      payeeNote: String(payeeNote || 'iTruck refund').slice(0, 160),
+      referenceIdToRefund: String(originalReference)
+    };
+    await fetchJson(`${this.baseUrl()}/collection/v1_0/refund`, {
+      fetchImpl: this.fetchImpl,
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Reference-Id': referenceId,
+        'X-Target-Environment': this.targetEnvironment(),
+        'X-Callback-Url': authenticateProviderCallback(
+          callbackUrl || `${publicBaseUrl()}/api/payments/webhooks/mtn/refund/${referenceId}`,
+          'mtn'
+        ),
+        'Ocp-Apim-Subscription-Key': this.subscriptionKey('collection'),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    return { provider: 'mtn', providerReference: referenceId, response: {}, status: 'pending' };
+  }
+}
+
+class StripeService {
+  constructor(options = {}) {
+    this.client = options.client || new Stripe(requireEnv('Stripe secret key', 'STRIPE_SECRET_KEY'));
+  }
+
+  async refund({ paymentIntent, charge, amount, currency, reason, idempotencyKey, metadata }) {
+    const zeroDecimal = stripeAmount(1, currency) === 1;
+    const smallestUnit = zeroDecimal ? Math.round(amount) : Math.round(amount * 100);
+    const payload = {
+      ...(paymentIntent ? { payment_intent: paymentIntent } : { charge }),
+      amount: smallestUnit,
+      metadata
+    };
+    if (['duplicate', 'fraudulent', 'requested_by_customer'].includes(reason)) payload.reason = reason;
+    const response = await this.client.refunds.create(payload, { idempotencyKey });
+    return {
+      provider: 'stripe',
+      providerReference: response.id,
+      response,
+      status: response.status === 'succeeded' ? 'completed' : response.status || 'pending'
+    };
+  }
+
+  async transfer({ amount, currency, destination, idempotencyKey, metadata }) {
+    const zeroDecimal = stripeAmount(1, currency) === 1;
+    const smallestUnit = zeroDecimal ? Math.round(amount) : Math.round(amount * 100);
+    const response = await this.client.transfers.create(
+      {
+        amount: smallestUnit,
+        currency: String(currency || 'usd').toLowerCase(),
+        destination,
+        metadata
+      },
+      { idempotencyKey }
+    );
+    return {
+      provider: 'stripe',
+      providerReference: response.id,
+      response,
+      status: 'completed'
+    };
   }
 }
 
@@ -1417,8 +1605,367 @@ class PaymentReconciliationService {
   }
 }
 
+class ProviderOperationsService {
+  constructor(options = {}) {
+    this.stripe = options.stripe;
+    this.mpesa = options.mpesa || new MpesaService(options);
+    this.mtn = options.mtn || new MTNMoMoService(options);
+  }
+
+  stripeService() {
+    if (!this.stripe) this.stripe = new StripeService();
+    return this.stripe;
+  }
+
+  async reserveOperation(payload) {
+    try {
+      return { operation: await ProviderOperation.create(payload), created: true };
+    } catch (err) {
+      if (err.code !== 11000) throw err;
+      const existing = await ProviderOperation.findOne({ idempotencyKey: payload.idempotencyKey });
+      if (
+        existing &&
+        String(existing.sourceTransaction) === String(payload.sourceTransaction) &&
+        existing.type === payload.type
+      ) {
+        return { operation: existing, created: false };
+      }
+      throw appError('Idempotency key was already used for another provider operation', 409);
+    }
+  }
+
+  async executeRefund(transactionId, options = {}) {
+    const key = normalizeIdempotencyKey(options.idempotencyKey);
+    if (!key) throw appError('Idempotency-Key is required', 400);
+    const source = await Transaction.findById(transactionId);
+    if (!source) throw appError('Payment transaction not found', 404);
+    if (source.type !== 'payment' || !['completed', 'refunded'].includes(source.status)) {
+      throw appError('Only a completed payment can be refunded', 409);
+    }
+    const provider = String(source.provider || source.method || '').toLowerCase();
+    if (!['stripe', 'mpesa', 'mtn'].includes(provider)) {
+      throw appError(`Refunds are not supported for ${provider || 'this payment method'}`, 400);
+    }
+    const amount = parsePositiveAmount(options.amount || source.amount);
+    const committed = await ProviderOperation.aggregate([
+      {
+        $match: {
+          sourceTransaction: source._id,
+          type: 'refund',
+          status: { $in: ['processing', 'pending', 'completed'] }
+        }
+      },
+      { $group: { _id: null, amount: { $sum: '$amount' } } }
+    ]);
+    if (amount + Number(committed[0]?.amount || 0) > Number(source.amount) + 0.001) {
+      throw appError('Refund amount exceeds the remaining refundable amount', 409);
+    }
+
+    const reservation = await this.reserveOperation({
+      type: 'refund',
+      provider,
+      sourceTransaction: source._id,
+      user: source.user,
+      booking: source.booking,
+      amount,
+      currency: source.currency,
+      status: 'processing',
+      idempotencyKey: key,
+      reason: options.reason,
+      requestedBy: options.requestedBy
+    });
+    const operation = reservation.operation;
+    if (!reservation.created) return operation;
+    if (source.booking) await Booking.updateOne({ _id: source.booking }, { $set: { paymentStatus: 'refund_pending' } });
+
+    try {
+      const metadata = { operationId: String(operation._id), sourceTransaction: String(source._id) };
+      let result;
+      if (provider === 'stripe') {
+        const reference = String(source.reference || '');
+        const sourceMetadata = metadataObject(source.metadata);
+        const paymentIntent =
+          sourceMetadata.paymentIntent ||
+          sourceMetadata.stripePaymentIntent ||
+          (reference.startsWith('pi_') ? reference : undefined);
+        const charge = sourceMetadata.charge || (reference.startsWith('ch_') ? reference : undefined);
+        if (!paymentIntent && !charge) {
+          throw appError('Stripe payment intent or charge reference is missing from the source payment', 409);
+        }
+        result = await this.stripeService().refund({
+          paymentIntent,
+          charge,
+          amount,
+          currency: source.currency,
+          reason: options.reason,
+          idempotencyKey: key,
+          metadata
+        });
+      } else if (provider === 'mpesa') {
+        const receipt = metadataObject(source.metadata).mpesaReceipt;
+        if (!receipt) throw appError('M-Pesa receipt is missing from the source payment', 409);
+        result = await this.mpesa.reverseTransaction({
+          transactionId: receipt,
+          amount,
+          remarks: options.reason
+        });
+      } else {
+        result = await this.mtn.refund({
+          amount,
+          originalReference: source.providerEventId,
+          externalId: `refund-${operation._id}`,
+          payerMessage: options.reason,
+          payeeNote: `iTruck refund ${source._id}`
+        });
+      }
+
+      operation.providerReference = result.providerReference;
+      operation.providerResponse = result.response;
+      operation.providerStatus = result.status;
+      operation.status = result.status === 'completed' ? 'completed' : 'pending';
+      if (operation.status === 'completed') operation.completedAt = new Date();
+      await operation.save();
+      if (operation.status === 'completed') await this.completeRefund(operation, source);
+      return operation;
+    } catch (err) {
+      operation.status = 'failed';
+      operation.failedAt = new Date();
+      operation.lastError = err.message;
+      await operation.save();
+      if (source.booking) await Booking.updateOne({ _id: source.booking }, { $set: { paymentStatus: 'escrowed' } });
+      throw err;
+    }
+  }
+
+  async executePayout(transactionId, options = {}) {
+    const key = normalizeIdempotencyKey(options.idempotencyKey);
+    if (!key) throw appError('Idempotency-Key is required', 400);
+    const source = await Transaction.findById(transactionId);
+    if (!source) throw appError('Withdrawal transaction not found', 404);
+    if (source.type !== 'withdrawal' || source.status !== 'pending') {
+      throw appError('Only a pending withdrawal can be executed', 409);
+    }
+    const provider = String(source.method || '').toLowerCase();
+    if (!['stripe', 'mpesa', 'mtn'].includes(provider)) {
+      throw appError(`Payouts are not supported for ${provider || 'this withdrawal method'}`, 400);
+    }
+    const details = metadataObject(source.metadata).payoutDetails || {};
+    const destination = details.destination;
+    if (!destination) throw appError('Withdrawal destination is missing', 409);
+
+    const reservation = await this.reserveOperation({
+      type: 'payout',
+      provider,
+      sourceTransaction: source._id,
+      user: source.user,
+      amount: source.amount,
+      currency: source.currency,
+      status: 'processing',
+      idempotencyKey: key,
+      destination,
+      requestedBy: options.requestedBy
+    });
+    const operation = reservation.operation;
+    if (!reservation.created) return operation;
+
+    try {
+      const metadata = { operationId: String(operation._id), withdrawal: String(source._id) };
+      let result;
+      if (provider === 'stripe') {
+        if (!String(destination).startsWith('acct_')) {
+          throw appError('Stripe payout destination must be a connected account id', 400);
+        }
+        result = await this.stripeService().transfer({
+          amount: source.amount,
+          currency: source.currency,
+          destination,
+          idempotencyKey: key,
+          metadata
+        });
+      } else if (provider === 'mpesa') {
+        result = await this.mpesa.initiateB2CPayout({
+          amount: source.amount,
+          phone: destination,
+          remarks: source.description,
+          occasion: `Withdrawal ${source._id}`
+        });
+      } else {
+        result = await this.mtn.transfer({
+          amount: source.amount,
+          phone: destination,
+          externalId: String(source._id),
+          payerMessage: source.description,
+          payeeNote: `iTruck withdrawal ${source._id}`
+        });
+      }
+
+      operation.providerReference = result.providerReference;
+      operation.providerResponse = result.response;
+      operation.providerStatus = result.status;
+      operation.status = result.status === 'completed' ? 'completed' : 'pending';
+      if (operation.status === 'completed') operation.completedAt = new Date();
+      await operation.save();
+      if (operation.status === 'completed') {
+        await Transaction.updateOne(
+          { _id: source._id, status: 'pending' },
+          { $set: { status: 'completed', provider, providerEventId: result.providerReference } }
+        );
+      }
+      return operation;
+    } catch (err) {
+      operation.status = 'failed';
+      operation.failedAt = new Date();
+      operation.lastError = err.message;
+      await operation.save();
+      await this.failPayout(operation, source, err.message);
+      throw err;
+    }
+  }
+
+  async completeRefund(operation, sourceInput) {
+    const source = sourceInput || (await Transaction.findById(operation.sourceTransaction));
+    if (!source) return;
+    const completed = await ProviderOperation.aggregate([
+      {
+        $match: {
+          sourceTransaction: source._id,
+          type: 'refund',
+          status: 'completed'
+        }
+      },
+      { $group: { _id: null, amount: { $sum: '$amount' } } }
+    ]);
+    const fullyRefunded = Number(completed[0]?.amount || 0) >= Number(source.amount) - 0.001;
+    if (fullyRefunded) await Transaction.updateOne({ _id: source._id }, { $set: { status: 'refunded' } });
+    if (source.booking) {
+      await Booking.updateOne(
+        { _id: source.booking },
+        { $set: { paymentStatus: fullyRefunded ? 'refunded' : 'escrowed' } }
+      );
+    }
+  }
+
+  async failPayout(operation, sourceInput, reason) {
+    const source = sourceInput || (await Transaction.findById(operation.sourceTransaction));
+    if (!source) return;
+    await runInTransaction(async (session) => {
+      const failed = await Transaction.findOneAndUpdate(
+        { _id: source._id, type: 'withdrawal', status: 'pending' },
+        {
+          $set: {
+            status: 'failed',
+            metadata: { ...metadataObject(source.metadata), payoutFailure: reason, failedAt: new Date().toISOString() }
+          }
+        },
+        sessionOptions(session, { new: true })
+      );
+      if (failed) {
+        await Wallet.updateOne(
+          { user: source.user },
+          { $inc: { balance: Number(source.amount), version: 1 }, $set: { lastTransaction: source._id } },
+          sessionOptions(session)
+        );
+      }
+    });
+  }
+
+  async reconcileCallback(provider, referenceId, payload = {}) {
+    const operation = await ProviderOperation.findOne({
+      provider,
+      $or: [
+        { providerReference: referenceId },
+        { providerReference: payload?.Result?.OriginatorConversationID },
+        { providerReference: payload?.Result?.ConversationID }
+      ].filter((entry) => Object.values(entry)[0])
+    });
+    if (!operation) return { received: true, matched: false };
+    if (['completed', 'failed', 'cancelled'].includes(operation.status)) {
+      return { received: true, matched: true, duplicate: true, status: operation.status };
+    }
+
+    let providerStatus;
+    let successful;
+    if (provider === 'mpesa') {
+      const result = payload.Result || payload;
+      successful = Number(result.ResultCode) === 0;
+      providerStatus = successful ? 'SUCCESSFUL' : 'FAILED';
+      operation.providerReference =
+        operation.providerReference || result.OriginatorConversationID || result.ConversationID;
+    } else {
+      providerStatus = String(payload.status || 'PENDING').toUpperCase();
+      if (providerStatus === 'PENDING') {
+        operation.providerStatus = providerStatus;
+        operation.callbackPayloads.push(payload);
+        await operation.save();
+        return { received: true, matched: true, status: 'pending' };
+      }
+      successful = providerStatus === 'SUCCESSFUL';
+    }
+
+    operation.providerStatus = providerStatus;
+    operation.callbackPayloads.push(payload);
+    operation.status = successful ? 'completed' : 'failed';
+    operation.completedAt = successful ? new Date() : undefined;
+    operation.failedAt = successful ? undefined : new Date();
+    if (!successful) operation.lastError = payload.reason || payload?.Result?.ResultDesc || 'Provider operation failed';
+    await operation.save();
+
+    const source = await Transaction.findById(operation.sourceTransaction);
+    if (operation.type === 'refund') {
+      if (successful) await this.completeRefund(operation, source);
+      else if (source?.booking) {
+        await Booking.updateOne({ _id: source.booking }, { $set: { paymentStatus: 'escrowed' } });
+      }
+    } else if (successful) {
+      await Transaction.updateOne(
+        { _id: operation.sourceTransaction, status: 'pending' },
+        {
+          $set: {
+            status: 'completed',
+            provider,
+            providerEventId: operation.providerReference
+          }
+        }
+      );
+    } else {
+      await this.failPayout(operation, source, operation.lastError);
+    }
+    return { received: true, matched: true, duplicate: false, status: operation.status, operation };
+  }
+
+  async reconcileStripeEvent(event) {
+    const object = stripeObject(event);
+    if (!object?.id) return null;
+    const candidates = [{ providerReference: object.id }];
+    if (validObjectId(object.metadata?.operationId)) candidates.push({ _id: object.metadata.operationId });
+    const operation = await ProviderOperation.findOne({
+      provider: 'stripe',
+      $or: candidates
+    });
+    if (!operation) return null;
+    operation.providerResponse = object;
+    operation.providerStatus = object.status || event.type;
+    if (object.status === 'failed' || event.type.endsWith('.failed')) {
+      operation.status = 'failed';
+      operation.failedAt = new Date();
+      operation.lastError = object.failure_message || object.failure_code || event.type;
+    } else if (['succeeded', 'paid'].includes(object.status) || event.type.endsWith('.created')) {
+      operation.status = 'completed';
+      operation.completedAt = new Date();
+    }
+    await operation.save();
+    const source = await Transaction.findById(operation.sourceTransaction);
+    if (operation.status === 'completed' && operation.type === 'refund') await this.completeRefund(operation, source);
+    if (operation.status === 'failed' && operation.type === 'payout') {
+      await this.failPayout(operation, source, operation.lastError);
+    }
+    return operation;
+  }
+}
+
 module.exports = {
   payments: new PaymentReconciliationService(),
+  providerOperations: new ProviderOperationsService(),
   mobileMoney: new MobileMoneyPaymentService(),
   wallet: new WalletService(),
   checkIdempotency,
@@ -1427,10 +1974,11 @@ module.exports = {
   markIdempotencyFailed,
   normalizeIdempotencyKey,
   runWithIdempotency,
-  StripeService: class {},
+  StripeService,
   MpesaService,
   MTNMoMoService,
   MobileMoneyPaymentService,
   PaymentReconciliationService,
+  ProviderOperationsService,
   WalletService
 };

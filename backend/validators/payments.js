@@ -25,6 +25,16 @@ const withdrawalSchema = [
 ];
 
 const releasePaymentSchema = [liveMongoIdParam('bookingId'), idempotencyKeyBody];
+const refundSchema = [
+  liveMongoIdParam('transactionId'),
+  body('amount').optional().isFloat({ min: 0.01 }).withMessage('amount must be greater than zero').toFloat(),
+  body('reason')
+    .optional({ checkFalsy: true })
+    .isIn(['duplicate', 'fraudulent', 'requested_by_customer', 'service_failure', 'other'])
+    .withMessage('Choose a supported refund reason'),
+  idempotencyKeyBody
+];
+const executePayoutSchema = [liveMongoIdParam('transactionId'), idempotencyKeyBody];
 
 const mobileMoneyProvider = body('method')
   .optional({ checkFalsy: true })
@@ -80,6 +90,8 @@ module.exports = {
   fundEscrowSchema,
   initiateMobileMoneyBodySchema,
   initiateMobileMoneySchema,
+  executePayoutSchema,
+  refundSchema,
   releasePaymentSchema,
   withdrawalSchema
 };

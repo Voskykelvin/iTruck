@@ -1,4 +1,4 @@
-const CACHE = 'itruck-v6-offline';
+const CACHE = 'itruck-v7-offline';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -76,4 +76,37 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
+});
+
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data?.json() || {};
+  } catch (_err) {
+    payload = { title: 'iTruck update', message: event.data?.text() || '' };
+  }
+  event.waitUntil(
+    self.registration.showNotification(payload.title || 'iTruck update', {
+      body: payload.message || '',
+      icon: '/assets/icon-192.png',
+      badge: '/assets/icon-192.png',
+      tag: payload.notificationId || 'itruck-update',
+      data: { link: payload.link || '/app' }
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const link = event.notification.data?.link || '/app';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((client) => new URL(client.url).origin === self.location.origin);
+      if (existing) {
+        existing.navigate(link);
+        return existing.focus();
+      }
+      return self.clients.openWindow(link);
+    })
+  );
 });
