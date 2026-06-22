@@ -2,6 +2,7 @@
   "name": "itruck",
   "version": "1.0.0",
   "description": "iTruck Africa premium logistics platform",
+  "packageManager": "npm@10.9.4",
   "engines": {
     "node": ">=20.19.0"
   },
