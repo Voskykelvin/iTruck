@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "packageManager": "npm@10.9.4",
   "engines": {
     "node": ">=20.19.0"
   },

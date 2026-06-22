@@ -40,8 +40,8 @@ jobs:
       CI_MONGODB_URI: mongodb://127.0.0.1:27017/itruck_ci
       CI_REDIS_URL: redis://127.0.0.1:6379
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -49,6 +49,7 @@ jobs:
             package-lock.json
             backend/package-lock.json
             workspace/package-lock.json
+      - run: npm install --global npm@10.9.4
       - run: npm ci
       - run: npm ci --prefix backend
       - run: npm ci --include=dev --prefix workspace
@@ -59,16 +60,17 @@ jobs:
   browser-e2e:
     name: Cross-browser E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: |
             backend/package-lock.json
             workspace/package-lock.json
+      - run: npm install --global npm@10.9.4
       - run: npm ci --prefix backend
       - run: npm ci --include=dev --prefix workspace
       - run: npx playwright install --with-deps chromium firefox webkit
