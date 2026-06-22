@@ -93,3 +93,15 @@ test('direct backend responses include browser security policy headers', async (
   expect(res.headers['content-security-policy']).toContain("frame-ancestors 'none'");
   expect(res.headers['permissions-policy']).toContain('geolocation=(self)');
 });
+
+test('operations probes expose liveness and protect metrics with a dedicated token', async () => {
+  process.env.METRICS_AUTH_TOKEN = 'metrics-test-secret';
+  const live = await request(app).get('/api/health/live');
+  expect(live.status).toBe(200);
+  expect(live.body.status).toBe('alive');
+
+  expect((await request(app).get('/api/metrics')).status).toBe(401);
+  const metrics = await request(app).get('/api/metrics').set('Authorization', 'Bearer metrics-test-secret');
+  expect(metrics.status).toBe(200);
+  expect(metrics.text).toContain('itruck_process_uptime_seconds');
+});

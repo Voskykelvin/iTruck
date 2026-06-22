@@ -7,11 +7,15 @@ const asyncHandler = require('../config/asyncHandler');
 const { recordAdminAudit } = require('../services/audit');
 const notifications = require('../services/notifications');
 const payment = require('../services/payment');
+const ProviderOperation = require('../models/ProviderOperation');
+const Transaction = require('../models/Transaction');
 const {
   amountSchema,
+  executePayoutSchema,
   fundEscrowSchema,
   initiateMobileMoneyBodySchema,
   initiateMobileMoneySchema,
+  refundSchema,
   releasePaymentSchema,
   withdrawalSchema
 } = require('../validators/payments');
@@ -169,6 +173,38 @@ router.post(
     const result = await payment.payments.reconcileMTNMoMoCallback(req.params.referenceId, req.body);
     await notifyEscrowIfCompleted(req, result, 'MTN MoMo');
     res.json(result);
+  })
+);
+
+router.post(
+  [
+    '/webhooks/mpesa/b2c/result',
+    '/webhooks/mpesa/b2c/timeout',
+    '/webhooks/mpesa/reversal/result',
+    '/webhooks/mpesa/reversal/timeout'
+  ],
+  requireWebhookSecret('MPESA_WEBHOOK_SECRET', 'MPESA_CALLBACK_SECRET', 'MPESA_CALLBACK_TOKEN'),
+  asyncHandler(async (req, res) => {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.json({ received: true, matched: false, mode: 'memory' });
+    const result = req.body?.Result || req.body || {};
+    const referenceId = result.OriginatorConversationID || result.ConversationID;
+    res.json(await payment.providerOperations.reconcileCallback('mpesa', referenceId, req.body));
+  })
+);
+
+router.post(
+  ['/webhooks/mtn/disbursement/:referenceId?', '/webhooks/mtn/refund/:referenceId?'],
+  requireWebhookSecret(
+    'MTN_MOMO_WEBHOOK_SECRET',
+    'MOMO_WEBHOOK_SECRET',
+    'MTN_MOMO_CALLBACK_SECRET',
+    'MTN_MOMO_CALLBACK_TOKEN'
+  ),
+  asyncHandler(async (req, res) => {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.json({ received: true, matched: false, mode: 'memory' });
+    res.json(await payment.providerOperations.reconcileCallback('mtn', req.params.referenceId, req.body));
   })
 );
 
@@ -392,6 +428,112 @@ router.post(
       alreadyReleased: Boolean(result.alreadyReleased)
     });
     res.status(result.alreadyReleased ? 200 : 201).json(result);
+  })
+);
+
+router.get(
+  '/provider-operations',
+  restrictTo('admin'),
+  asyncHandler(async (req, res) => {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.json({ operations: [], mode: 'memory' });
+    const operations = await ProviderOperation.find()
+      .sort('-createdAt')
+      .limit(Math.min(Number(req.query.limit) || 50, 100));
+    res.json({ operations });
+  })
+);
+
+router.get(
+  '/providers/certification-status',
+  restrictTo('admin'),
+  asyncHandler(async (_req, res) => {
+    const configured = {
+      stripe: {
+        refunds: Boolean(process.env.STRIPE_SECRET_KEY),
+        payouts: Boolean(process.env.STRIPE_SECRET_KEY)
+      },
+      mpesa: {
+        refunds: Boolean(
+          process.env.MPESA_CONSUMER_KEY &&
+          process.env.MPESA_CONSUMER_SECRET &&
+          process.env.MPESA_REVERSAL_INITIATOR_NAME &&
+          process.env.MPESA_REVERSAL_SECURITY_CREDENTIAL
+        ),
+        payouts: Boolean(
+          process.env.MPESA_CONSUMER_KEY &&
+          process.env.MPESA_CONSUMER_SECRET &&
+          process.env.MPESA_B2C_INITIATOR_NAME &&
+          process.env.MPESA_B2C_SECURITY_CREDENTIAL
+        )
+      },
+      mtn: {
+        refunds: Boolean(
+          (process.env.MTN_MOMO_SUBSCRIPTION_KEY || process.env.MOMO_SUBSCRIBER_KEY) &&
+          (process.env.MTN_MOMO_API_USER || process.env.MOMO_USER_ID) &&
+          (process.env.MTN_MOMO_API_KEY || process.env.MOMO_API_KEY)
+        ),
+        payouts: Boolean(
+          (process.env.MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY || process.env.MOMO_DISB_SUBSCRIBER_KEY) &&
+          (process.env.MTN_MOMO_DISBURSEMENT_API_USER || process.env.MOMO_DISB_USER_ID) &&
+          (process.env.MTN_MOMO_DISBURSEMENT_API_KEY || process.env.MOMO_DISB_API_KEY)
+        )
+      }
+    };
+    res.json({
+      configured,
+      liveCertificationRequired: true,
+      message:
+        'Configured means code credentials are present; provider sandbox and production certification remain separate gates.'
+    });
+  })
+);
+
+router.post(
+  '/transactions/:transactionId/refund',
+  restrictTo('admin'),
+  refundSchema,
+  validate,
+  asyncHandler(async (req, res) => {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.status(202).json({ operation: { status: 'pending' }, mode: 'memory' });
+    const operation = await payment.providerOperations.executeRefund(req.params.transactionId, {
+      amount: req.body.amount,
+      reason: req.body.reason,
+      idempotencyKey: idempotencyKey(req),
+      requestedBy: req.user._id
+    });
+    await recordAdminAudit(req, 'payment.refund.execute', 'transaction', req.params.transactionId, {
+      operation: operation._id,
+      provider: operation.provider,
+      amount: operation.amount,
+      status: operation.status
+    });
+    res.status(operation.status === 'completed' ? 201 : 202).json({ operation });
+  })
+);
+
+router.post(
+  '/withdrawals/:transactionId/execute',
+  restrictTo('admin'),
+  executePayoutSchema,
+  validate,
+  asyncHandler(async (req, res) => {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.status(202).json({ operation: { status: 'pending' }, mode: 'memory' });
+    const source = await Transaction.findById(req.params.transactionId);
+    if (!source) return res.status(404).json({ message: 'Withdrawal transaction not found' });
+    const operation = await payment.providerOperations.executePayout(req.params.transactionId, {
+      idempotencyKey: idempotencyKey(req),
+      requestedBy: req.user._id
+    });
+    await recordAdminAudit(req, 'payment.payout.execute', 'transaction', req.params.transactionId, {
+      operation: operation._id,
+      provider: operation.provider,
+      amount: operation.amount,
+      status: operation.status
+    });
+    res.status(operation.status === 'completed' ? 201 : 202).json({ operation });
   })
 );
 

@@ -42,6 +42,8 @@ import SessionsManager from './components/SessionsManager.jsx';
 import DriverOperationsPanel from './components/DriverOperationsPanel.jsx';
 import DriverInvitationAcceptance from './components/DriverInvitationAcceptance.jsx';
 import ProductionRouteMap from './components/ProductionRouteMap.jsx';
+import PushNotificationControl from './components/PushNotificationControl.jsx';
+import LegalPage from './components/LegalPage.jsx';
 import { demoDocuments, demoFleet, demoLoads, demoShipments } from './data.js';
 import {
   flushTelemetryQueue,
@@ -105,7 +107,7 @@ const registrationCountries = [
   ['DRC Congo', '+243']
 ];
 const defaultNotificationPreferences = {
-  channels: { inApp: true, email: false, sms: false },
+  channels: { inApp: true, push: false, email: false, sms: false },
   categories: {
     bookings: true,
     tracking: true,
@@ -899,6 +901,8 @@ function fallbackEstimate(payload) {
 }
 
 function pageTitle(route) {
+  if (route.includes('/privacy')) return 'Privacy Notice';
+  if (route.includes('/terms')) return 'Terms of Service';
   if (route.includes('/onboarding')) return 'Verification';
   if (route.includes('/bids')) return 'Bids & Work';
   if (route.includes('/documents')) return 'Documents';
@@ -7778,6 +7782,10 @@ function ProfilePage({ notify, route, user, setUser, signOut }) {
                 </label>
               ))}
             </div>
+            <PushNotificationControl
+              notify={notify}
+              onChange={(enabled) => updateNotificationPreference('channels', 'push', enabled)}
+            />
 
             <div>
               <strong>Events</strong>
@@ -9227,7 +9235,8 @@ function AppShell() {
   }, [notify]);
 
   useEffect(() => {
-    if (!signedIn && !route.startsWith('/app/profile')) {
+    const publicRoute = route.startsWith('/app/privacy') || route.startsWith('/app/terms');
+    if (!signedIn && !route.startsWith('/app/profile') && !publicRoute) {
       navigate('/app/profile');
       return;
     }
@@ -9248,6 +9257,8 @@ function AppShell() {
 
   const page = useMemo(() => {
     const props = { notify, route, user, setUser };
+    if (route.startsWith('/app/privacy')) return <LegalPage type="privacy" />;
+    if (route.startsWith('/app/terms')) return <LegalPage type="terms" />;
     if (!routeAllowedForUser(route, user)) {
       if (activeRole === 'admin') return <AdminPage {...props} />;
       if (activeRole === 'owner') return <OwnerPage {...props} />;
@@ -9281,6 +9292,9 @@ function AppShell() {
 
   return (
     <div className={`app-shell ${signedIn ? '' : 'signed-out'}`}>
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       {signedIn ? (
         <aside className={`app-sidebar ${menuOpen ? 'open' : ''}`}>
           <a className="brand" href="/">
@@ -9309,7 +9323,7 @@ function AppShell() {
         </aside>
       ) : null}
 
-      <main className="app-main">
+      <main className="app-main" id="main-content" tabIndex="-1">
         <header className={`app-topbar ${signedIn ? '' : 'guest-topbar'}`}>
           {signedIn ? (
             <button className="icon-button" type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu">
@@ -9355,6 +9369,15 @@ function AppShell() {
         {route.startsWith('/app/profile') && user?.email && <ProfileCompletenessScore user={user} role={activeRole} />}
 
         {page}
+        <footer className="app-legal-footer">
+          <button type="button" onClick={() => navigate('/app/privacy')}>
+            Privacy
+          </button>
+          <button type="button" onClick={() => navigate('/app/terms')}>
+            Terms
+          </button>
+          <span>© 2026 iTruck Africa</span>
+        </footer>
       </main>
 
       <nav className="mobile-bottom-nav" aria-label="Primary mobile navigation">

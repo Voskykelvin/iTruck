@@ -5,6 +5,7 @@ const listNotificationsSchema = [...pagination];
 const markReadSchema = [mongoIdParam('id')];
 const preferenceBooleanFields = [
   'channels.inApp',
+  'channels.push',
   'channels.email',
   'channels.sms',
   'categories.bookings',
@@ -45,4 +46,18 @@ const notificationPreferencesSchema = [
     })
 ];
 
-module.exports = { listNotificationsSchema, markReadSchema, notificationPreferencesSchema };
+const pushSubscriptionSchema = [
+  body('subscription').isObject().withMessage('subscription is required'),
+  body('subscription.endpoint')
+    .isURL({ protocols: ['https'], require_protocol: true })
+    .withMessage('Invalid push endpoint'),
+  body('subscription.keys.p256dh').isString().isLength({ min: 16 }).withMessage('Invalid push key'),
+  body('subscription.keys.auth').isString().isLength({ min: 8 }).withMessage('Invalid push authentication secret')
+];
+
+module.exports = {
+  listNotificationsSchema,
+  markReadSchema,
+  notificationPreferencesSchema,
+  pushSubscriptionSchema
+};

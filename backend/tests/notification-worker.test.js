@@ -7,9 +7,14 @@ jest.mock('../models/WorkerLease', () => ({
 jest.mock('../config/runtime', () => ({
   mongoReady: jest.fn(() => true)
 }));
+jest.mock('../models/User', () => ({
+  findById: jest.fn(),
+  updateOne: jest.fn()
+}));
 
 const NotificationDelivery = require('../models/NotificationDelivery');
 const WorkerLease = require('../models/WorkerLease');
+const User = require('../models/User');
 const { acquireLease, processDelivery, processPendingDeliveries } = require('../services/notificationWorker');
 
 function delivery(overrides = {}) {
@@ -28,6 +33,24 @@ function delivery(overrides = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+});
+
+test('notification worker sends web push through the stored subscription', async () => {
+  const select = jest.fn().mockResolvedValue({
+    pushSubscription: {
+      endpoint: 'https://push.example.com/subscription',
+      keys: { p256dh: 'public-key', auth: 'auth-secret' }
+    }
+  });
+  User.findById.mockReturnValue({ select });
+  const item = delivery({ channel: 'push', user: 'user-1', recipient: 'https://push.example.com/subscription' });
+  const sendPush = jest.fn().mockResolvedValue({ provider: 'web-push', id: 'push-1' });
+
+  const result = await processDelivery(item, { sendPush });
+
+  expect(result.status).toBe('sent');
+  expect(sendPush).toHaveBeenCalledWith(expect.objectContaining({ endpoint: item.recipient }), item.payload);
+  expect(item.providerMessageId).toBe('push-1');
 });
 
 test('notification worker records successful provider delivery', async () => {

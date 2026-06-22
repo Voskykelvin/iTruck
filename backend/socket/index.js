@@ -91,7 +91,7 @@ function attachSocket(server) {
       });
   });
 
-  if (process.env.REDIS_URL) {
+  if (process.env.REDIS_URL && process.env.DISABLE_REDIS !== 'true') {
     const { createAdapter } = require('@socket.io/redis-adapter');
     const { createClient } = require('redis');
     const pubClient = createClient({ url: process.env.REDIS_URL });

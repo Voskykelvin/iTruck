@@ -14,14 +14,14 @@ const notificationDeliverySchema = new mongoose.Schema(
     },
     channel: {
       type: String,
-      enum: ['email', 'sms'],
+      enum: ['email', 'sms', 'push'],
       required: true
     },
     recipient: { type: String, required: true, trim: true },
     payload: { type: mongoose.Schema.Types.Mixed, default: {} },
     status: {
       type: String,
-      enum: ['pending', 'processing', 'retry', 'sent', 'failed', 'cancelled'],
+      enum: ['pending', 'processing', 'retry', 'sent', 'delivered', 'failed', 'cancelled'],
       default: 'pending'
     },
     attempts: { type: Number, default: 0, min: 0 },

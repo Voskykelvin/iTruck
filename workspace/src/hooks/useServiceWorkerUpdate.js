@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export function useServiceWorkerUpdate() {
   const [waitingWorker, setWaitingWorker] = useState(null);
   const [updateReady, setUpdateReady] = useState(false);
-  const refreshingRef = useRef(false);
+  const reloadOnControllerChangeRef = useRef(false);
 
   useEffect(() => {
     if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return undefined;
@@ -35,8 +35,8 @@ export function useServiceWorkerUpdate() {
       .catch(() => {});
 
     const handleControllerChange = () => {
-      if (refreshingRef.current) return;
-      refreshingRef.current = true;
+      if (!reloadOnControllerChangeRef.current) return;
+      reloadOnControllerChangeRef.current = false;
       window.location.reload();
     };
     navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
@@ -49,6 +49,7 @@ export function useServiceWorkerUpdate() {
 
   const applyUpdate = useCallback(() => {
     if (!waitingWorker) return;
+    reloadOnControllerChangeRef.current = true;
     waitingWorker.postMessage({ type: 'SKIP_WAITING' });
   }, [waitingWorker]);
 

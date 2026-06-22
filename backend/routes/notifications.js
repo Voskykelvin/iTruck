@@ -1,19 +1,102 @@
 const express = require('express');
+const crypto = require('crypto');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
 const { mongoReady, requireDatabase } = require('../config/runtime');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const notifications = require('../services/notifications');
+const NotificationDelivery = require('../models/NotificationDelivery');
+const push = require('../services/push');
 const {
   listNotificationsSchema,
   markReadSchema,
-  notificationPreferencesSchema
+  notificationPreferencesSchema,
+  pushSubscriptionSchema
 } = require('../validators/notifications');
 
 const router = express.Router();
 
+function receiptAuthorized(req) {
+  const expected = process.env.NOTIFICATION_RECEIPT_SECRET;
+  if (!expected) return false;
+  const provided = req.get('x-itruck-webhook-secret') || req.get('x-webhook-secret') || req.query.token || '';
+  const providedBuffer = Buffer.from(String(provided));
+  const expectedBuffer = Buffer.from(String(expected));
+  return providedBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(providedBuffer, expectedBuffer);
+}
+
+router.post('/receipts/:provider', async (req, res, next) => {
+  try {
+    if (!receiptAuthorized(req)) return res.status(401).json({ message: 'Invalid notification receipt secret' });
+    if (requireDatabase(req, res)) return;
+    const providerMessageId =
+      req.body.providerMessageId || req.body.messageId || req.body.id || req.body.trackingId || req.body.MessageId;
+    if (!providerMessageId) return res.status(400).json({ message: 'providerMessageId is required' });
+    const rawStatus = String(req.body.status || req.body.deliveryStatus || '').toLowerCase();
+    const delivered = ['delivered', 'success', 'successful', 'read'].includes(rawStatus);
+    const failed = ['failed', 'rejected', 'undeliverable', 'expired'].includes(rawStatus);
+    const delivery = await NotificationDelivery.findOneAndUpdate(
+      { providerMessageId: String(providerMessageId) },
+      {
+        $set: {
+          status: delivered ? 'delivered' : failed ? 'failed' : 'sent',
+          provider: req.params.provider,
+          providerResponse: req.body,
+          ...(delivered ? { sentAt: new Date() } : {}),
+          ...(failed ? { failedAt: new Date(), lastError: req.body.reason || rawStatus } : {})
+        }
+      },
+      { new: true }
+    );
+    res.json({ received: true, matched: Boolean(delivery), status: delivery?.status });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.use(protect);
+
+router.get('/push/config', (_req, res) => {
+  const publicKey = push.publicKey();
+  res.status(publicKey ? 200 : 503).json({ configured: Boolean(publicKey), publicKey });
+});
+
+router.post('/push/subscribe', pushSubscriptionSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.json({ subscribed: true, mode: 'memory' });
+    await User.updateOne(
+      { _id: req.user._id },
+      {
+        $set: {
+          pushSubscription: req.body.subscription,
+          'notificationPreferences.channels.push': true
+        }
+      }
+    );
+    res.status(201).json({ subscribed: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/push/subscribe', async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.json({ subscribed: false, mode: 'memory' });
+    await User.updateOne(
+      { _id: req.user._id },
+      {
+        $unset: { pushSubscription: 1 },
+        $set: { 'notificationPreferences.channels.push': false }
+      }
+    );
+    res.json({ subscribed: false });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get('/', listNotificationsSchema, validate, async (req, res, next) => {
   try {

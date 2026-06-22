@@ -15,6 +15,7 @@ const notificationPreferencesSchema = new mongoose.Schema(
   {
     channels: {
       inApp: { type: Boolean, default: true },
+      push: { type: Boolean, default: false },
       email: { type: Boolean, default: false },
       sms: { type: Boolean, default: false }
     },

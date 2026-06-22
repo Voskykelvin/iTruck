@@ -25,10 +25,20 @@
     "docker:build": "docker build -t itruck .",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
-    "docker:logs": "docker-compose logs -f app"
+    "docker:logs": "docker-compose logs -f app",
+    "docker:verify": "node scripts/verify-docker.js",
+    "load:test": "node scripts/load-test.js",
+    "staging:rehearse": "node scripts/staging-rehearsal.js",
+    "launch:audit": "node scripts/launch-audit.js",
+    "backup:create": "npm --prefix backend run backup:create",
+    "backup:verify": "npm --prefix backend run backup:verify",
+    "backup:restore": "npm --prefix backend run backup:restore",
+    "providers:certify": "npm --prefix backend run providers:certify",
+    "providers:probe": "npm --prefix backend run providers:probe"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "dotenv": "^16.3.1",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",

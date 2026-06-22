@@ -414,6 +414,54 @@ async function closeResolvedCases(now = new Date(), io) {
   return closed;
 }
 
+async function cleanupAbandonedBookings(now = new Date(), io) {
+  const configuredHours = Number(process.env.ABANDONED_BOOKING_HOURS);
+  const abandonedHours = Number.isFinite(configuredHours) && configuredHours >= 1 ? configuredHours : 72;
+  const cutoff = new Date(now.getTime() - abandonedHours * 60 * 60 * 1000);
+  const bookings = await Booking.find({
+    status: { $in: ['pending', 'bidding'] },
+    owner: null,
+    paymentStatus: { $in: ['unpaid', 'failed'] },
+    updatedAt: { $lte: cutoff },
+    bids: { $not: { $elemMatch: { status: { $in: bidding.ACTIVE_BID_STATUSES } } } }
+  })
+    .select('_id client pickup destination status updatedAt')
+    .limit(100);
+
+  let cancelled = 0;
+  for (const booking of bookings) {
+    try {
+      const result = await Booking.updateOne(
+        {
+          _id: booking._id,
+          status: booking.status,
+          updatedAt: { $lte: cutoff },
+          bids: { $not: { $elemMatch: { status: { $in: bidding.ACTIVE_BID_STATUSES } } } }
+        },
+        { $set: { status: 'cancelled' } }
+      );
+      if (!result.modifiedCount) continue;
+      await notifications.deliver(
+        booking.client,
+        'booking.abandoned-cancelled',
+        {
+          title: `${booking._id} was closed`,
+          message: `The inactive booking was automatically closed after ${abandonedHours} hours without an active bid or payment.`,
+          link: '/app/book',
+          bookingId: booking._id,
+          priority: 'normal',
+          dedupeKey: `booking-abandoned:${booking._id}`
+        },
+        io
+      );
+      cancelled += 1;
+    } catch (err) {
+      logger.error({ err, bookingId: booking._id }, 'Abandoned booking cleanup failed');
+    }
+  }
+  return cancelled;
+}
+
 async function runOperationalNotificationScan(options = {}) {
   const now = options.now || new Date();
   const io = options.io;
@@ -424,7 +472,8 @@ async function runOperationalNotificationScan(options = {}) {
     ['expiredBids', () => expireCarrierBids(now, io)],
     ['dispatchCapacity', () => reconcileDispatchCapacity()],
     ['caseSlaBreaches', () => escalateBreachedCases(now, io)],
-    ['casesAutoClosed', () => closeResolvedCases(now, io)]
+    ['casesAutoClosed', () => closeResolvedCases(now, io)],
+    ['abandonedBookings', () => cleanupAbandonedBookings(now, io)]
   ];
   const summary = {
     expired: 0,
@@ -433,7 +482,8 @@ async function runOperationalNotificationScan(options = {}) {
     expiredBids: 0,
     dispatchCapacity: 0,
     caseSlaBreaches: 0,
-    casesAutoClosed: 0
+    casesAutoClosed: 0,
+    abandonedBookings: 0
   };
   for (const [key, task] of tasks) {
     try {
@@ -447,6 +497,7 @@ async function runOperationalNotificationScan(options = {}) {
 }
 
 module.exports = {
+  cleanupAbandonedBookings,
   closeResolvedCases,
   escalateBreachedCases,
   expireDocuments,

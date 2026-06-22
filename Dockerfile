@@ -15,5 +15,7 @@ COPY --chown=node:node frontend ./frontend
 COPY --from=app-build --chown=node:node /app/frontend/app ./frontend/app
 WORKDIR /app/backend
 EXPOSE 5000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:5000/api/health/live >/dev/null || exit 1
 USER node
 CMD ["node", "server.js"]

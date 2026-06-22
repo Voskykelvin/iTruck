@@ -7,6 +7,7 @@ const commonRoutes = [
   '/app/tracking'
 ];
 const neutralRoutes = ['/app/marketplace'];
+const publicRoutes = ['/app/privacy', '/app/terms'];
 const roleRoutes = {
   client: ['/app/shipper', '/app/book', '/app/bids', ...commonRoutes],
   owner: ['/app/owner', '/app/vehicles', '/app/bids', ...commonRoutes],
@@ -29,6 +30,7 @@ export function routeAllowedForUser(route, user) {
   const role = roleForUser(user);
   const path = route.split('?')[0];
   if (path === '/app' || path === '/app/') return true;
+  if (publicRoutes.includes(path)) return true;
   if (role === 'admin') {
     return roleRoutes.admin.some((allowed) => path === allowed || path.startsWith(`${allowed}/`));
   }

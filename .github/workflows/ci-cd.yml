@@ -57,7 +57,7 @@ jobs:
       - run: npm run ci:check
 
   browser-e2e:
-    name: Chromium E2E
+    name: Cross-browser E2E
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -71,7 +71,7 @@ jobs:
             workspace/package-lock.json
       - run: npm ci --prefix backend
       - run: npm ci --include=dev --prefix workspace
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium firefox webkit
         working-directory: workspace
       - run: npm run test:e2e
         working-directory: workspace
