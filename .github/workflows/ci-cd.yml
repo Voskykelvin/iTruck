@@ -39,6 +39,7 @@ jobs:
       RUN_INFRA_INTEGRATION: 'true'
       CI_MONGODB_URI: mongodb://127.0.0.1:27017/itruck_ci
       CI_REDIS_URL: redis://127.0.0.1:6379
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -49,10 +50,9 @@ jobs:
             package-lock.json
             backend/package-lock.json
             workspace/package-lock.json
-      - run: npm install --global npm@10.9.4
-      - run: npm ci
-      - run: npm ci --prefix backend
-      - run: npm ci --include=dev --prefix workspace
+      - run: npm install
+      - run: npm install --prefix backend
+      - run: npm install --include=dev --prefix workspace
       - run: npm audit --omit=dev --audit-level=high --prefix backend
       - run: npm audit --omit=dev --audit-level=high --prefix workspace
       - run: npm run ci:check
@@ -70,9 +70,8 @@ jobs:
           cache-dependency-path: |
             backend/package-lock.json
             workspace/package-lock.json
-      - run: npm install --global npm@10.9.4
-      - run: npm ci --prefix backend
-      - run: npm ci --include=dev --prefix workspace
+      - run: npm install --prefix backend
+      - run: npm install --include=dev --prefix workspace
       - run: npx playwright install --with-deps chromium firefox webkit
         working-directory: workspace
       - run: npm run test:e2e
