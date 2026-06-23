@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Send, FileText } from 'lucide-react';
 import { api } from '../api.js';
 import Input from '../components/Input.jsx';

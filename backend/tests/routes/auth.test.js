@@ -9,9 +9,9 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = 'test-secret';
-const PRIMARY_DEVICE   = '00000000-0000-4000-8000-000000000000';
+const PRIMARY_DEVICE = '00000000-0000-4000-8000-000000000000';
 const SECONDARY_DEVICE = '11111111-1111-4000-8000-000000000000';
-const TERTIARY_DEVICE  = '22222222-2222-4000-8000-000000000000';
+const TERTIARY_DEVICE = '22222222-2222-4000-8000-000000000000';
 
 let mongoServer;
 
@@ -41,15 +41,12 @@ function tokenFor(user) {
 
 /** Perform a real login and return the raw cookies + parsed csrf value. */
 async function loginAs(email, password, deviceId = PRIMARY_DEVICE) {
-  const res = await request(app)
-    .post('/api/auth/login')
-    .send(loginPayload({ email, password, deviceId }))
-    .expect(200);
+  const res = await request(app).post('/api/auth/login').send(loginPayload({ email, password, deviceId })).expect(200);
 
-  const cookies     = res.headers['set-cookie'];
+  const cookies = res.headers['set-cookie'];
   const refreshCookie = cookies.find((c) => c.startsWith('itruck_refresh='));
-  const csrfCookie    = cookies.find((c) => c.startsWith('itruck_csrf='));
-  const csrfToken     = csrfCookie ? csrfCookie.split(';')[0].split('=')[1] : null;
+  const csrfCookie = cookies.find((c) => c.startsWith('itruck_csrf='));
+  const csrfToken = csrfCookie ? csrfCookie.split(';')[0].split('=')[1] : null;
 
   return { res, cookies, refreshCookie, csrfCookie, csrfToken };
 }
@@ -124,12 +121,10 @@ describe('Auth Integration Tests', () => {
   // ─────────────────────────────────────────────────────────
   describe('POST /api/auth/login', () => {
     const RAW_PASSWORD = 'Password123!';
-    let user;
+    let _user;
 
     beforeEach(async () => {
-      user = await User.create(
-        userFactory({ email: 'login@example.com', password: RAW_PASSWORD, isVerified: true })
-      );
+      _user = await User.create(userFactory({ email: 'login@example.com', password: RAW_PASSWORD, isVerified: true }));
     });
 
     test('successfully logs in with correct credentials', async () => {
@@ -170,10 +165,7 @@ describe('Auth Integration Tests', () => {
     });
 
     test('forgot-password: registered email stores reset token', async () => {
-      const res = await request(app)
-        .post('/api/auth/forgot-password')
-        .send({ email: 'reset@example.com' })
-        .expect(200);
+      const res = await request(app).post('/api/auth/forgot-password').send({ email: 'reset@example.com' }).expect(200);
 
       expect(res.body.message).toContain('password reset instructions have been sent');
 
@@ -212,7 +204,11 @@ describe('Auth Integration Tests', () => {
     test('reset-password: fails with invalid or expired token', async () => {
       const res = await request(app)
         .post('/api/auth/reset-password')
-        .send({ email: 'reset@example.com', token: crypto.randomBytes(32).toString('hex'), password: 'NewPassword123!' })
+        .send({
+          email: 'reset@example.com',
+          token: crypto.randomBytes(32).toString('hex'),
+          password: 'NewPassword123!'
+        })
         .expect(401);
       expect(res.body.message).toContain('invalid or expired');
     });
@@ -237,10 +233,7 @@ describe('Auth Integration Tests', () => {
 
     test('fails with missing deviceId', async () => {
       // Pass token via body so CSRF is not triggered
-      const res = await request(app)
-        .post('/api/auth/refresh')
-        .send({ refreshToken: 'sometoken' })
-        .expect(401);
+      const res = await request(app).post('/api/auth/refresh').send({ refreshToken: 'sometoken' }).expect(401);
       expect(res.body.message).toMatch(/Device id required/i);
     });
 
@@ -280,11 +273,13 @@ describe('Auth Integration Tests', () => {
     test('revokes all sessions when a previously revoked token is re-used (token compromise detection)', async () => {
       // 1. Log in to get a real session + tokens
       const { refreshCookie, csrfCookie, csrfToken } = await loginAs(
-        'refresh@example.com', 'TestPassword123!', PRIMARY_DEVICE
+        'refresh@example.com',
+        'TestPassword123!',
+        PRIMARY_DEVICE
       );
 
       // 2. Do a successful refresh so the old session gets replaced (revokedAt + replacedByTokenHash set)
-      const refreshRes = await request(app)
+      const _refreshRes = await request(app)
         .post('/api/auth/refresh')
         .set('Cookie', [refreshCookie, csrfCookie])
         .set('X-CSRF-Token', csrfToken)
@@ -308,7 +303,9 @@ describe('Auth Integration Tests', () => {
 
     test('successfully refreshes with valid cookie & CSRF', async () => {
       const { refreshCookie, csrfCookie, csrfToken } = await loginAs(
-        'refresh@example.com', 'TestPassword123!', PRIMARY_DEVICE
+        'refresh@example.com',
+        'TestPassword123!',
+        PRIMARY_DEVICE
       );
 
       const res = await request(app)
@@ -326,7 +323,9 @@ describe('Auth Integration Tests', () => {
 
     test('fails when user is deactivated', async () => {
       const { refreshCookie, csrfCookie, csrfToken } = await loginAs(
-        'refresh@example.com', 'TestPassword123!', PRIMARY_DEVICE
+        'refresh@example.com',
+        'TestPassword123!',
+        PRIMARY_DEVICE
       );
 
       await User.findByIdAndUpdate(user._id, { isActive: false });
@@ -342,7 +341,9 @@ describe('Auth Integration Tests', () => {
 
     test('fails with device mismatch', async () => {
       const { refreshCookie, csrfCookie, csrfToken } = await loginAs(
-        'refresh@example.com', 'TestPassword123!', PRIMARY_DEVICE
+        'refresh@example.com',
+        'TestPassword123!',
+        PRIMARY_DEVICE
       );
 
       const res = await request(app)
@@ -378,7 +379,9 @@ describe('Auth Integration Tests', () => {
 
     test('logs out with an active session and revokes the refresh token', async () => {
       const { refreshCookie, csrfCookie, csrfToken } = await loginAs(
-        'logout@example.com', 'TestPassword123!', PRIMARY_DEVICE
+        'logout@example.com',
+        'TestPassword123!',
+        PRIMARY_DEVICE
       );
 
       const beforeCount = await RefreshToken.countDocuments({ user: user._id, revokedAt: null });
@@ -447,10 +450,7 @@ describe('Auth Integration Tests', () => {
     });
 
     test('returns empty sessions when no active sessions', async () => {
-      const res = await request(app)
-        .get('/api/auth/sessions')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
+      const res = await request(app).get('/api/auth/sessions').set('Authorization', `Bearer ${token}`).expect(200);
       expect(res.body.sessions).toHaveLength(0);
     });
 
@@ -486,19 +486,13 @@ describe('Auth Integration Tests', () => {
         .expect(200);
       expect(resDel.body.message).toMatch(/revoked/i);
 
-      const resCheck = await request(app)
-        .get('/api/auth/sessions')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
+      const resCheck = await request(app).get('/api/auth/sessions').set('Authorization', `Bearer ${token}`).expect(200);
       expect(resCheck.body.sessions).toHaveLength(0);
     });
 
     test('returns 404 when deleting a non-existent session', async () => {
       const fakeId = new mongoose.Types.ObjectId().toString();
-      await request(app)
-        .delete(`/api/auth/sessions/${fakeId}`)
-        .set('Authorization', `Bearer ${token}`)
-        .expect(404);
+      await request(app).delete(`/api/auth/sessions/${fakeId}`).set('Authorization', `Bearer ${token}`).expect(404);
     });
 
     test('revokes all other sessions (keeps current)', async () => {

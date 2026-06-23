@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Image, ShieldCheck } from 'lucide-react';
 import io from 'socket.io-client';
 import { api, setSession } from '../api.js';

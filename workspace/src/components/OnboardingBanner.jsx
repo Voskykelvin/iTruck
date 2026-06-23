@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { profileDocumentsReady, navigate } from '../utils/helpers.js';
 
 export const ONBOARDING_STEPS_OWNER = [

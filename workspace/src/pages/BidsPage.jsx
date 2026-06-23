@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Plus } from 'lucide-react';
 import { api } from '../api.js';
 import { demoFleet, demoLoads, demoShipments } from '../data.js';

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { CreditCard, Phone, Smartphone, Wallet, X } from 'lucide-react';
 import Input from '../Input.jsx';
 import { money, isDebitTransaction, statusLabel } from '../../utils/helpers.js';

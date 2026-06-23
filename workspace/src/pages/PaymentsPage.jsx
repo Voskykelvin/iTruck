@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Wallet, CreditCard, PackageCheck, FileText } from 'lucide-react';
 import { api } from '../api.js';
 import { demoShipments } from '../data.js';
@@ -10,15 +10,7 @@ import Input from '../components/Input.jsx';
 import Select from '../components/Select.jsx';
 import WalletTopupModal from '../components/modals/WalletTopupModal.jsx';
 import MobileMoneyEscrowModal from '../components/modals/MobileMoneyEscrowModal.jsx';
-import {
-  roleForUser,
-  roleName,
-  money,
-  statusLabel,
-  paymentTone,
-  navigate,
-  normalizeBookingShipment
-} from '../utils/helpers.js';
+import { roleForUser, roleName, money, statusLabel, paymentTone, normalizeBookingShipment } from '../utils/helpers.js';
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
 const workspaceShipments = DEMO_MODE ? demoShipments : [];

@@ -1,16 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Filter, Search, Truck, Plus } from 'lucide-react';
 import { api } from '../api.js';
 import { workspaceFleet } from '../data.js';
 import Select from '../components/Select.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import EmptyState from '../components/EmptyState.jsx';
-import {
-  normalizeTruck,
-  ratingSummary,
-  vehicleTypes,
-  navigate
-} from '../utils/helpers.js';
+import { normalizeTruck, ratingSummary, vehicleTypes, navigate } from '../utils/helpers.js';
 
 export default function MarketplacePage({ route }) {
   const [trucks, setTrucks] = useState(workspaceFleet);

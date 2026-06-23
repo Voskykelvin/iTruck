@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function Panel({ title, eyebrow, action, onAction, children }) {
   return (
     <section className="panel">

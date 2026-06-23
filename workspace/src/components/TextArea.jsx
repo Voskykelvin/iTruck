@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function TextArea({ label, value, onChange }) {
   return (
     <label className="field">

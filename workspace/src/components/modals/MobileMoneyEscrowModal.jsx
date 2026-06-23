@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Smartphone, Phone, X } from 'lucide-react';
 import Input from '../Input.jsx';
 import { money } from '../../utils/helpers.js';

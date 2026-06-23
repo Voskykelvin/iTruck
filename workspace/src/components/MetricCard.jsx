@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function MetricCard({ icon: Icon, label, value, detail }) {
   return (
     <article className="metric-card">

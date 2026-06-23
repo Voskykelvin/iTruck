@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ShieldCheck, Truck, CreditCard, FileText } from 'lucide-react';
 import { api } from '../api.js';
 import MetricCard from '../components/MetricCard.jsx';
@@ -17,9 +17,6 @@ import {
   bookingRef,
   bookingRoute,
   money,
-  normalizeBookingShipment,
-  normalizeTruck,
-  normalizeOpenLoad,
   documentUploadAccept
 } from '../utils/helpers.js';
 
@@ -808,9 +805,9 @@ export default function AdminPage({ notify, user }) {
                   </StatusBadge>
                   <h3>{personName(user)}</h3>
                   <div className="admin-review-meta">
-                     <span>{roleLabel(user.role)}</span>
-                     <span>{user.email}</span>
-                     <span>{user.phone || 'Phone pending'}</span>
+                    <span>{roleLabel(user.role)}</span>
+                    <span>{user.email}</span>
+                    <span>{user.phone || 'Phone pending'}</span>
                   </div>
                 </div>
                 <div className="admin-action-row">

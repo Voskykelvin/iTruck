@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Star } from 'lucide-react';
 import StatusBadge from './StatusBadge.jsx';
 import { money, statusLabel } from '../utils/helpers.js';

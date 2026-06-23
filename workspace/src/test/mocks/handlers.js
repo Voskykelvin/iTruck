@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { demoFleet, demoShipments, demoLoads } from '../../data.js';
+import { demoFleet, demoShipments } from '../../data.js';
 
 export const handlers = [
   http.get('*/api/users/profile', () => {
@@ -61,12 +61,12 @@ export const handlers = [
   }),
 
   http.get('*/api/bookings/open', () => {
-    return HttpResponse.json({ bookings: demoShipments.filter(s => s.status === 'Bids open') });
+    return HttpResponse.json({ bookings: demoShipments.filter((s) => s.status === 'Bids open') });
   }),
 
   http.get('*/api/bookings/:bookingId', ({ params }) => {
     const { bookingId } = params;
-    const shipment = demoShipments.find(s => s.id === bookingId) || demoShipments[0];
+    const shipment = demoShipments.find((s) => s.id === bookingId) || demoShipments[0];
     return HttpResponse.json({ booking: shipment });
   }),
 
@@ -154,9 +154,7 @@ export const handlers = [
 
   http.get('*/api/workflow/messages', () => {
     return HttpResponse.json({
-      messages: [
-        { id: 'm1', sender: 'Carrier', content: 'On my way to pickup', createdAt: new Date().toISOString() }
-      ]
+      messages: [{ id: 'm1', sender: 'Carrier', content: 'On my way to pickup', createdAt: new Date().toISOString() }]
     });
   }),
 
@@ -415,7 +413,15 @@ export const handlers = [
     return HttpResponse.json({
       preferences: {
         channels: { inApp: true, email: true, sms: false, push: false },
-        categories: { bookings: true, tracking: true, documents: true, payments: true, security: true, system: true, marketing: false },
+        categories: {
+          bookings: true,
+          tracking: true,
+          documents: true,
+          payments: true,
+          security: true,
+          system: true,
+          marketing: false
+        },
         quietHours: { enabled: false, start: '22:00', end: '07:00', timezone: 'UTC', allowHighPriority: true }
       }
     });

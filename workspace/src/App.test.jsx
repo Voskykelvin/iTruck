@@ -1,8 +1,6 @@
-import React from 'react';
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
-import { server } from './test/mocks/server.js';
+import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+
 import AppShell from './App.jsx';
 import { navigate } from './utils/helpers.js';
 
@@ -30,7 +28,7 @@ describe('App Integration & Page Routing', () => {
 
   test('Guest is redirected to profile/signin and can log in as Shipper', async () => {
     render(<AppShell />);
-    
+
     // Guest should be redirected to profile page and see signin form
     expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
     expect(screen.getByText('Welcome back')).toBeInTheDocument();
@@ -72,14 +70,17 @@ describe('App Integration & Page Routing', () => {
 
   test('Shipper dashboard routes and interactive operations work', async () => {
     // Seed logged-in Shipper user
-    localStorage.setItem('itruck_user', JSON.stringify({
-      id: 'usr-shipper',
-      email: 'shipper@example.com',
-      role: 'shipper',
-      isVerified: true,
-      firstName: 'Alice',
-      lastName: 'Shipper'
-    }));
+    localStorage.setItem(
+      'itruck_user',
+      JSON.stringify({
+        id: 'usr-shipper',
+        email: 'shipper@example.com',
+        role: 'shipper',
+        isVerified: true,
+        firstName: 'Alice',
+        lastName: 'Shipper'
+      })
+    );
 
     navigate('/app/shipper');
     render(<AppShell />);
@@ -90,7 +91,7 @@ describe('App Integration & Page Routing', () => {
     // Navigate to Book page
     navigate('/app/book');
     await screen.findByText('Book a Truck');
-    
+
     // Fill shipment request form
     fireEvent.change(screen.getByLabelText('Pickup'), { target: { value: 'Mombasa' } });
     fireEvent.change(screen.getByLabelText('Destination'), { target: { value: 'Nairobi' } });
@@ -110,23 +111,23 @@ describe('App Integration & Page Routing', () => {
     // Navigate to Bids page
     navigate('/app/bids');
     await screen.findByText('Bids Received');
- 
+
     // Navigate to Marketplace
     navigate('/app/marketplace');
     await screen.findByText('Refine fleet');
- 
+
     // Navigate to Tracking / Orders
     navigate('/app/tracking');
     await screen.findByText('Cargo');
- 
+
     // Navigate to Documents
     navigate('/app/documents');
     await screen.findByText('Shipment Documents');
- 
+
     // Navigate to Payments
     navigate('/app/payments');
     await screen.findByText('Shipment Escrow');
- 
+
     // Navigate to Messages
     navigate('/app/messages');
     await screen.findByRole('heading', { name: 'Messages' });
@@ -134,15 +135,18 @@ describe('App Integration & Page Routing', () => {
 
   test('Owner dashboard routes and interactive operations work', async () => {
     // Seed logged-in Owner user
-    localStorage.setItem('itruck_user', JSON.stringify({
-      id: 'usr-owner',
-      email: 'owner@example.com',
-      role: 'owner',
-      isVerified: true,
-      firstName: 'David',
-      lastName: 'Owner',
-      company: 'David Haulage'
-    }));
+    localStorage.setItem(
+      'itruck_user',
+      JSON.stringify({
+        id: 'usr-owner',
+        email: 'owner@example.com',
+        role: 'owner',
+        isVerified: true,
+        firstName: 'David',
+        lastName: 'Owner',
+        company: 'David Haulage'
+      })
+    );
 
     navigate('/app/owner');
     render(<AppShell />);
@@ -165,14 +169,17 @@ describe('App Integration & Page Routing', () => {
 
   test('Admin dashboard routes and operations work', async () => {
     // Seed logged-in Admin user
-    localStorage.setItem('itruck_user', JSON.stringify({
-      id: 'usr-admin',
-      email: 'admin@example.com',
-      role: 'admin',
-      isVerified: true,
-      firstName: 'Admin',
-      lastName: 'User'
-    }));
+    localStorage.setItem(
+      'itruck_user',
+      JSON.stringify({
+        id: 'usr-admin',
+        email: 'admin@example.com',
+        role: 'admin',
+        isVerified: true,
+        firstName: 'Admin',
+        lastName: 'User'
+      })
+    );
 
     navigate('/app/admin');
     render(<AppShell />);

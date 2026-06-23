@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Bell } from 'lucide-react';
 
 export default function NotificationBell({ notifications, onMarkAllRead, onNavigate }) {

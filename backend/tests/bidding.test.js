@@ -37,7 +37,12 @@ describe('Bidding Service Unit Tests', () => {
 
     acceptBid(record, 'bid-1', client);
     expect(bid.status).toBe('accepted');
-    expect(bid.history.map((event) => event.action)).toEqual(['submitted', 'countered', 'counter_accepted', 'accepted']);
+    expect(bid.history.map((event) => event.action)).toEqual([
+      'submitted',
+      'countered',
+      'counter_accepted',
+      'accepted'
+    ]);
   });
 
   test('carriers can withdraw and acknowledge final decisions', () => {
@@ -93,7 +98,7 @@ describe('Bidding Service Unit Tests', () => {
       status: 'pending'
     };
     record.bids.push(bid);
-    
+
     // Test findBid subdocument mock helper
     record.bids.id = (id) => (id === 'bid-123' ? bid : null);
 
@@ -105,13 +110,13 @@ describe('Bidding Service Unit Tests', () => {
 
   test('expireBidIfNeeded returns false for inactive, unexpired or missing expiresAt bids', () => {
     const actorUser = actor('admin-1', 'admin');
-    
+
     // Inactive status
     expect(expireBidIfNeeded({ status: 'accepted' }, new Date(), actorUser)).toBe(false);
-    
+
     // Missing expiresAt
     expect(expireBidIfNeeded({ status: 'pending' }, new Date(), actorUser)).toBe(false);
-    
+
     // Not yet expired
     const futureDate = new Date(Date.now() + 100000);
     expect(expireBidIfNeeded({ status: 'pending', expiresAt: futureDate }, new Date(), actorUser)).toBe(false);
@@ -149,7 +154,7 @@ describe('Bidding Service Unit Tests', () => {
     const foreignUser = actor('owner-2', 'owner');
 
     expect(() => withdrawBid(record, 'bid-1', adminUser, 'Admin intervention')).not.toThrow();
-    
+
     const bid2 = submitBid(record, foreignUser, { amount: 1200 });
     bid2._id = 'bid-2';
     expect(() => withdrawBid(record, 'bid-2', owner, 'Not the owner')).toThrow(
@@ -229,9 +234,7 @@ describe('Bidding Service Unit Tests', () => {
     submitBid(record, owner, { amount: 1000 });
     record.bids[0]._id = 'bid-1';
 
-    expect(() => acknowledgeBid(record, 'bid-1', owner)).toThrow(
-      'Only a final bid decision can be acknowledged'
-    );
+    expect(() => acknowledgeBid(record, 'bid-1', owner)).toThrow('Only a final bid decision can be acknowledged');
   });
 
   test('acceptBid throws 409 if bid is not pending', () => {
@@ -253,7 +256,7 @@ describe('Bidding Service Unit Tests', () => {
 
     const bid1 = submitBid(record, owner1, { amount: 1000 });
     bid1._id = 'bid-1';
-    
+
     // We need to bypass duplicate check for test purposes by modifying the bids array manually or using different owner
     const bid2 = submitBid(record, owner2, { amount: 1100 });
     bid2._id = 'bid-2';

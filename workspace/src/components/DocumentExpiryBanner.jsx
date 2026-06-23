@@ -1,4 +1,3 @@
-import React from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { navigate } from '../utils/helpers.js';
 

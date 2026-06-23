@@ -1,18 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Search,
-  Navigation,
-  BarChart3,
-  Plus,
-  Menu,
-  Bell,
-  Sun,
-  Moon,
-  AlertTriangle
-} from 'lucide-react';
+import { Search, Navigation, BarChart3, Plus, Menu } from 'lucide-react';
 import io from 'socket.io-client';
 
-import { api, clearSession, currentUser, setSession } from './api.js';
+import { api, clearSession, currentUser } from './api.js';
 import { demoFleet, demoShipments } from './data.js';
 
 // Components
@@ -58,11 +48,7 @@ import {
   pageTitle
 } from './utils/helpers.js';
 
-import {
-  dashboardPathForRole,
-  roleName,
-  routeAllowedForUser
-} from './utils/roles.js';
+import { dashboardPathForRole, roleName, routeAllowedForUser } from './utils/roles.js';
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
 const workspaceFleet = DEMO_MODE ? demoFleet : [];

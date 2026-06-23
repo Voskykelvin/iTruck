@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function Select({ label, value, onChange, options, emptyLabel }) {
   return (
     <label className="field">

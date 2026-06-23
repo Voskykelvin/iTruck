@@ -99,7 +99,13 @@ export const defaultNotificationPreferences = {
 export const vehicleTypes = ['Matatu', 'Pickup', 'Lorry', 'Large Truck', 'Trailer', 'Bus', 'Specialised'];
 export const ownerProfileDocuments = ['Owner KYC', 'Driver ID', 'Business registration', 'Insurance'];
 export const shipperProfileDocuments = ['Shipper KYC', 'Business registration', 'Tax certificate'];
-export const ownerVehicleDocuments = ['Vehicle photos', 'Insurance', 'Vehicle logbook', 'Road license', 'Inspection report'];
+export const ownerVehicleDocuments = [
+  'Vehicle photos',
+  'Insurance',
+  'Vehicle logbook',
+  'Road license',
+  'Inspection report'
+];
 export const documentUploadAccept = 'image/jpeg,image/png,image/webp,application/pdf';
 export const imageUploadAccept = 'image/jpeg,image/png,image/webp';
 export const documentUploadLimitText = 'PDF, JPG, PNG, or WebP up to 10 MB';

@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 
@@ -49,8 +48,24 @@ describe('Extended Components', () => {
 
   test('BidComparisonTable sorts and awards bids', () => {
     const bids = [
-      { id: 'b1', ownerName: 'Carrier A', truckName: 'Lorry A', amount: 1500, rating: 4.5, message: 'Fast', status: 'pending' },
-      { id: 'b2', ownerName: 'Carrier B', truckName: 'Lorry B', amount: 1200, rating: 4.8, message: 'Cheap', status: 'pending' }
+      {
+        id: 'b1',
+        ownerName: 'Carrier A',
+        truckName: 'Lorry A',
+        amount: 1500,
+        rating: 4.5,
+        message: 'Fast',
+        status: 'pending'
+      },
+      {
+        id: 'b2',
+        ownerName: 'Carrier B',
+        truckName: 'Lorry B',
+        amount: 1200,
+        rating: 4.8,
+        message: 'Cheap',
+        status: 'pending'
+      }
     ];
     const onAward = vi.fn();
     render(<BidComparisonTable bids={bids} onAward={onAward} busyId="" />);

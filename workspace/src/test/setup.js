@@ -6,13 +6,12 @@ vi.mock('socket.io-client', () => {
   const mockSocket = {
     on: () => mockSocket,
     emit: () => mockSocket,
-    disconnect: () => {},
+    disconnect: () => {}
   };
   return {
-    default: () => mockSocket,
+    default: () => mockSocket
   };
 });
-
 
 // Setup MSW
 beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
@@ -31,8 +30,8 @@ if (typeof window !== 'undefined') {
       removeListener: () => {},
       addEventListener: () => {},
       removeEventListener: () => {},
-      dispatchEvent: () => {},
-    }),
+      dispatchEvent: () => {}
+    })
   });
 
   // Polyfill URL methods

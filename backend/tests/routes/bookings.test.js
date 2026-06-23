@@ -108,10 +108,7 @@ describe('Bookings Integration Tests', () => {
       await createBookingInDB(client._id, { status: 'bidding' });
       await createBookingInDB(client._id, { status: 'pending' });
 
-      const res = await request(app)
-        .get('/api/bookings')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
+      const res = await request(app).get('/api/bookings').set('Authorization', `Bearer ${token}`).expect(200);
 
       expect(res.body.bookings).toHaveLength(2);
     });
@@ -121,10 +118,7 @@ describe('Bookings Integration Tests', () => {
       const { token: token2 } = await createUser({ role: 'client' });
       await createBookingInDB(client1._id);
 
-      const res = await request(app)
-        .get('/api/bookings')
-        .set('Authorization', `Bearer ${token2}`)
-        .expect(200);
+      const res = await request(app).get('/api/bookings').set('Authorization', `Bearer ${token2}`).expect(200);
 
       expect(res.body.bookings).toHaveLength(0);
     });
@@ -134,10 +128,7 @@ describe('Bookings Integration Tests', () => {
       const { token: adminToken } = await createUser({ role: 'admin' });
       await createBookingInDB(client._id);
 
-      const res = await request(app)
-        .get('/api/bookings')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .expect(200);
+      const res = await request(app).get('/api/bookings').set('Authorization', `Bearer ${adminToken}`).expect(200);
 
       expect(res.body.bookings).toHaveLength(1);
     });
@@ -171,10 +162,7 @@ describe('Bookings Integration Tests', () => {
       await createBookingInDB(client._id, { status: 'bidding' });
       await createBookingInDB(client._id, { status: 'confirmed' });
 
-      const res = await request(app)
-        .get('/api/bookings/open')
-        .set('Authorization', `Bearer ${ownerToken}`)
-        .expect(200);
+      const res = await request(app).get('/api/bookings/open').set('Authorization', `Bearer ${ownerToken}`).expect(200);
 
       expect(res.body.bookings).toHaveLength(1);
       expect(res.body.bookings[0].status).toBe('bidding');
@@ -182,10 +170,7 @@ describe('Bookings Integration Tests', () => {
 
     test('client is forbidden from /open endpoint', async () => {
       const { token } = await createUser({ role: 'client' });
-      await request(app)
-        .get('/api/bookings/open')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(403);
+      await request(app).get('/api/bookings/open').set('Authorization', `Bearer ${token}`).expect(403);
     });
   });
 
@@ -209,10 +194,7 @@ describe('Bookings Integration Tests', () => {
       const { token } = await createUser({ role: 'client' });
       const fakeId = new mongoose.Types.ObjectId();
 
-      await request(app)
-        .get(`/api/bookings/${fakeId}`)
-        .set('Authorization', `Bearer ${token}`)
-        .expect(404);
+      await request(app).get(`/api/bookings/${fakeId}`).set('Authorization', `Bearer ${token}`).expect(404);
     });
 
     test('returns 403 when accessing another users booking', async () => {
@@ -220,10 +202,7 @@ describe('Bookings Integration Tests', () => {
       const { token: token2 } = await createUser({ role: 'client' });
       const booking = await createBookingInDB(client1._id);
 
-      await request(app)
-        .get(`/api/bookings/${booking._id}`)
-        .set('Authorization', `Bearer ${token2}`)
-        .expect(403);
+      await request(app).get(`/api/bookings/${booking._id}`).set('Authorization', `Bearer ${token2}`).expect(403);
     });
   });
 
@@ -463,7 +442,6 @@ describe('Bookings Integration Tests', () => {
         .send({ decision: 'accept' });
 
       if (res.status !== 200) {
-        // eslint-disable-next-line no-console
         console.error('respond-counter accept failed:', res.status, res.body);
       }
       expect(res.status).toBe(200);
@@ -497,7 +475,6 @@ describe('Bookings Integration Tests', () => {
         .send({ decision: 'reject', reason: 'Too low' });
 
       if (res.status !== 200) {
-        // eslint-disable-next-line no-console
         console.error('respond-counter reject failed:', res.status, res.body);
       }
       expect(res.status).toBe(200);
@@ -557,7 +534,6 @@ describe('Bookings Integration Tests', () => {
         .send({ reason: 'Schedule conflict' });
 
       if (res.status !== 200) {
-        // eslint-disable-next-line no-console
         console.error('withdraw failed:', res.status, res.body);
       }
       expect(res.status).toBe(200);

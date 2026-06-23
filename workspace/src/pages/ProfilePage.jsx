@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { LogOut, CheckCircle2 } from 'lucide-react';
 import { api, setSession } from '../api.js';
 import DriverInvitationAcceptance from '../components/DriverInvitationAcceptance.jsx';

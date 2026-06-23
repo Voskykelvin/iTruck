@@ -1,4 +1,3 @@
-import React from 'react';
 import Panel from './Panel.jsx';
 import Input from './Input.jsx';
 import TextArea from './TextArea.jsx';
