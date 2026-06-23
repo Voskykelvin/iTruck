@@ -57,17 +57,69 @@ export const handlers = [
   }),
 
   http.get('*/api/bookings', () => {
-    return HttpResponse.json({ bookings: demoShipments });
+    const enriched = demoShipments.map((s) => {
+      if (s.id === 'ITK-1002') {
+        return {
+          ...s,
+          rawStatus: 'bidding',
+          bids: [
+            {
+              id: 'bid-1',
+              bidId: 'bid-1',
+              ownerName: 'Carrier One',
+              truckName: 'Scania R450',
+              message: 'Available immediately',
+              amount: 2200,
+              status: 'pending'
+            }
+          ]
+        };
+      }
+      return s;
+    });
+    return HttpResponse.json({ bookings: enriched });
   }),
 
   http.get('*/api/bookings/open', () => {
-    return HttpResponse.json({ bookings: demoShipments.filter((s) => s.status === 'Bids open') });
+    const openBookings = demoShipments
+      .filter((s) => s.status === 'Bids open')
+      .map((s) => ({
+        ...s,
+        rawStatus: 'bidding',
+        bids: [
+          {
+            id: 'bid-1',
+            bidId: 'bid-1',
+            ownerName: 'Carrier One',
+            truckName: 'Scania R450',
+            message: 'Available immediately',
+            amount: 2200,
+            status: 'pending'
+          }
+        ]
+      }));
+    return HttpResponse.json({ bookings: openBookings });
   }),
 
   http.get('*/api/bookings/:bookingId', ({ params }) => {
     const { bookingId } = params;
     const shipment = demoShipments.find((s) => s.id === bookingId) || demoShipments[0];
-    return HttpResponse.json({ booking: shipment });
+    const enriched = {
+      ...shipment,
+      rawStatus: shipment.status === 'Bids open' ? 'bidding' : 'in_transit',
+      bids: [
+        {
+          id: 'bid-1',
+          bidId: 'bid-1',
+          ownerName: 'Carrier One',
+          truckName: 'Scania R450',
+          message: 'Available immediately',
+          amount: 2200,
+          status: 'pending'
+        }
+      ]
+    };
+    return HttpResponse.json({ booking: enriched });
   }),
 
   http.post('*/api/bookings', async ({ request }) => {
@@ -270,11 +322,30 @@ export const handlers = [
   }),
 
   http.get('*/api/marketplace/matches/:bookingId', () => {
-    return HttpResponse.json({ matches: [] });
+    return HttpResponse.json({
+      matches: [
+        {
+          score: 95,
+          reasons: ['Inside operating zone', 'Equipped with refrigerated box'],
+          truck: { id: 'TRK-001', plateNumber: 'KAA 123A' }
+        }
+      ]
+    });
   }),
 
-  http.post('*/api/marketplace/auto-assign/:bookingId', () => {
-    return HttpResponse.json({ success: true });
+  http.post('*/api/marketplace/auto-assign/:bookingId', ({ params }) => {
+    const { bookingId } = params;
+    return HttpResponse.json({
+      success: true,
+      booking: {
+        id: bookingId,
+        bookingId,
+        status: 'Assigned',
+        route: 'Nairobi to Kampala',
+        cargo: 'General cargo'
+      },
+      truck: { plateNumber: 'KAA 123A' }
+    });
   }),
 
   http.get('*/api/marketplace/dispatch/:bookingId', () => {
@@ -284,37 +355,145 @@ export const handlers = [
   // Admin stats / data
   http.get('*/api/admin/stats', () => {
     return HttpResponse.json({
-      stats: {
-        totalUsers: 10,
-        totalBookings: 15,
-        totalRevenue: 50000,
-        activeTrucks: 8
-      }
+      totalUsers: 10,
+      totalBookings: 15,
+      totalRevenue: 50000,
+      totalTrucks: 8
     });
   }),
 
   http.get('*/api/admin/users', () => {
-    return HttpResponse.json({ users: [] });
+    return HttpResponse.json({
+      users: [
+        {
+          id: 'usr-carrier-unverified',
+          _id: 'usr-carrier-unverified',
+          firstName: 'John',
+          lastName: 'Carrier',
+          email: 'carrier-unverified@example.com',
+          role: 'owner',
+          isVerified: false,
+          documents: [
+            { type: 'business_registration', status: 'pending', url: 'https://example.com/biz.pdf' },
+            { type: 'owner_kyc', status: 'approved', url: 'https://example.com/kyc.pdf' },
+            { type: 'driver_id', status: 'approved', url: 'https://example.com/id.pdf' },
+            { type: 'insurance', status: 'approved', url: 'https://example.com/ins.pdf' }
+          ]
+        },
+        {
+          id: 'usr-shipper-verified',
+          _id: 'usr-shipper-verified',
+          firstName: 'Alice',
+          lastName: 'Shipper',
+          email: 'shipper-verified@example.com',
+          role: 'client',
+          isVerified: true,
+          documents: []
+        }
+      ]
+    });
   }),
 
   http.get('*/api/admin/trucks', () => {
-    return HttpResponse.json({ trucks: [] });
+    return HttpResponse.json({
+      trucks: [
+        {
+          id: 'TRK-003',
+          _id: 'TRK-003',
+          type: 'Bus',
+          name: 'Yutong ZK6122',
+          plate: 'TRK 003',
+          owner: 'Carrier Pending',
+          company: 'City Logistics',
+          pricePerKm: 1.9,
+          capacity: 'Mixed cargo',
+          verified: false,
+          isVerified: false,
+          photos: ['https://example.com/truck.jpg'],
+          documents: [
+            { type: 'road_license', status: 'pending', url: 'https://example.com/road.pdf' },
+            { type: 'insurance', status: 'approved', url: 'https://example.com/ins.pdf' },
+            { type: 'vehicle_logbook', status: 'approved', url: 'https://example.com/logbook.pdf' },
+            { type: 'inspection_report', status: 'approved', url: 'https://example.com/inspection.pdf' }
+          ]
+        }
+      ]
+    });
   }),
 
   http.get('*/api/admin/bookings', () => {
-    return HttpResponse.json({ bookings: [] });
+    return HttpResponse.json({
+      bookings: [
+        {
+          id: 'ITK-1001',
+          _id: 'ITK-1001',
+          bookingId: 'ITK-1001',
+          route: 'Nairobi to Kampala',
+          pickup: 'Nairobi',
+          destination: 'Kampala',
+          status: 'in_transit',
+          progress: 64,
+          documents: [{ type: 'waybill', status: 'pending', url: 'https://example.com/waybill.pdf' }]
+        },
+        {
+          id: 'ITK-1003',
+          _id: 'ITK-1003',
+          bookingId: 'ITK-1003',
+          route: 'Accra to Lagos',
+          pickup: 'Accra',
+          destination: 'Lagos',
+          status: 'delivered',
+          paymentStatus: 'escrowed',
+          progress: 100,
+          documents: [{ type: 'waybill', status: 'approved', url: 'https://example.com/waybill.pdf' }]
+        }
+      ]
+    });
   }),
 
   http.get('*/api/admin/payments', () => {
-    return HttpResponse.json({ payments: [] });
+    return HttpResponse.json({
+      transactions: [
+        {
+          id: 'TXN-001',
+          _id: 'TXN-001',
+          type: 'Credit',
+          amount: 5000,
+          status: 'Completed',
+          createdAt: new Date().toISOString()
+        }
+      ]
+    });
   }),
 
   http.get('*/api/admin/audit-logs', () => {
-    return HttpResponse.json({ logs: [] });
+    return HttpResponse.json({
+      logs: [
+        {
+          id: 'LOG-001',
+          _id: 'LOG-001',
+          action: 'approve_kyc',
+          actor: 'admin@example.com',
+          details: 'Approved KYC for John Carrier',
+          createdAt: new Date().toISOString()
+        }
+      ]
+    });
   }),
 
   http.get('*/api/admin/cases', () => {
-    return HttpResponse.json({ cases: [] });
+    return HttpResponse.json({
+      cases: [
+        {
+          id: 'CASE-001',
+          _id: 'CASE-001',
+          booking: 'ITK-1001',
+          title: 'Damaged cargo',
+          status: 'open',
+          createdAt: new Date().toISOString()
+        }
+      ]
+    });
   }),
 
   // Booking bids
@@ -361,7 +540,22 @@ export const handlers = [
 
   // Admin Actions
   http.get('*/api/admin/notification-deliveries', () => {
-    return HttpResponse.json({ deliveries: [] });
+    return HttpResponse.json({
+      deliveries: [
+        {
+          id: 'DEL-001',
+          _id: 'DEL-001',
+          status: 'failed',
+          recipient: 'carrier@example.com',
+          title: 'Bid status update',
+          message: 'Your bid was accepted',
+          channel: 'sms',
+          booking: 'ITK-1001',
+          error: 'SMS provider timeout',
+          createdAt: new Date().toISOString()
+        }
+      ]
+    });
   }),
 
   http.post('*/api/admin/notification-deliveries/:id/retry', () => {
@@ -378,6 +572,10 @@ export const handlers = [
 
   http.patch('*/api/admin/bookings/:bookingId/documents/:documentType', () => {
     return HttpResponse.json({ success: true, booking: { id: 'bk-1' } });
+  }),
+
+  http.delete('*/api/admin/users/:userId', () => {
+    return HttpResponse.json({ success: true, removed: { trucks: 0 } });
   }),
 
   http.patch('*/api/admin/users/:userId/verification', () => {
