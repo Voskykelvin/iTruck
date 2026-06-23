@@ -1,5 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { server } from '../test/mocks/server.js';
+import { http, HttpResponse } from 'msw';
 
 import MessagesPage from './MessagesPage.jsx';
 import MarketplacePage from './MarketplacePage.jsx';
@@ -357,6 +359,25 @@ describe('Page Components Unit & Interaction Tests', () => {
 
   // 12. ADMIN PAGE
   test('AdminPage reviews tabs and verification flows', async () => {
+    server.use(
+      http.get('*/api/admin/stats', () =>
+        HttpResponse.json({
+          totalUsers: 0,
+          totalBookings: 0,
+          totalRevenue: 0,
+          totalTrucks: 0
+        })
+      ),
+      http.get('*/api/admin/users', () => HttpResponse.json({ users: [] })),
+      http.get('*/api/admin/trucks', () => HttpResponse.json({ trucks: [] })),
+      http.get('*/api/admin/bookings', () => HttpResponse.json({ bookings: [] })),
+      http.get('*/api/admin/payments', () => HttpResponse.json({ transactions: [] })),
+      http.get('*/api/admin/cases', () => HttpResponse.json({ cases: [] })),
+      http.get('*/api/admin/notification-deliveries', () => HttpResponse.json({ deliveries: [] })),
+      http.get('*/api/admin/audit-logs', () => HttpResponse.json({ logs: [] })),
+      http.get('*/api/documents', () => HttpResponse.json({ documents: [] }))
+    );
+
     render(<AdminPage notify={mockNotify} user={adminUser} />);
     await screen.findByText('Approvals Console');
 
