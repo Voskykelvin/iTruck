@@ -25,7 +25,11 @@ function hasIndex(Model, keys, options = {}) {
     .some(
       ([indexKeys, indexOptions]) =>
         JSON.stringify(indexKeys) === JSON.stringify(keys) &&
-        Object.entries(options).every(([key, value]) => indexOptions[key] === value)
+        Object.entries(options).every(([key, value]) =>
+          typeof value === 'object' && value !== null
+            ? JSON.stringify(indexOptions[key]) === JSON.stringify(value)
+            : indexOptions[key] === value
+        )
     );
 }
 
@@ -139,7 +143,13 @@ test('document records index every upload and generated booking document', () =>
 });
 
 test('notification delivery indexes support dedupe, leasing, and retention', () => {
-  expect(hasIndex(Notification, { user: 1, dedupeKey: 1 }, { unique: true, sparse: true })).toBe(true);
+  expect(
+    hasIndex(
+      Notification,
+      { user: 1, dedupeKey: 1 },
+      { unique: true, partialFilterExpression: { dedupeKey: { $type: 'string' } } }
+    )
+  ).toBe(true);
   expect(hasIndex(NotificationDelivery, { notification: 1, channel: 1 }, { unique: true })).toBe(true);
   expect(hasIndex(NotificationDelivery, { status: 1, nextAttemptAt: 1, leaseUntil: 1 })).toBe(true);
   expect(hasIndex(NotificationDelivery, { expiresAt: 1 }, { expireAfterSeconds: 0 })).toBe(true);

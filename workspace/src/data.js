@@ -181,3 +181,9 @@ export const demoDocuments = [
   'Packing list',
   'Customs declaration'
 ];
+
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
+export const workspaceFleet = DEMO_MODE ? demoFleet : [];
+export const workspaceShipments = DEMO_MODE ? demoShipments : [];
+export const workspaceLoads = DEMO_MODE ? demoLoads : [];
+export const workspaceDocuments = DEMO_MODE ? demoDocuments : [];

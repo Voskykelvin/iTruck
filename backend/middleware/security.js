@@ -19,28 +19,30 @@ function redisStore(prefix) {
   });
 }
 
+const isTest = process.env.NODE_ENV === 'test';
+
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 160,
+  max: isTest ? 1_000_000 : 160,
   standardHeaders: true,
   legacyHeaders: false,
-  store: redisStore('api')
+  store: isTest ? undefined : redisStore('api')
 });
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: isTest ? 1_000_000 : 20,
   standardHeaders: true,
   legacyHeaders: false,
-  store: redisStore('auth')
+  store: isTest ? undefined : redisStore('auth')
 });
 
 const deliveryOtpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: isTest ? 1_000_000 : 10,
   standardHeaders: true,
   legacyHeaders: false,
-  store: redisStore('delivery-otp')
+  store: isTest ? undefined : redisStore('delivery-otp')
 });
 
 function handleCastError(err) {
