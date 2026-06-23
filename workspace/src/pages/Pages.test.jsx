@@ -310,6 +310,10 @@ describe('Page Components Unit & Interaction Tests', () => {
     // Confirm waybill action
     const waybillBtn = screen.getByRole('button', { name: 'Confirm waybill and cargo photos' });
     fireEvent.click(waybillBtn);
+
+    await waitFor(() => {
+      expect(mockNotify).toHaveBeenCalledWith('Waybill downloaded for ITK-1001');
+    });
   });
 
   // 10. TRACKING PAGE

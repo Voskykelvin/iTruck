@@ -436,5 +436,33 @@ export const handlers = [
 
   http.post('*/api/notifications/test', () => {
     return HttpResponse.json({ success: true });
+  }),
+
+  http.post('*/api/bookings/:bookingId/tracking', () => {
+    return HttpResponse.json({
+      booking: demoShipments[0]
+    });
+  }),
+
+  http.post('*/api/bookings/:bookingId/tracking/batch', () => {
+    return HttpResponse.json({
+      booking: demoShipments[0]
+    });
+  }),
+
+  http.get('*/api/documents/:type/:bookingId', () => {
+    return new HttpResponse('dummy pdf content', {
+      headers: {
+        'Content-Type': 'application/pdf'
+      }
+    });
+  }),
+
+  http.post('*/api/documents/draft/:type', () => {
+    return new HttpResponse('dummy pdf draft content', {
+      headers: {
+        'Content-Type': 'application/pdf'
+      }
+    });
   })
 ];

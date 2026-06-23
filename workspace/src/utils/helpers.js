@@ -697,7 +697,8 @@ export function progressForStatus(status = 'pending') {
 export function normalizeBookingShipment(booking) {
   const tracking = booking.tracking || [];
   const latest = tracking[tracking.length - 1] || {};
-  const progress = Number(booking.progress || progressForStatus(booking.status));
+  const normStatus = (booking.status || 'pending').toLowerCase().replaceAll(' ', '_');
+  const progress = Number(booking.progress || progressForStatus(normStatus));
   const hasLatestCoordinates = [latest.lat, latest.lng].every((value) => Number.isFinite(Number(value)));
   const latestSpeed = Number(latest.speed);
   const bookingDocuments = bookingDocumentsFrom(booking);
@@ -725,8 +726,8 @@ export function normalizeBookingShipment(booking) {
       : booking.owner
         ? `${booking.owner.firstName || ''} ${booking.owner.lastName || ''}`.trim()
         : 'Driver pending',
-    status: statusLabel(booking.status),
-    rawStatus: booking.status || 'pending',
+    status: statusLabel(normStatus),
+    rawStatus: normStatus,
     progress,
     eta: etaText,
     etaDetails: booking.eta || null,
