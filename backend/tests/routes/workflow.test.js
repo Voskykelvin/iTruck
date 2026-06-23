@@ -222,7 +222,7 @@ describe('Workflow Integration Tests', () => {
       const { token: ownerToken, truck } = await createOwnerWithTruck();
       const booking = await createBookingInDB(client._id, { status: 'pending' });
 
-      const res = await request(app)
+      const _res = await request(app)
         .post('/api/workflow/bids')
         .set('Authorization', `Bearer ${ownerToken}`)
         .send({ bookingId: String(booking._id), amount: 1800, truck: String(truck._id) })
@@ -323,7 +323,7 @@ describe('Workflow Integration Tests', () => {
       const { user: client, token } = await createUser({ role: 'client' });
       const booking = await createBookingInDB(client._id);
 
-      const res = await request(app)
+      const _res = await request(app)
         .post('/api/workflow/reports')
         .set('Authorization', `Bearer ${token}`)
         .send({
@@ -367,10 +367,7 @@ describe('Workflow Integration Tests', () => {
     test('returns empty array when no bookingId is provided', async () => {
       const { token } = await createUser({ role: 'client' });
 
-      const res = await request(app)
-        .get('/api/workflow/messages')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
+      const res = await request(app).get('/api/workflow/messages').set('Authorization', `Bearer ${token}`).expect(200);
 
       expect(res.body.items).toHaveLength(0);
     });
@@ -413,10 +410,7 @@ describe('Workflow Integration Tests', () => {
         payload: {}
       });
 
-      const res = await request(app)
-        .get('/api/workflow')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
+      const res = await request(app).get('/api/workflow').set('Authorization', `Bearer ${token}`).expect(200);
 
       expect(res.body.items.length).toBeGreaterThanOrEqual(2);
     });
@@ -460,10 +454,7 @@ describe('Workflow Integration Tests', () => {
         payload: {}
       });
 
-      const res = await request(app)
-        .get('/api/workflow')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .expect(200);
+      const res = await request(app).get('/api/workflow').set('Authorization', `Bearer ${adminToken}`).expect(200);
 
       expect(res.body.items.length).toBeGreaterThanOrEqual(1);
     });

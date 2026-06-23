@@ -1,9 +1,4 @@
-import React from 'react';
-import {
-  profileDocumentsForRole,
-  missingRequiredProfileDocuments,
-  navigate
-} from '../utils/helpers.js';
+import { profileDocumentsForRole, missingRequiredProfileDocuments, navigate } from '../utils/helpers.js';
 
 export default function ProfileCompletenessScore({ user, role }) {
   const requiredDocuments = profileDocumentsForRole(role);

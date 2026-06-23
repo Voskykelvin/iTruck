@@ -20,7 +20,7 @@ describe('helpers.js unit tests', () => {
     };
     const actions = helpers.handoverDocumentActionsFor(shipment);
     expect(actions.length).toBeGreaterThan(0);
-    expect(actions.find(a => a.type === 'waybill')).toBeDefined();
+    expect(actions.find((a) => a.type === 'waybill')).toBeDefined();
   });
 
   it('routeFromLocation', () => {
@@ -114,7 +114,7 @@ describe('helpers.js unit tests', () => {
     const indexed = [{ type: 'cargo-photo', urls: ['url2'] }];
     const merged = helpers.mergeDocumentLists(base, indexed, 'booking');
     expect(merged.length).toBe(2);
-    expect(merged.find(d => d.type === 'cargo-photos').url).toBe('url2');
+    expect(merged.find((d) => d.type === 'cargo-photos').url).toBe('url2');
   });
 
   it('bookingDocumentFor, documentIsAvailable and shipmentDocumentStatus', () => {
@@ -130,9 +130,7 @@ describe('helpers.js unit tests', () => {
 
   it('deliveryProofDocument and hasReceiverGradeProof', () => {
     const shipment = {
-      bookingDocuments: [
-        { type: 'pod', url: 'url', status: 'approved' }
-      ],
+      bookingDocuments: [{ type: 'pod', url: 'url', status: 'approved' }],
       deliveryProof: {
         proof: true,
         recordHash: 'a'.repeat(64),
@@ -273,7 +271,10 @@ describe('helpers.js unit tests', () => {
 
   it('latestTrackingPoint and formatCoordinatePair', () => {
     const shipment = {
-      tracking: [{ lat: 1, lng: 2 }, { lat: 3, lng: 4 }]
+      tracking: [
+        { lat: 1, lng: 2 },
+        { lat: 3, lng: 4 }
+      ]
     };
     expect(helpers.latestTrackingPoint(shipment).lat).toBe(3);
     expect(helpers.formatCoordinatePair({ lat: 1, lng: 2 })).toBe('1.00000, 2.00000');

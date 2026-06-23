@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   MapPin,
   Radio,
@@ -51,7 +51,8 @@ import {
   normalizeWorkflowMessage,
   copyToClipboard,
   documentUploadAccept,
-  shipmentDocumentStatus
+  shipmentDocumentStatus,
+  navigate
 } from '../utils/helpers.js';
 
 function LivePositionCard({ shipment }) {

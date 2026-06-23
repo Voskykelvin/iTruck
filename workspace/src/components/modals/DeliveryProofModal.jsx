@@ -1,12 +1,8 @@
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Image, ShieldCheck, X } from 'lucide-react';
 import { api } from '../../api.js';
 import Input from '../Input.jsx';
-import {
-  latestTrackingPoint,
-  formatCoordinatePair,
-  imageUploadAccept
-} from '../../utils/helpers.js';
+import { latestTrackingPoint, formatCoordinatePair, imageUploadAccept } from '../../utils/helpers.js';
 
 export default function DeliveryProofModal({ shipment, onClose, onSubmit, busy }) {
   const latest = latestTrackingPoint(shipment);

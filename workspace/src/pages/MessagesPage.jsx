@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Send } from 'lucide-react';
 import { api } from '../api.js';
 import { demoShipments } from '../data.js';

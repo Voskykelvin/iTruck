@@ -1,4 +1,3 @@
-import React from 'react';
 import { formatMessageTime } from '../utils/helpers.js';
 
 export default function ChatBubble({ message }) {

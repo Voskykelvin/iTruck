@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Image, Truck, Plus, BarChart3, UserRound } from 'lucide-react';
 import { api, setSession } from '../api.js';
 import { demoFleet } from '../data.js';

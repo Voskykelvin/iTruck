@@ -1,4 +1,3 @@
-import React from 'react';
 import StatusBadge from './StatusBadge.jsx';
 
 function documentStatusMeta(status = 'missing', labels = {}) {

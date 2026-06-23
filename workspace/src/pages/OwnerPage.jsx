@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Wallet, Truck, Gauge, ShieldCheck, Plus } from 'lucide-react';
 import { api } from '../api.js';
 import { demoFleet, demoLoads } from '../data.js';
@@ -34,13 +34,6 @@ export default function OwnerPage({ notify, user }) {
   const [localBids, setLocalBids] = useState(() => readLocal('bids').map(normalizeOwnerBidRecord));
   const [draftPlate, setDraftPlate] = useState('');
   const [walletBalance, setWalletBalance] = useState(3180);
-  const [withdrawBusy, setWithdrawBusy] = useState(false);
-  const [withdrawDraft, setWithdrawDraft] = useState({
-    amount: 250,
-    method: 'mpesa',
-    destination: '+254700000000',
-    accountName: ''
-  });
   const [bidTarget, setBidTarget] = useState(null);
   const [bidDraft, setBidDraft] = useState(() => bidDraftForLoad(null));
   const [bidBusy, setBidBusy] = useState(false);
@@ -225,44 +218,6 @@ export default function OwnerPage({ notify, user }) {
       navigate(`/app/tracking?shipment=${encodeURIComponent(updated.id)}`);
     } catch (err) {
       notify(err.message);
-    }
-  }
-
-  function updateWithdraw(key, value) {
-    setWithdrawDraft((current) => ({ ...current, [key]: value }));
-  }
-
-  async function requestWithdrawal(event) {
-    event.preventDefault();
-    const amount = Number(withdrawDraft.amount);
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-      notify('Enter a withdrawal amount greater than zero');
-      return;
-    }
-
-    if (!withdrawDraft.destination.trim()) {
-      notify('Enter the payout phone or account');
-      return;
-    }
-
-    setWithdrawBusy(true);
-    const payload = {
-      ...withdrawDraft,
-      amount,
-      description: `Owner withdrawal to ${withdrawDraft.method}`
-    };
-
-    try {
-      await api.withdraw(payload);
-      setWalletBalance((current) => Math.max(0, Number(current || 0) - amount));
-      notify(`Withdrawal request queued to ${withdrawDraft.method.toUpperCase()}`);
-    } catch (_err) {
-      saveLocal('withdrawals', { ...payload, status: 'local-pending' });
-      setWalletBalance((current) => Math.max(0, Number(current || 0) - amount));
-      notify('Withdrawal request held until account sync completes');
-    } finally {
-      setWithdrawBusy(false);
     }
   }
 

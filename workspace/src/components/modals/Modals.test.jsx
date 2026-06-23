@@ -1,6 +1,5 @@
-import React from 'react';
 import { describe, test, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../test/mocks/server.js';
 
@@ -18,9 +17,7 @@ describe('Modal Components', () => {
   test('WalletTopupModal submits custom amount', () => {
     const handleClose = vi.fn();
     const handleTopup = vi.fn();
-    const transactions = [
-      { id: 't1', amount: 100, type: 'Credit', status: 'Completed', description: 'Topup' }
-    ];
+    const transactions = [{ id: 't1', amount: 100, type: 'Credit', status: 'Completed', description: 'Topup' }];
 
     render(
       <WalletTopupModal
@@ -56,14 +53,7 @@ describe('Modal Components', () => {
     const onSubmit = vi.fn();
     const onClose = vi.fn();
 
-    render(
-      <MobileMoneyEscrowModal
-        shipment={shipment}
-        busy={false}
-        onClose={onClose}
-        onSubmit={onSubmit}
-      />
-    );
+    render(<MobileMoneyEscrowModal shipment={shipment} busy={false} onClose={onClose} onSubmit={onSubmit} />);
 
     expect(screen.getByText('ITK-1001')).toBeInTheDocument();
     expect(screen.getByText('USD 500')).toBeInTheDocument();
@@ -83,14 +73,7 @@ describe('Modal Components', () => {
     const onSubmit = vi.fn();
     const onClose = vi.fn();
 
-    render(
-      <ReportIssueModal
-        shipment={shipment}
-        onClose={onClose}
-        onSubmit={onSubmit}
-        busy={false}
-      />
-    );
+    render(<ReportIssueModal shipment={shipment} onClose={onClose} onSubmit={onSubmit} busy={false} />);
 
     expect(screen.getByText('Report Issue')).toBeInTheDocument();
 
@@ -110,23 +93,12 @@ describe('Modal Components', () => {
   });
 
   test('GlobalSearch searches and navigates', () => {
-    const shipments = [
-      { id: 'ITK-1001', route: 'Nairobi to Kampala', cargo: 'Soda', status: 'In transit' }
-    ];
-    const trucks = [
-      { id: 'TRK-001', plate: 'TRK 001', name: 'Scania', type: 'Trailer', availability: 'Available' }
-    ];
+    const shipments = [{ id: 'ITK-1001', route: 'Nairobi to Kampala', cargo: 'Soda', status: 'In transit' }];
+    const trucks = [{ id: 'TRK-001', plate: 'TRK 001', name: 'Scania', type: 'Trailer', availability: 'Available' }];
     const onClose = vi.fn();
     const onNavigate = vi.fn();
 
-    render(
-      <GlobalSearch
-        shipments={shipments}
-        trucks={trucks}
-        onClose={onClose}
-        onNavigate={onNavigate}
-      />
-    );
+    render(<GlobalSearch shipments={shipments} trucks={trucks} onClose={onClose} onNavigate={onNavigate} />);
 
     const input = screen.getByPlaceholderText(/Search bookings/);
     fireEvent.change(input, { target: { value: 'Soda' } });
@@ -168,14 +140,7 @@ describe('Modal Components', () => {
     const onSubmit = vi.fn();
     const onClose = vi.fn();
 
-    render(
-      <DeliveryProofModal
-        shipment={shipment}
-        onClose={onClose}
-        onSubmit={onSubmit}
-        busy={false}
-      />
-    );
+    render(<DeliveryProofModal shipment={shipment} onClose={onClose} onSubmit={onSubmit} busy={false} />);
 
     // 1. Click Send OTP
     const otpBtn = screen.getByRole('button', { name: 'Send OTP' });
@@ -192,7 +157,10 @@ describe('Modal Components', () => {
 
     // 3. Attach file
     const file = new File(['dummy content'], 'photo.png', { type: 'image/png' });
-    const inputEl = screen.getByLabelText(/Receiver OTP/).closest('form').querySelector('input[type="file"]');
+    const inputEl = screen
+      .getByLabelText(/Receiver OTP/)
+      .closest('form')
+      .querySelector('input[type="file"]');
     fireEvent.change(inputEl, { target: { files: [file] } });
 
     // 4. Fill signature

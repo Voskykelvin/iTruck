@@ -61,7 +61,7 @@ describe('trackingTelemetry.js tests', () => {
     expect(shouldSendTelemetry(next, prev, Date.now() - 60000)).toBe(true);
 
     // Moved significantly
-    const farNext = { lat: 1.3500, lng: 36.9000, speed: 36 };
+    const farNext = { lat: 1.35, lng: 36.9, speed: 36 };
     expect(shouldSendTelemetry(farNext, prev, Date.now())).toBe(true);
   });
 

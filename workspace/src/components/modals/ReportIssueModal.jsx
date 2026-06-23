@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Image, X } from 'lucide-react';
 
 export default function ReportIssueModal({ shipment, onClose, onSubmit, busy }) {

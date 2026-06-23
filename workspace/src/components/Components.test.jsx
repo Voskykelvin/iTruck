@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, test, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
@@ -58,9 +57,7 @@ describe('Common Components', () => {
   });
 
   test('Select renders with label and options', () => {
-    render(
-      <Select label="Choose" value="a" onChange={vi.fn()} options={['a', 'b']} />
-    );
+    render(<Select label="Choose" value="a" onChange={vi.fn()} options={['a', 'b']} />);
     expect(screen.getByText('Choose')).toBeInTheDocument();
     expect(screen.getByRole('combobox')).toHaveValue('a');
   });
@@ -103,9 +100,7 @@ describe('Common Components', () => {
 
   test('DocumentSlotButton renders different statuses', () => {
     const onClick = vi.fn();
-    const { rerender } = render(
-      <DocumentSlotButton label="Insurance" status="missing" onClick={onClick} />
-    );
+    const { rerender } = render(<DocumentSlotButton label="Insurance" status="missing" onClick={onClick} />);
     expect(screen.getByText('Insurance')).toBeInTheDocument();
     expect(screen.getByText('Upload')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button'));
@@ -128,9 +123,7 @@ describe('Common Components', () => {
   });
 
   test('NotificationBell dropdown opens and marks read', () => {
-    const notifs = [
-      { id: '1', title: 'New load', read: false, createdAt: new Date().toISOString(), link: '/load' }
-    ];
+    const notifs = [{ id: '1', title: 'New load', read: false, createdAt: new Date().toISOString(), link: '/load' }];
     const markRead = vi.fn();
     const navigate = vi.fn();
     render(<NotificationBell notifications={notifs} onMarkAllRead={markRead} onNavigate={navigate} />);
@@ -176,10 +169,12 @@ describe('Common Components', () => {
   });
 
   test('OnboardingBanner progresses correctly client and owner', () => {
-    const owner = { firstName: 'Alice', email: 'owner@example.com', documents: [{ type: 'license', status: 'approved' }] };
-    const { rerender } = render(
-      <OnboardingBanner user={owner} role="owner" fleet={[{ id: 'trk' }]} shipments={[]} />
-    );
+    const owner = {
+      firstName: 'Alice',
+      email: 'owner@example.com',
+      documents: [{ type: 'license', status: 'approved' }]
+    };
+    const { rerender } = render(<OnboardingBanner user={owner} role="owner" fleet={[{ id: 'trk' }]} shipments={[]} />);
     expect(screen.getByText(/Complete your profile/)).toBeInTheDocument();
 
     const client = { firstName: 'Bob', email: 'client@example.com', documents: [] };

@@ -29,7 +29,7 @@ const {
   autoAssign,
   buildEstimate,
   ltlPricing,
-  normalizeLoadMode,
+  normalizeLoadMode: _normalizeLoadMode,
   rankTrucksForBooking,
   releaseAssignment,
   reserveAssignment,
@@ -37,7 +37,7 @@ const {
   scoreTruck,
   sequenceDispatchStops,
   suggestPrice,
-  vehicleCapacity
+  vehicleCapacity: _vehicleCapacity
 } = require('../services/matching');
 
 const ownerDocuments = ['owner-kyc', 'driver-id', 'business-registration', 'insurance'].map((type) => ({
@@ -120,7 +120,9 @@ describe('Matching Service Comprehensive Tests', () => {
 
   test('routeKeyFor handles missing or partial input', () => {
     expect(routeKeyFor({ pickup: 'Nairobi' })).toBe('nairobi:lorry');
-    expect(routeKeyFor({ pickup: ' Nairobi ', destination: ' Mombasa  ', vehicleType: 'Pickup' })).toBe('nairobi:mombasa:pickup');
+    expect(routeKeyFor({ pickup: ' Nairobi ', destination: ' Mombasa  ', vehicleType: 'Pickup' })).toBe(
+      'nairobi:mombasa:pickup'
+    );
   });
 
   test('ltlPricing handles non-ltl loadMode and invalid weight', () => {
@@ -371,7 +373,7 @@ describe('Matching Service Comprehensive Tests', () => {
 
   test('laneFit checks route matching logic variations', () => {
     const vehicle = truck();
-    
+
     // pickup-destination exact match
     vehicle.routes = ['Nairobi-Kisumu'];
     expect(scoreTruck(vehicle, booking()).laneFit).toBe(1);
@@ -445,7 +447,9 @@ describe('Matching Service Comprehensive Tests', () => {
     const plan = {
       stops: [{ type: 'pickup', coordinates: null }],
       assignments: [{ booking: load._id, cargoWeightTonnes: 2 }],
-      save: jest.fn(async function save() { return this; })
+      save: jest.fn(async function save() {
+        return this;
+      })
     };
     DispatchPlan.findOne.mockReturnValue(queryResult(null));
     DispatchPlan.create.mockResolvedValue(plan);
@@ -464,7 +468,9 @@ describe('Matching Service Comprehensive Tests', () => {
         { type: 'delivery', coordinates: { lat: 2, lng: 2 } }
       ],
       assignments: [{ booking: load._id, cargoWeightTonnes: 2 }],
-      save: jest.fn(async function save() { return this; })
+      save: jest.fn(async function save() {
+        return this;
+      })
     };
     DispatchPlan.findOne.mockReturnValue(queryResult(null));
     DispatchPlan.create.mockResolvedValue(plan);
@@ -477,25 +483,27 @@ describe('Matching Service Comprehensive Tests', () => {
 
   test('reserveAssignment throws 404/409 on missing or unverified truck', async () => {
     const load = booking();
-    
+
     // missing truck
     await expect(reserveAssignment(load, null)).rejects.toThrow('Assigned truck not found');
 
     // unverified truck
     const vehicle = truck();
     vehicle.isVerified = false;
-    await expect(reserveAssignment(load, vehicle)).rejects.toThrow('Assigned truck is no longer verified and available');
+    await expect(reserveAssignment(load, vehicle)).rejects.toThrow(
+      'Assigned truck is no longer verified and available'
+    );
   });
 
   test('reserveAssignment fetches truck owner details if owner is ObjectId string', async () => {
     const load = booking();
     const vehicle = truck();
     vehicle.owner = 'owner-1';
-    
+
     User.findById.mockReturnValue({
       select: jest.fn(async () => owner())
     });
-    
+
     const plan = {
       _id: 'plan-1',
       assignments: [],
@@ -506,7 +514,9 @@ describe('Matching Service Comprehensive Tests', () => {
       ...plan,
       remainingTonnes: 10,
       assignments: [{ booking: load._id, cargoWeightTonnes: 2 }],
-      save: jest.fn(async function save() { return this; })
+      save: jest.fn(async function save() {
+        return this;
+      })
     };
     Truck.findOneAndUpdate.mockResolvedValue(vehicle);
     DispatchPlan.findOne.mockReturnValue(queryResult(null));
@@ -522,7 +532,9 @@ describe('Matching Service Comprehensive Tests', () => {
     load.cargoWeightTonnes = 100; // Too heavy
     const vehicle = truck();
 
-    await expect(reserveAssignment(load, vehicle)).rejects.toThrow('Truck does not have enough capacity for this booking');
+    await expect(reserveAssignment(load, vehicle)).rejects.toThrow(
+      'Truck does not have enough capacity for this booking'
+    );
   });
 
   test('reserveAssignment handles failed capacity lock or plan update', async () => {
@@ -539,17 +551,19 @@ describe('Matching Service Comprehensive Tests', () => {
     DispatchPlan.create.mockResolvedValue({ _id: 'plan-1' });
     DispatchPlan.findOneAndUpdate.mockResolvedValue(null); // plan capacity changed concurrently
 
-    await expect(reserveAssignment(load, vehicle)).rejects.toThrow('Dispatch plan capacity changed while assigning this booking');
+    await expect(reserveAssignment(load, vehicle)).rejects.toThrow(
+      'Dispatch plan capacity changed while assigning this booking'
+    );
   });
 
   test('reserveAssignment handles loadMode full-truck capacity assignment and driver fallback options', async () => {
     const load = booking();
     load.loadMode = 'full-truck';
     delete load.cargoWeightTonnes;
-    
+
     const vehicle = truck();
     vehicle.assignedDriver = 'driver-777';
-    
+
     const plan = {
       _id: 'plan-1',
       assignments: [],
@@ -560,7 +574,9 @@ describe('Matching Service Comprehensive Tests', () => {
       ...plan,
       remainingTonnes: 0,
       assignments: [{ booking: load._id, cargoWeightTonnes: 12 }],
-      save: jest.fn(async function save() { return this; })
+      save: jest.fn(async function save() {
+        return this;
+      })
     };
     Truck.findOneAndUpdate.mockResolvedValue(vehicle);
     DispatchPlan.findOne.mockReturnValue(queryResult(null));
@@ -588,7 +604,7 @@ describe('Matching Service Comprehensive Tests', () => {
     const load = booking();
     load.loadMode = 'full-truck';
     load.cargoWeightTonnes = 5;
-    
+
     const vehicle = truck();
     const plan = {
       _id: 'plan-1',
@@ -600,7 +616,9 @@ describe('Matching Service Comprehensive Tests', () => {
       ...plan,
       remainingTonnes: 7,
       assignments: [{ booking: load._id, cargoWeightTonnes: 5 }],
-      save: jest.fn(async function save() { return this; })
+      save: jest.fn(async function save() {
+        return this;
+      })
     };
     Truck.findOneAndUpdate.mockResolvedValue(vehicle);
     DispatchPlan.findOne.mockReturnValue(queryResult(null));
@@ -613,10 +631,10 @@ describe('Matching Service Comprehensive Tests', () => {
 
   test('releaseAssignment checks basic parameters and returns null if not applicable', async () => {
     expect(await releaseAssignment(null)).toBeNull();
-    
+
     const load = booking();
     load.dispatchPlan = 'plan-1';
-    
+
     // plan not found
     DispatchPlan.findById.mockResolvedValue(null);
     expect(await releaseAssignment(load)).toBeNull();
@@ -647,7 +665,9 @@ describe('Matching Service Comprehensive Tests', () => {
         { booking: load._id, type: 'pickup', status: 'pending' },
         { booking: load._id, type: 'delivery', status: 'pending' }
       ],
-      save: jest.fn(async function save() { return this; })
+      save: jest.fn(async function save() {
+        return this;
+      })
     };
     DispatchPlan.findById.mockResolvedValue(plan);
 
@@ -680,10 +700,10 @@ describe('Matching Service Comprehensive Tests', () => {
     const load = booking();
     const vehicle1 = truck();
     const vehicle2 = { ...truck(), _id: 'truck-2' };
-    
+
     Booking.findById.mockResolvedValue(load);
     Truck.find.mockReturnValue(queryResult([vehicle1, vehicle2]));
-    
+
     // First match throws 409 on reserveAssignment
     Truck.findOneAndUpdate
       .mockResolvedValueOnce(null) // fails capacity lock for vehicle1
@@ -696,7 +716,9 @@ describe('Matching Service Comprehensive Tests', () => {
       remainingTonnes: 10,
       assignments: [{ booking: load._id, cargoWeightTonnes: 2 }],
       stops: [],
-      save: jest.fn(async function save() { return this; })
+      save: jest.fn(async function save() {
+        return this;
+      })
     });
 
     const result = await autoAssign(load._id);
@@ -708,7 +730,7 @@ describe('Matching Service Comprehensive Tests', () => {
     const vehicle = truck();
     Booking.findById.mockResolvedValue(load);
     Truck.find.mockReturnValue(queryResult([vehicle]));
-    
+
     // fails capacity lock with database connection error
     Truck.findOneAndUpdate.mockRejectedValue(new Error('Db connection error'));
 
@@ -722,7 +744,7 @@ describe('Matching Service Comprehensive Tests', () => {
     load.budget = 0;
 
     const vehicle = truck();
-    
+
     Booking.findById.mockResolvedValue(load);
     Truck.find.mockReturnValue(queryResult([vehicle]));
     Truck.findOneAndUpdate.mockResolvedValue(vehicle);
@@ -733,7 +755,9 @@ describe('Matching Service Comprehensive Tests', () => {
       remainingTonnes: 10,
       assignments: [{ booking: load._id, cargoWeightTonnes: 2 }],
       stops: [],
-      save: jest.fn(async function save() { return this; })
+      save: jest.fn(async function save() {
+        return this;
+      })
     });
 
     const result = await autoAssign(load._id);

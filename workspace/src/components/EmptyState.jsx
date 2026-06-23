@@ -1,4 +1,3 @@
-import React from 'react';
 import { ClipboardCheck } from 'lucide-react';
 
 export default function EmptyState({ title, detail }) {
