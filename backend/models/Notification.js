@@ -30,7 +30,13 @@ const notificationSchema = new mongoose.Schema(
 
 notificationSchema.index({ user: 1, read: 1, createdAt: -1 });
 notificationSchema.index({ user: 1, type: 1, createdAt: -1 });
-notificationSchema.index({ user: 1, dedupeKey: 1 }, { unique: true, sparse: true });
+notificationSchema.index(
+  { user: 1, dedupeKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { dedupeKey: { $type: 'string' } }
+  }
+);
 
 notificationSchema.statics.unreadCount = function unreadCount(user) {
   return this.countDocuments({
