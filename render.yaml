@@ -3,7 +3,7 @@ services:
     name: itruck-api
     runtime: node
     plan: starter
-    buildCommand: npm ci && npm ci --prefix backend && npm ci --include=dev --prefix workspace && npm run app:build
+    buildCommand: npm ci && npm ci --prefix backend && npm ci --prefix workspace && npm run app:build
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
