@@ -12,3 +12,4 @@ workspace/playwright-report/
 .vscode/
 .DS_Store
 Thumbs.db
+tempdir*/
