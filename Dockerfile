@@ -2,7 +2,7 @@ FROM node:22-alpine AS app-build
 WORKDIR /app
 COPY workspace/package*.json ./workspace/
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-RUN cd workspace && npm install
+RUN cd workspace && npm install --include=dev --include=optional
 COPY workspace ./workspace
 RUN cd workspace && npm run build
 
