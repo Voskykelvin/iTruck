@@ -43,6 +43,7 @@ export default function ShipperPage({ notify, user }) {
   const activeCount = shipments.filter((item) => !['delivered', 'cancelled'].includes(item.rawStatus)).length;
   const inTransitCount = shipments.filter((item) => item.rawStatus === 'in_transit').length;
   const openRequests = shipments.filter((item) => ['pending', 'bidding'].includes(item.rawStatus));
+  const cancellableStatuses = new Set(['pending', 'bidding', 'confirmed']);
 
   function shipmentWithBooking(preferred) {
     return preferred?.bookingId ? preferred : shipments.find((item) => item.bookingId) || null;
@@ -358,7 +359,7 @@ export default function ShipperPage({ notify, user }) {
                       >
                         Open
                       </button>
-                      {!['delivered', 'cancelled'].includes(item.rawStatus) && item.bookingId ? (
+                      {cancellableStatuses.has(item.rawStatus) && item.bookingId ? (
                         <button
                           className="ghost"
                           type="button"

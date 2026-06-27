@@ -4,6 +4,7 @@ const User = require('../models/User');
 const {
   bookingQueryForUser,
   bookingVisibleTo,
+  canCancelBooking,
   canCaptureDeliveryProof,
   canManageBookingStatus
 } = require('../services/bookingAccess');
@@ -70,6 +71,19 @@ test('drivers can see and operate only their assigned booking', () => {
   expect(canManageBookingStatus(driver, other)).toBe(false);
   expect(bookingQueryForUser(driver)).toEqual({ driver: 'driver-1' });
   expect(bookingRoomQuery(driver, 'booking-1')).toEqual({ _id: 'booking-1', driver: 'driver-1' });
+});
+
+test('clients can cancel only their own cancellable bookings', () => {
+  const client = { _id: 'client-1', role: 'client' };
+  const owner = { _id: 'owner-1', role: 'owner' };
+  const ownConfirmed = { client: 'client-1', owner: 'owner-1', status: 'confirmed' };
+  const ownInTransit = { client: 'client-1', owner: 'owner-1', status: 'in_transit' };
+  const otherConfirmed = { client: 'client-2', owner: 'owner-1', status: 'confirmed' };
+
+  expect(canCancelBooking(client, ownConfirmed)).toBe(true);
+  expect(canCancelBooking(client, ownInTransit)).toBe(false);
+  expect(canCancelBooking(client, otherConfirmed)).toBe(false);
+  expect(canCancelBooking(owner, ownConfirmed)).toBe(true);
 });
 
 test('cookie authentication takes bearer precedence and enforces CSRF on mutations', () => {
