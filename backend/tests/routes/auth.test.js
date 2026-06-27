@@ -1,10 +1,10 @@
 const request = require('supertest');
 const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
 const { app } = require('../../app');
 const User = require('../../models/User');
 const RefreshToken = require('../../models/RefreshToken');
 const { userFactory, registrationPayload, loginPayload } = require('../factories');
+const { clearTestDb, connectTestDb, disconnectTestDb } = require('../testDb');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
@@ -13,24 +13,11 @@ const PRIMARY_DEVICE = '00000000-0000-4000-8000-000000000000';
 const SECONDARY_DEVICE = '11111111-1111-4000-8000-000000000000';
 const TERTIARY_DEVICE = '22222222-2222-4000-8000-000000000000';
 
-let mongoServer;
+beforeAll(() => connectTestDb('routes_auth'));
 
-beforeAll(async () => {
-  mongoServer = await MongoMemoryServer.create();
-  const uri = mongoServer.getUri();
-  if (mongoose.connection.readyState !== 0) await mongoose.disconnect();
-  await mongoose.connect(uri);
-});
+afterAll(disconnectTestDb);
 
-afterAll(async () => {
-  await mongoose.disconnect();
-  await mongoServer.stop();
-});
-
-beforeEach(async () => {
-  const collections = mongoose.connection.collections;
-  for (const key in collections) await collections[key].deleteMany({});
-});
+beforeEach(clearTestDb);
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
