@@ -20,6 +20,14 @@ function canManageBookingStatus(user, booking) {
   return user.role === 'owner' && sameId(booking.owner, user._id);
 }
 
+function canCancelBooking(user, booking) {
+  if (!user || !booking) return false;
+  if (!['pending', 'bidding', 'confirmed'].includes(booking.status)) return false;
+  if (user.role === 'admin') return true;
+  if (user.role === 'client') return sameId(booking.client, user._id);
+  return user.role === 'owner' && sameId(booking.owner, user._id);
+}
+
 function canCaptureDeliveryProof(user, booking) {
   if (!user || !booking) return false;
   if (user.role === 'admin') return true;
@@ -42,6 +50,7 @@ function bookingQueryForUser(user, options = {}) {
 module.exports = {
   bookingQueryForUser,
   bookingVisibleTo,
+  canCancelBooking,
   canCaptureDeliveryProof,
   canManageBookingStatus,
   sameId

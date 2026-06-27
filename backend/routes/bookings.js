@@ -37,7 +37,12 @@ const {
 } = require('../validators/bookings');
 const { normalizeBookingDocumentType } = require('../utils/documentTypes');
 const maps = require('../services/maps');
-const { bookingQueryForUser, bookingVisibleTo, canManageBookingStatus } = require('../services/bookingAccess');
+const {
+  bookingQueryForUser,
+  bookingVisibleTo,
+  canCancelBooking,
+  canManageBookingStatus
+} = require('../services/bookingAccess');
 const { recordAudit } = require('../services/audit');
 
 const router = express.Router();
@@ -354,6 +359,11 @@ function ratingTargetFor(user, booking, requestedTarget) {
   if (user.role === 'client' && String(booking.client?._id || booking.client) === String(user._id)) return 'owner';
   if (user.role === 'owner' && String(booking.owner?._id || booking.owner) === String(user._id)) return 'client';
   return null;
+}
+
+function canApplyStatusUpdate(user, booking, nextStatus) {
+  if (nextStatus === 'cancelled') return canCancelBooking(user, booking);
+  return canManageBookingStatus(user, booking);
 }
 
 router.get('/', listBookingsSchema, validate, async (req, res, next) => {
@@ -847,7 +857,9 @@ router.patch(
       if (!mongoReady()) {
         const booking = memoryBookings.find((item) => item._id === req.params.id);
         if (!booking) return res.status(404).json({ message: 'Booking not found' });
-        if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+        if (!canApplyStatusUpdate(req.user, booking, req.body.status)) {
+          return res.status(403).json({ message: 'Forbidden' });
+        }
         if (req.body.status === 'delivered' && req.user.role !== 'admin') {
           return res.status(403).json({ message: 'The shipper or an administrator must confirm final delivery' });
         }
@@ -872,7 +884,9 @@ router.patch(
 
       const booking = await Booking.findById(req.params.id);
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
-      if (!canManageBookingStatus(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+      if (!canApplyStatusUpdate(req.user, booking, req.body.status)) {
+        return res.status(403).json({ message: 'Forbidden' });
+      }
       if (req.body.status === 'delivered' && req.user.role !== 'admin') {
         return res.status(403).json({ message: 'The shipper or an administrator must confirm final delivery' });
       }

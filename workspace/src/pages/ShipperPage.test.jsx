@@ -77,7 +77,7 @@ describe('ShipperPage Interaction & Verification Tests', () => {
               bookingId: 'ITK-1002',
               route: 'Mombasa to Dar es Salaam',
               cargo: 'Machine parts',
-              status: 'In transit',
+              status: 'Confirmed',
               progress: 40
             }
           ]
@@ -105,6 +105,30 @@ describe('ShipperPage Interaction & Verification Tests', () => {
     await waitFor(() => {
       expect(mockNotify).toHaveBeenCalledWith('Shipment ITK-1002 cancelled');
     });
+  });
+
+  test('does not show cancel action for in-transit bookings', async () => {
+    server.use(
+      http.get('*/api/bookings', () => {
+        return HttpResponse.json({
+          bookings: [
+            {
+              id: 'ITK-1002',
+              bookingId: 'ITK-1002',
+              route: 'Mombasa to Dar es Salaam',
+              cargo: 'Machine parts',
+              status: 'In transit',
+              progress: 40
+            }
+          ]
+        });
+      })
+    );
+
+    render(<ShipperPage notify={mockNotify} user={clientUser} />);
+    await screen.findByText('Shipment Command');
+
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
   });
 
   test('opens bid review panel and awards carrier bid', async () => {
