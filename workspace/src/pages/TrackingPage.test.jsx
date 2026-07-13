@@ -1,8 +1,9 @@
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import TrackingPage from './TrackingPage.jsx';
 import { server } from '../test/mocks/server.js';
 import { http, HttpResponse } from 'msw';
+import { renderWithQuery as render } from '../test/renderWithQuery.jsx';
 
 const mockNotify = vi.fn();
 
@@ -143,6 +144,71 @@ describe('TrackingPage Interaction & Verification Tests', () => {
     await waitFor(() => {
       expect(mockNotify).toHaveBeenCalledWith('Delivery confirmed');
     });
+    expect((await screen.findAllByText('Delivered')).length).toBeGreaterThan(0);
+  });
+
+  test('reports tracking index failures and retries the live shipment list', async () => {
+    let available = false;
+    server.use(
+      http.get('*/api/bookings', () =>
+        available
+          ? HttpResponse.json({
+              bookings: [
+                {
+                  id: 'ITK-RETRY',
+                  bookingId: 'ITK-RETRY',
+                  route: 'Kampala to Kigali',
+                  cargo: 'Cold chain cargo',
+                  status: 'In transit'
+                }
+              ]
+            })
+          : HttpResponse.json({ message: 'Tracking service unavailable' }, { status: 503 })
+      )
+    );
+
+    render(<TrackingPage notify={mockNotify} user={clientUser} />);
+    expect(await screen.findByText('Live tracking unavailable')).toBeInTheDocument();
+
+    available = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Cold chain cargo')).toBeInTheDocument();
+  });
+
+  test('applies realtime status events to the shared shipment cache', async () => {
+    server.use(
+      http.get('*/api/bookings', () =>
+        HttpResponse.json({
+          bookings: [
+            {
+              id: 'ITK-LIVE',
+              bookingId: 'ITK-LIVE',
+              route: 'Nairobi to Nakuru',
+              cargo: 'Fresh produce',
+              status: 'In transit'
+            }
+          ]
+        })
+      )
+    );
+
+    render(<TrackingPage notify={mockNotify} user={clientUser} />);
+    await screen.findByText('Fresh produce');
+    await waitFor(() => expect(globalThis.__itruckSocketHandlers['status-update']).toBeTypeOf('function'));
+
+    act(() => {
+      globalThis.__itruckSocketHandlers['status-update']({
+        booking: {
+          id: 'ITK-LIVE',
+          bookingId: 'ITK-LIVE',
+          route: 'Nairobi to Nakuru',
+          cargo: 'Fresh produce',
+          status: 'Delivered'
+        }
+      });
+    });
+
+    expect((await screen.findAllByText('Delivered')).length).toBeGreaterThan(0);
   });
 
   test('Support Cases: reports new issue, comments on and reopens resolution', async () => {
@@ -243,6 +309,41 @@ describe('TrackingPage Interaction & Verification Tests', () => {
     });
   });
 
+  test('Support Cases: keeps a failed report unsent instead of creating a local success', async () => {
+    server.use(
+      http.get('*/api/bookings', () =>
+        HttpResponse.json({
+          bookings: [
+            {
+              id: 'ITK-FAILED-CASE',
+              bookingId: 'ITK-FAILED-CASE',
+              route: 'Nairobi to Eldoret',
+              status: 'In transit'
+            }
+          ]
+        })
+      ),
+      http.get('*/api/workflow/messages', () => HttpResponse.json({ items: [] })),
+      http.get('*/api/cases', () => HttpResponse.json({ cases: [] })),
+      http.post('*/api/cases', () => HttpResponse.json({ message: 'Support service unavailable' }, { status: 503 }))
+    );
+
+    render(<TrackingPage notify={mockNotify} user={clientUser} />);
+    await screen.findByText('Support');
+    fireEvent.click(screen.getByRole('button', { name: 'Report Issue' }));
+    fireEvent.change(await screen.findByLabelText('Description'), {
+      target: { value: 'Cargo seal is broken' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Report' }));
+
+    await waitFor(() => {
+      expect(mockNotify).toHaveBeenCalledWith('Support service unavailable');
+    });
+    expect(screen.getByRole('heading', { name: 'Report Issue' })).toBeInTheDocument();
+    expect(localStorage.getItem('itruck_issue_reports')).toBeNull();
+    expect(screen.queryByText('Support case sent to operations')).not.toBeInTheDocument();
+  });
+
   test('Ratings: submits rating star scores once delivered', async () => {
     server.use(
       http.get('*/api/bookings', () => {
@@ -326,6 +427,6 @@ describe('TrackingPage Interaction & Verification Tests', () => {
     const sendBtn = screen.getByLabelText('Send message');
     fireEvent.click(sendBtn);
 
-    expect(chatInput.value).toBe(''); // chatInput cleared
+    await waitFor(() => expect(chatInput).toHaveValue('')); // clears only after backend confirmation
   });
 });

@@ -1,8 +1,11 @@
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import OnboardingPage from './OnboardingPage.jsx';
 import { server } from '../test/mocks/server.js';
 import { http, HttpResponse } from 'msw';
+import { renderWithQuery } from '../test/renderWithQuery.jsx';
+
+const render = renderWithQuery;
 
 const mockNotify = vi.fn();
 const mockSetUser = vi.fn();

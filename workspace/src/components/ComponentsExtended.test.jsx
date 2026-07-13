@@ -1,5 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { renderWithQuery } from '../test/renderWithQuery.jsx';
 
 import ShipmentTimeline from './ShipmentTimeline.jsx';
 import BidComparisonTable from './BidComparisonTable.jsx';
@@ -10,6 +11,8 @@ import DriverOperationsPanel from './DriverOperationsPanel.jsx';
 import LegalPage from './LegalPage.jsx';
 import OwnerBidReviewPanel from './OwnerBidReviewPanel.jsx';
 import ServiceWorkerUpdateToast from './ServiceWorkerUpdateToast.jsx';
+
+const render = renderWithQuery;
 
 describe('Extended Components', () => {
   beforeEach(() => {

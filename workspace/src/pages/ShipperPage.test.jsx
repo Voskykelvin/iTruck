@@ -1,8 +1,9 @@
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
+import { screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import ShipperPage from './ShipperPage.jsx';
 import { server } from '../test/mocks/server.js';
 import { http, HttpResponse } from 'msw';
+import { renderWithQuery as render } from '../test/renderWithQuery.jsx';
 
 const mockNotify = vi.fn();
 
@@ -61,9 +62,8 @@ describe('ShipperPage Interaction & Verification Tests', () => {
 
     render(<ShipperPage notify={mockNotify} user={clientUser} />);
 
-    await screen.findByText('Shipment Command');
-    expect(screen.getByText('Mombasa to Dar es Salaam')).toBeInTheDocument();
-    expect(screen.getByText('USD 3,400')).toBeInTheDocument(); // Wallet balance
+    await screen.findByText('Mombasa to Dar es Salaam');
+    expect(await screen.findByText('USD 3,400')).toBeInTheDocument(); // Wallet balance
     expect(screen.getByText('1 active')).toBeInTheDocument();
   });
 
@@ -95,16 +95,45 @@ describe('ShipperPage Interaction & Verification Tests', () => {
     );
 
     render(<ShipperPage notify={mockNotify} user={clientUser} />);
-    await screen.findByText('Shipment Command');
-
     // Click cancel button
-    const cancelBtn = screen.getByRole('button', { name: 'Cancel' });
+    const cancelBtn = await screen.findByRole('button', { name: 'Cancel' });
     fireEvent.click(cancelBtn);
 
-    expect(window.confirm).toHaveBeenCalledWith('Cancel shipment ITK-1002?');
+    expect(screen.getByRole('alertdialog', { name: 'Cancel shipment?' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel shipment' }));
     await waitFor(() => {
       expect(mockNotify).toHaveBeenCalledWith('Shipment ITK-1002 cancelled');
     });
+    expect(await screen.findByText('Cancelled')).toBeInTheDocument();
+  });
+
+  test('reports shipment read failures and retries the live booking list', async () => {
+    let available = false;
+    server.use(
+      http.get('*/api/bookings', () =>
+        available
+          ? HttpResponse.json({
+              bookings: [
+                {
+                  id: 'ITK-RETRY',
+                  bookingId: 'ITK-RETRY',
+                  route: 'Nairobi to Kigali',
+                  cargo: 'Medical supplies',
+                  status: 'Bidding'
+                }
+              ]
+            })
+          : HttpResponse.json({ message: 'Shipment service unavailable' }, { status: 503 })
+      )
+    );
+
+    render(<ShipperPage notify={mockNotify} user={clientUser} />);
+    expect(await screen.findByText('Live shipments unavailable')).toBeInTheDocument();
+    expect(screen.queryByText('Medical supplies')).not.toBeInTheDocument();
+
+    available = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText(/Medical supplies/)).toBeInTheDocument();
   });
 
   test('does not show cancel action for in-transit bookings', async () => {
@@ -189,10 +218,8 @@ describe('ShipperPage Interaction & Verification Tests', () => {
     );
 
     render(<ShipperPage notify={mockNotify} user={clientUser} />);
-    await screen.findByText('Shipment Command');
-
     // Open bid review panel
-    const reviewBidsBtn = screen.getByRole('button', { name: 'Review Bids' });
+    const reviewBidsBtn = await screen.findByRole('button', { name: 'Review Bids' });
     fireEvent.click(reviewBidsBtn);
 
     await screen.findByText('Bid Review');
@@ -248,7 +275,7 @@ describe('ShipperPage Interaction & Verification Tests', () => {
     );
 
     render(<ShipperPage notify={mockNotify} user={clientUser} />);
-    await screen.findByText('Shipment Command');
+    await screen.findAllByText('ITK-1002');
 
     // 1. Click Waybill / Cargo photos download helper in action list
     const waybillBtn = screen.getByRole('button', { name: 'Confirm waybill and cargo photos' });
@@ -296,7 +323,7 @@ describe('ShipperPage Interaction & Verification Tests', () => {
 
     // 1. Client role: release button redirects with error
     render(<ShipperPage notify={mockNotify} user={clientUser} />);
-    await screen.findByText('Shipment Command');
+    await screen.findAllByText('ITK-1002');
 
     const releaseBtn = screen.getByRole('button', { name: 'Release payment after POD' });
     fireEvent.click(releaseBtn);
@@ -305,7 +332,7 @@ describe('ShipperPage Interaction & Verification Tests', () => {
     // 2. Admin role: releases payment successfully
     cleanup();
     render(<ShipperPage notify={mockNotify} user={adminUser} />);
-    await screen.findByText('Shipment Command');
+    await screen.findAllByText('ITK-1002');
 
     const releaseBtnAdmin = screen.getByRole('button', { name: 'Release payment after POD' });
     fireEvent.click(releaseBtnAdmin);

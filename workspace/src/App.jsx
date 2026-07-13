@@ -1,8 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Navigation, BarChart3, Plus, Menu } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Search,
+  Navigation,
+  BarChart3,
+  Plus,
+  Menu,
+  LayoutDashboard,
+  Map,
+  FileText,
+  Wallet,
+  MessageSquare,
+  UserRound,
+  ShieldCheck,
+  Truck
+} from 'lucide-react';
 import io from 'socket.io-client';
+import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
+import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 
-import { api, clearSession, currentUser } from './api.js';
+import { api, clearSession, setSession } from './api.js';
 import { demoFleet, demoShipments } from './data.js';
 
 // Components
@@ -12,31 +28,31 @@ import NotificationBell from './components/NotificationBell.jsx';
 import OnboardingBanner from './components/OnboardingBanner.jsx';
 import DocumentExpiryBanner from './components/DocumentExpiryBanner.jsx';
 import ProfileCompletenessScore from './components/ProfileCompletenessScore.jsx';
+import AppErrorBoundary from './components/AppErrorBoundary.jsx';
+import AsyncState from './components/AsyncState.jsx';
 
 // Modals
 import GlobalSearch from './components/modals/GlobalSearch.jsx';
 
 // Pages
-import LegalPage from './components/LegalPage.jsx';
-import ShipperPage from './pages/ShipperPage.jsx';
-import BookingPage from './pages/BookingPage.jsx';
-import MarketplacePage from './pages/MarketplacePage.jsx';
-import TrackingPage from './pages/TrackingPage.jsx';
-import OwnerPage from './pages/OwnerPage.jsx';
-import OnboardingPage from './pages/OnboardingPage.jsx';
-import BidsPage from './pages/BidsPage.jsx';
-import DocumentsPage from './pages/DocumentsPage.jsx';
-import PaymentsPage from './pages/PaymentsPage.jsx';
-import MessagesPage from './pages/MessagesPage.jsx';
-import AdminPage from './pages/AdminPage.jsx';
-import ProfilePage from './pages/ProfilePage.jsx';
+const LegalPage = lazy(() => import('./components/LegalPage.jsx'));
+const ShipperPage = lazy(() => import('./pages/ShipperPage.jsx'));
+const BookingPage = lazy(() => import('./pages/BookingPage.jsx'));
+const MarketplacePage = lazy(() => import('./pages/MarketplacePage.jsx'));
+const TrackingPage = lazy(() => import('./pages/TrackingPage.jsx'));
+const OwnerPage = lazy(() => import('./pages/OwnerPage.jsx'));
+const OnboardingPage = lazy(() => import('./pages/OnboardingPage.jsx'));
+const BidsPage = lazy(() => import('./pages/BidsPage.jsx'));
+const DocumentsPage = lazy(() => import('./pages/DocumentsPage.jsx'));
+const PaymentsPage = lazy(() => import('./pages/PaymentsPage.jsx'));
+const MessagesPage = lazy(() => import('./pages/MessagesPage.jsx'));
+const AdminPage = lazy(() => import('./pages/AdminPage.jsx'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage.jsx'));
 
 // Helpers
 import {
-  routeFromLocation,
   roleForUser,
   navForUser,
-  normalizeNotificationRecord,
   normalizeBookingShipment,
   normalizeTruck,
   notificationId,
@@ -45,25 +61,61 @@ import {
   bookingRef,
   bookingRoute,
   navigate,
+  registerNavigator,
   pageTitle
 } from './utils/helpers.js';
 
 import { dashboardPathForRole, roleName, routeAllowedForUser } from './utils/roles.js';
+import { createAppQueryClient } from './queryClient.js';
+import { useMarkAllNotificationsRead, useNotificationCache, useNotifications } from './queries/notifications.js';
+import { sessionQueryKeys, useSessionBootstrap } from './queries/session.js';
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
 const workspaceFleet = DEMO_MODE ? demoFleet : [];
 const workspaceShipments = DEMO_MODE ? demoShipments : [];
+const navigationIcons = {
+  BarChart3,
+  FileText,
+  LayoutDashboard,
+  Map,
+  MessageSquare,
+  Plus,
+  Search,
+  ShieldCheck,
+  Truck,
+  UserRound,
+  Wallet
+};
 
-function AppShell() {
-  const [route, setRoute] = useState(routeFromLocation());
+export function AppShell() {
+  const location = useLocation();
+  const routerNavigate = useNavigate();
+  const queryClient = useQueryClient();
+  const route = `${location.pathname}${location.search}`;
   const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState('');
-  const [user, setUser] = useState(currentUser());
+  const [user, setUser] = useState({});
+  const sessionQuery = useSessionBootstrap();
   const activeRole = roleForUser(user);
   const signedIn = Boolean(user?.email);
   const visibleNavItems = useMemo(() => (signedIn ? navForUser(user) : []), [signedIn, user]);
   const toastTimeoutRef = useRef(null);
   const socketRef = useRef(null);
+  const publicRoute = route.startsWith('/app/privacy') || route.startsWith('/app/terms');
+  const sessionIsGuest = sessionQuery.isError && sessionQuery.error?.status === 401;
+  const sessionReady = signedIn || sessionIsGuest || (sessionQuery.isSuccess && !sessionQuery.data);
+
+  useEffect(() => {
+    if (sessionQuery.data) {
+      setSession({ user: sessionQuery.data });
+      setUser(sessionQuery.data);
+      return;
+    }
+    if (sessionIsGuest) {
+      clearSession();
+      setUser({});
+    }
+  }, [sessionIsGuest, sessionQuery.data]);
 
   // Dark mode
   const [dark, setDark] = useState(() => {
@@ -78,67 +130,10 @@ function AppShell() {
   }, [dark]);
 
   // Notifications
-  const [notifications, setNotifications] = useState(() => {
-    const seed = [
-      {
-        id: 'n1',
-        title: 'New carrier bid on ITK-001',
-        read: false,
-        createdAt: new Date(Date.now() - 5 * 60000).toISOString(),
-        link: '/app/bids'
-      },
-      {
-        id: 'n2',
-        title: 'Document "Insurance" approved',
-        read: false,
-        createdAt: new Date(Date.now() - 30 * 60000).toISOString(),
-        link: '/app/documents'
-      },
-      {
-        id: 'n3',
-        title: 'Shipment ITK-002 picked up',
-        read: true,
-        createdAt: new Date(Date.now() - 2 * 3600000).toISOString(),
-        link: '/app/tracking'
-      }
-    ];
-    return DEMO_MODE ? seed : [];
-  });
-
-  const addNotification = useCallback((record) => {
-    const note = normalizeNotificationRecord({ ...record, read: record?.read ?? false });
-    setNotifications((current) => {
-      if (current.some((item) => item.id === note.id)) {
-        return current.map((item) => (item.id === note.id ? { ...item, ...note } : item));
-      }
-      return [note, ...current].slice(0, 30);
-    });
-  }, []);
-
-  const loadNotifications = useCallback(async () => {
-    if (!signedIn) {
-      setNotifications([]);
-      return;
-    }
-
-    try {
-      const data = await api.listNotifications({ limit: 30 });
-      if (Array.isArray(data.notifications)) {
-        setNotifications(data.notifications.map(normalizeNotificationRecord));
-      }
-    } catch (_err) {
-      // Socket events and visible toasts still cover live updates if the index is unavailable.
-    }
-  }, [signedIn]);
-
-  useEffect(() => {
-    loadNotifications();
-  }, [loadNotifications]);
-
-  function markAllRead() {
-    setNotifications((ns) => ns.map((n) => ({ ...n, read: true })));
-    api.markAllNotificationsRead().catch(() => {});
-  }
+  const notificationsQuery = useNotifications(user, { enabled: signedIn });
+  const notifications = notificationsQuery.data || [];
+  const addNotification = useNotificationCache(user);
+  const markAllNotificationsRead = useMarkAllNotificationsRead(user);
 
   // Global search
   const [searchOpen, setSearchOpen] = useState(false);
@@ -146,6 +141,11 @@ function AppShell() {
   const [searchTrucks, setSearchTrucks] = useState(workspaceFleet);
 
   useEffect(() => {
+    if (!signedIn) {
+      setSearchShipments(workspaceShipments);
+      setSearchTrucks(workspaceFleet);
+      return;
+    }
     api
       .listBookings()
       .then((d) => Array.isArray(d.bookings) && setSearchShipments(d.bookings.map(normalizeBookingShipment)))
@@ -154,7 +154,7 @@ function AppShell() {
       .listTrucks()
       .then((d) => Array.isArray(d.trucks) && setSearchTrucks(d.trucks.map(normalizeTruck)))
       .catch(() => {});
-  }, []);
+  }, [signedIn]);
 
   useEffect(() => {
     if (!signedIn) return undefined;
@@ -279,11 +279,7 @@ function AppShell() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  useEffect(() => {
-    const syncRoute = () => setRoute(routeFromLocation());
-    window.addEventListener('popstate', syncRoute);
-    return () => window.removeEventListener('popstate', syncRoute);
-  }, []);
+  useEffect(() => registerNavigator(routerNavigate), [routerNavigate]);
 
   const notify = useCallback((message) => {
     setToast(message);
@@ -291,19 +287,30 @@ function AppShell() {
     toastTimeoutRef.current = window.setTimeout(() => setToast(''), 2800);
   }, []);
 
+  const markAllRead = useCallback(async () => {
+    try {
+      await markAllNotificationsRead.mutateAsync();
+      return true;
+    } catch (err) {
+      notify(err.message || 'Notifications could not be marked as read');
+      return false;
+    }
+  }, [markAllNotificationsRead, notify]);
+
   const signOut = useCallback(async () => {
     try {
       await api.logout();
     } catch (_) {
       clearSession();
     }
+    queryClient.setQueryData(sessionQueryKeys.current(), null);
     setUser({});
     navigate('/app/profile');
     notify('Signed out');
-  }, [notify]);
+  }, [notify, queryClient]);
 
   useEffect(() => {
-    const publicRoute = route.startsWith('/app/privacy') || route.startsWith('/app/terms');
+    if (!sessionReady) return;
     if (!signedIn && !route.startsWith('/app/profile') && !publicRoute) {
       navigate('/app/profile');
       return;
@@ -314,7 +321,7 @@ function AppShell() {
       notify(`${pageTitle(route)} is not part of ${roleName(activeRole)} mode`);
       navigate(destination);
     }
-  }, [activeRole, notify, route, signedIn, user]);
+  }, [activeRole, notify, publicRoute, route, sessionReady, signedIn, user]);
 
   useEffect(
     () => () => {
@@ -357,6 +364,18 @@ function AppShell() {
           ? { label: 'Admin Queue', path: '/app/admin', icon: BarChart3 }
           : { label: 'New Load', path: '/app/book', icon: Plus };
   const PrimaryActionIcon = primaryAction.icon;
+  const sessionContent =
+    !publicRoute && !signedIn && sessionQuery.isPending ? (
+      <AsyncState title="Restoring your secure session..." detail="Confirming your account with iTruck." />
+    ) : !publicRoute && !signedIn && sessionQuery.isError && !sessionIsGuest ? (
+      <AsyncState
+        title="Your session could not be verified"
+        detail={sessionQuery.error?.message}
+        onRetry={() => sessionQuery.refetch()}
+      />
+    ) : (
+      page
+    );
 
   return (
     <div className={`app-shell ${signedIn ? '' : 'signed-out'}`}>
@@ -370,7 +389,7 @@ function AppShell() {
           </a>
           <nav>
             {visibleNavItems.map((item) => {
-              const Icon = item.icon;
+              const Icon = navigationIcons[item.icon] || Navigation;
               const active = route.startsWith(item.path);
               return (
                 <button
@@ -412,11 +431,23 @@ function AppShell() {
               <span>Search</span>
             </button>
             <DarkModeToggle dark={dark} onToggle={() => setDark((d) => !d)} />
-            <NotificationBell notifications={notifications} onMarkAllRead={markAllRead} onNavigate={navigate} />
-            <button className="primary icon-label" type="button" onClick={() => navigate(primaryAction.path)}>
-              <PrimaryActionIcon size={18} />
-              <span>{primaryAction.label}</span>
-            </button>
+            {signedIn ? (
+              <>
+                <NotificationBell
+                  notifications={notifications}
+                  loading={notificationsQuery.isPending}
+                  error={notificationsQuery.error}
+                  markingRead={markAllNotificationsRead.isPending}
+                  onRetry={() => notificationsQuery.refetch()}
+                  onMarkAllRead={markAllRead}
+                  onNavigate={navigate}
+                />
+                <button className="primary icon-label" type="button" onClick={() => navigate(primaryAction.path)}>
+                  <PrimaryActionIcon size={18} />
+                  <span>{primaryAction.label}</span>
+                </button>
+              </>
+            ) : null}
           </div>
         </header>
 
@@ -436,7 +467,17 @@ function AppShell() {
         {/* Profile completeness score on profile page */}
         {route.startsWith('/app/profile') && user?.email && <ProfileCompletenessScore user={user} role={activeRole} />}
 
-        {page}
+        <AppErrorBoundary resetKey={route}>
+          <Suspense
+            fallback={
+              <section className="page-loading" role="status" aria-live="polite">
+                Loading workspace…
+              </section>
+            }
+          >
+            {sessionContent}
+          </Suspense>
+        </AppErrorBoundary>
         <footer className="app-legal-footer">
           <button type="button" onClick={() => navigate('/app/privacy')}>
             Privacy
@@ -450,7 +491,7 @@ function AppShell() {
 
       <nav className="mobile-bottom-nav" aria-label="Primary mobile navigation">
         {visibleNavItems.map((item) => {
-          const Icon = item.icon;
+          const Icon = navigationIcons[item.icon] || Navigation;
           const active = route.startsWith(item.path);
           return (
             <button
@@ -495,4 +536,13 @@ function AppShell() {
   );
 }
 
-export default AppShell;
+export default function App() {
+  const [queryClient] = useState(createAppQueryClient);
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AppShell />
+      </BrowserRouter>
+    </QueryClientProvider>
+  );
+}

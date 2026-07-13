@@ -1,7 +1,9 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { server } from '../test/mocks/server.js';
 import { http, HttpResponse } from 'msw';
+import { renderWithQuery } from '../test/renderWithQuery.jsx';
+import { demoFleet } from '../data.js';
 
 import MessagesPage from './MessagesPage.jsx';
 import MarketplacePage from './MarketplacePage.jsx';
@@ -19,6 +21,7 @@ import BidsPage from './BidsPage.jsx';
 const mockNotify = vi.fn();
 const mockSetUser = vi.fn();
 const mockSignOut = vi.fn();
+const render = renderWithQuery;
 
 const defaultUser = {
   id: 'usr-1',
@@ -92,7 +95,7 @@ describe('Page Components Unit & Interaction Tests', () => {
 
   // 2. MARKETPLACE PAGE
   test('MarketplacePage searches, filters, and displays profiles', async () => {
-    const { rerender } = render(<MarketplacePage route="/app/marketplace" />);
+    const { rerender } = renderWithQuery(<MarketplacePage route="/app/marketplace" />);
 
     // Check filter sidebar elements
     expect(screen.getByText('Refine fleet')).toBeInTheDocument();
@@ -122,9 +125,29 @@ describe('Page Components Unit & Interaction Tests', () => {
     await screen.findByText('Back to Shipments');
   });
 
+  test('MarketplacePage reports live fleet failures and retries without demo results', async () => {
+    let available = false;
+    server.use(
+      http.get('*/api/trucks', () =>
+        available
+          ? HttpResponse.json({ trucks: demoFleet })
+          : HttpResponse.json({ message: 'Fleet service is temporarily unavailable' }, { status: 503 })
+      )
+    );
+
+    renderWithQuery(<MarketplacePage route="/app/marketplace" />);
+
+    expect(await screen.findByText('Live fleet unavailable')).toBeInTheDocument();
+    expect(screen.queryByText('Isuzu FVZ 34')).not.toBeInTheDocument();
+
+    available = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Isuzu FVZ 34')).toBeInTheDocument();
+  });
+
   // 3. BOOKING PAGE
   test('BookingPage form fills and validation', async () => {
-    render(<BookingPage notify={mockNotify} />);
+    renderWithQuery(<BookingPage notify={mockNotify} />);
 
     // Step 1: Route
     fireEvent.change(screen.getByLabelText('Pickup'), { target: { value: 'Nairobi' } });
@@ -171,6 +194,45 @@ describe('Page Components Unit & Interaction Tests', () => {
     await waitFor(() => {
       expect(mockNotify).toHaveBeenCalledWith(expect.stringContaining('Booking request created'));
     });
+  });
+
+  test('BookingPage carries a verified marketplace preference into booking submission', async () => {
+    let submitted;
+    server.use(
+      http.post('*/api/bookings', async ({ request }) => {
+        submitted = await request.json();
+        return HttpResponse.json({ booking: { id: 'ITK-PREF', ...submitted } }, { status: 201 });
+      })
+    );
+
+    renderWithQuery(<BookingPage notify={mockNotify} route="/app/book?truck=TRK-001" />);
+
+    await screen.findByRole('heading', { name: 'Isuzu FVZ 34' });
+    expect(screen.getByText(/final assignment still requires an eligible carrier award/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Pickup'), { target: { value: 'Nairobi' } });
+    fireEvent.change(screen.getByLabelText('Destination'), { target: { value: 'Kampala' } });
+    fireEvent.change(screen.getByLabelText('Cargo'), { target: { value: 'Retail stock' } });
+    fireEvent.click(screen.getByLabelText('I reviewed fees, optional services, and required documents.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Booking' }));
+
+    await waitFor(() => expect(submitted?.requestedTruck).toBe('TRK-001'));
+  });
+
+  test('BookingPage keeps a failed live submission visible and retryable', async () => {
+    server.use(
+      http.post('*/api/bookings', () =>
+        HttpResponse.json({ message: 'Booking service is temporarily unavailable' }, { status: 503 })
+      )
+    );
+
+    renderWithQuery(<BookingPage notify={mockNotify} />);
+    fireEvent.click(screen.getByLabelText('I reviewed fees, optional services, and required documents.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Booking' }));
+
+    expect(await screen.findByText('Booking request was not created')).toBeInTheDocument();
+    expect(screen.getByText('Booking service is temporarily unavailable')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Confirm Booking' })).toBeEnabled();
   });
 
   // 4. DOCUMENTS PAGE

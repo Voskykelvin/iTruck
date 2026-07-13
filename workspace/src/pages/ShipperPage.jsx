@@ -1,12 +1,17 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { Plus, Map, PackageCheck, Truck, AlertTriangle, Wallet, FileText } from 'lucide-react';
 import { api } from '../api.js';
-import { workspaceShipments } from '../data.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import MetricCard from '../components/MetricCard.jsx';
 import Panel from '../components/Panel.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import BidComparisonTable from '../components/BidComparisonTable.jsx';
+import AsyncState from '../components/AsyncState.jsx';
+import ConfirmDialog from '../components/ConfirmDialog.jsx';
+import { useBookingAction, useBookingCache, useBookings } from '../queries/commercial.js';
+import { useDocumentAction, useDownloadDocument } from '../queries/documents.js';
+import { useWallet } from '../queries/operations.js';
+import { usePaymentAction } from '../queries/payments.js';
 import {
   normalizeBookingShipment,
   money,
@@ -18,27 +23,26 @@ import {
 } from '../utils/helpers.js';
 
 export default function ShipperPage({ notify, user }) {
-  const [shipments, setShipments] = useState(workspaceShipments);
-  const [walletBalance, setWalletBalance] = useState(0);
   const [bidReview, setBidReview] = useState(null);
   const [documentReview, setDocumentReview] = useState(null);
   const [busyAction, setBusyAction] = useState('');
+  const [cancellationTarget, setCancellationTarget] = useState(null);
   const cargoInputRef = useRef(null);
   const cargoUploadRef = useRef(null);
-
-  useEffect(() => {
-    api
-      .listBookings()
-      .then((data) => {
-        if (Array.isArray(data.bookings)) setShipments(data.bookings.map(normalizeBookingShipment));
-      })
-      .catch(() => setShipments(workspaceShipments));
-
-    api
-      .wallet()
-      .then((data) => Number.isFinite(Number(data.balance)) && setWalletBalance(Number(data.balance)))
-      .catch(() => {});
-  }, []);
+  const bookingsQuery = useBookings();
+  const shipments = bookingsQuery.data || [];
+  const bookingCache = useBookingCache();
+  const awardBidMutation = useBookingAction(({ bookingId, bidId }) => api.acceptBookingBid(bookingId, bidId));
+  const cancelBookingMutation = useBookingAction(({ bookingId }) =>
+    api.updateBookingStatus(bookingId, { status: 'cancelled' })
+  );
+  const bookingDocumentUpload = useDocumentAction(({ bookingId, documentType, files }) =>
+    api.uploadBookingDocument(bookingId, documentType, files)
+  );
+  const documentDownload = useDownloadDocument();
+  const walletQuery = useWallet();
+  const releasePayment = usePaymentAction(({ bookingId }) => api.releasePayment(bookingId));
+  const walletBalance = walletQuery.data || 0;
 
   const activeCount = shipments.filter((item) => !['delivered', 'cancelled'].includes(item.rawStatus)).length;
   const inTransitCount = shipments.filter((item) => item.rawStatus === 'in_transit').length;
@@ -64,8 +68,7 @@ export default function ShipperPage({ notify, user }) {
 
     setBusyAction('bid-review');
     try {
-      const data = await api.getBooking(target.bookingId);
-      const review = normalizeBookingShipment(data.booking || target);
+      const review = await bookingCache.fetchBooking(target.bookingId);
       setBidReview(review);
       notify(`Loaded ${review.bids.length} carrier bid${review.bids.length === 1 ? '' : 's'}`);
     } catch (err) {
@@ -83,10 +86,9 @@ export default function ShipperPage({ notify, user }) {
 
     setBusyAction(`award-${bid.id}`);
     try {
-      const data = await api.acceptBookingBid(bidReview.bookingId, bid.id);
+      const data = await awardBidMutation.mutateAsync({ bookingId: bidReview.bookingId, bidId: bid.id });
       const updated = normalizeBookingShipment(data.booking || {});
       setBidReview(updated);
-      setShipments((current) => current.map((item) => (item.bookingId === updated.bookingId ? updated : item)));
       notify(`Awarded ${bid.ownerName}`);
     } catch (err) {
       if (import.meta.env.NODE_ENV === 'development') {
@@ -123,7 +125,7 @@ export default function ShipperPage({ notify, user }) {
 
     setBusyAction(`document-${definition.type}`);
     try {
-      await api.downloadDocument(definition.type, target.bookingId);
+      await documentDownload.mutateAsync({ type: definition.type, bookingId: target.bookingId });
       setDocumentReview({
         target,
         focusLabel: nextFocus,
@@ -193,11 +195,7 @@ export default function ShipperPage({ notify, user }) {
     const documentType = normalizeBookingDocumentType(definition.type);
     setBusyAction(`document-${documentType}`);
     try {
-      const data = await api.uploadBookingDocument(target.bookingId, documentType, files);
-      if (data.booking) {
-        const updated = normalizeBookingShipment(data.booking);
-        setShipments((current) => current.map((item) => (item.bookingId === updated.bookingId ? updated : item)));
-      }
+      await bookingDocumentUpload.mutateAsync({ bookingId: target.bookingId, documentType, files });
       setDocumentReview({
         target,
         focusLabel: definition.label,
@@ -218,14 +216,17 @@ export default function ShipperPage({ notify, user }) {
       notify('Cannot cancel: booking not synced');
       return;
     }
-    if (!window.confirm(`Cancel shipment ${item.id}?`)) return;
+    setCancellationTarget(item);
+  }
+
+  async function confirmBookingCancellation() {
+    const item = cancellationTarget;
+    if (!item?.bookingId) return;
     setBusyAction(`cancel-${item.bookingId}`);
     try {
-      await api.updateBookingStatus(item.bookingId, { status: 'cancelled' });
-      setShipments((current) =>
-        current.map((s) => (s.bookingId === item.bookingId ? { ...s, rawStatus: 'cancelled', status: 'Cancelled' } : s))
-      );
+      await cancelBookingMutation.mutateAsync({ bookingId: item.bookingId });
       notify(`Shipment ${item.id} cancelled`);
+      setCancellationTarget(null);
     } catch (err) {
       notify(err.message);
     } finally {
@@ -234,6 +235,24 @@ export default function ShipperPage({ notify, user }) {
   }
 
   const bidQueueTarget = openRequests[0] || shipments.find((shipment) => shipment.rawStatus === 'bidding');
+  async function releaseDeliveredPayment() {
+    const delivered = shipments.find((item) => item.rawStatus === 'delivered');
+    if (user?.role !== 'admin' || !delivered?.bookingId) {
+      navigate('/app/admin');
+      notify('Payment release requires admin approval');
+      return;
+    }
+    setBusyAction('release-payment');
+    try {
+      await releasePayment.mutateAsync({ bookingId: delivered.bookingId });
+      notify(`Payment released for ${delivered.id}`);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusyAction('');
+    }
+  }
+
   const actionQueue = [
     {
       label: bidQueueTarget ? `Compare bids - ${bidQueueTarget.route}` : 'Compare carrier bids',
@@ -245,18 +264,7 @@ export default function ShipperPage({ notify, user }) {
     },
     {
       label: 'Release payment after POD',
-      run: () => {
-        const delivered = shipments.find((item) => item.rawStatus === 'delivered');
-        if (user?.role === 'admin' && delivered?.bookingId) {
-          api
-            .releasePayment(delivered.bookingId)
-            .then(() => notify(`Payment released for ${delivered.id}`))
-            .catch((err) => notify(err.message));
-          return;
-        }
-        navigate('/app/admin');
-        notify('Payment release requires admin approval');
-      }
+      run: releaseDeliveredPayment
     }
   ];
   const readinessDocs = documentActions;
@@ -308,7 +316,12 @@ export default function ShipperPage({ notify, user }) {
           value={openRequests.length}
           detail="Bids, docs, payment"
         />
-        <MetricCard icon={Wallet} label="Wallet" value={money(walletBalance)} detail="Escrow and payment balance" />
+        <MetricCard
+          icon={Wallet}
+          label="Wallet"
+          value={walletQuery.isError ? 'Unavailable' : money(walletBalance)}
+          detail={walletQuery.isPending ? 'Loading payment balance' : 'Escrow and payment balance'}
+        />
       </section>
 
       <section className="workspace-layout">
@@ -319,8 +332,21 @@ export default function ShipperPage({ notify, user }) {
             action="View map"
             onAction={() => navigate('/app/tracking')}
           >
+            {bookingsQuery.isPending ? (
+              <p className="refresh-status" role="status">
+                Loading live shipments...
+              </p>
+            ) : null}
+            {bookingsQuery.isError ? (
+              <AsyncState
+                compact
+                title="Live shipments unavailable"
+                detail={bookingsQuery.error?.message || 'Shipment records could not be loaded.'}
+                onRetry={() => bookingsQuery.refetch()}
+              />
+            ) : null}
             <div className="shipment-stack">
-              {shipments.length ? (
+              {!bookingsQuery.isPending && shipments.length ? (
                 shipments.map((item) => (
                   <article
                     className="shipment-row"
@@ -375,9 +401,9 @@ export default function ShipperPage({ notify, user }) {
                     </div>
                   </article>
                 ))
-              ) : (
+              ) : !bookingsQuery.isPending && !bookingsQuery.isError ? (
                 <EmptyState title="No live shipments yet" detail="Create a booking to populate this dashboard." />
-              )}
+              ) : null}
             </div>
           </Panel>
 
@@ -493,6 +519,15 @@ export default function ShipperPage({ notify, user }) {
           ) : null}
         </aside>
       </section>
+      <ConfirmDialog
+        open={Boolean(cancellationTarget)}
+        title="Cancel shipment?"
+        description={`${cancellationTarget?.id || 'This shipment'} will be cancelled. Carrier offers and active dispatch work may be withdrawn.`}
+        confirmLabel="Cancel shipment"
+        busy={busyAction === `cancel-${cancellationTarget?.bookingId}`}
+        onCancel={() => setCancellationTarget(null)}
+        onConfirm={confirmBookingCancellation}
+      />
     </div>
   );
 }

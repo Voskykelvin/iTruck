@@ -212,6 +212,32 @@ describe('Bookings Integration Tests', () => {
       expect(res.body.booking.estimate).toBeDefined();
     });
 
+    test('client can save a verified available carrier preference', async () => {
+      const { token } = await createUser({ role: 'client' });
+      const { truck } = await createOwnerWithTruck();
+
+      const res = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${token}`)
+        .send(bookingPayload({ requestedTruck: truck._id }))
+        .expect(201);
+
+      expect(res.body.booking.requestedTruck).toBe(String(truck._id));
+    });
+
+    test('rejects an unavailable carrier preference', async () => {
+      const { token } = await createUser({ role: 'client' });
+      const { truck } = await createOwnerWithTruck({}, { isAvailable: false });
+
+      const res = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${token}`)
+        .send(bookingPayload({ requestedTruck: truck._id }))
+        .expect(409);
+
+      expect(res.body.message).toBe('Requested carrier is no longer available');
+    });
+
     test('returns 422 when required fields are missing', async () => {
       const { token } = await createUser({ role: 'client' });
 

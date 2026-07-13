@@ -1,8 +1,10 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { http, HttpResponse, delay } from 'msw';
 
 import AppShell from './App.jsx';
 import { navigate } from './utils/helpers.js';
+import { server } from './test/mocks/server.js';
 
 describe('App Integration & Page Routing', () => {
   beforeEach(() => {
@@ -15,22 +17,22 @@ describe('App Integration & Page Routing', () => {
     cleanup();
   });
 
-  test('Public legal routes render without login', () => {
+  test('Public legal routes render without login', async () => {
     navigate('/app/privacy');
     render(<AppShell />);
-    expect(screen.getByText('Privacy Notice')).toBeInTheDocument();
+    expect(await screen.findByText('Privacy Notice')).toBeInTheDocument();
 
     navigate('/app/terms');
     cleanup();
     render(<AppShell />);
-    expect(screen.getByText('Terms of Service')).toBeInTheDocument();
+    expect(await screen.findByText('Terms of Service')).toBeInTheDocument();
   });
 
   test('Guest is redirected to profile/signin and can log in as Shipper', async () => {
     render(<AppShell />);
 
     // Guest should be redirected to profile page and see signin form
-    expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
     expect(screen.getByText('Welcome back')).toBeInTheDocument();
 
     // Fill sign in form
@@ -52,7 +54,7 @@ describe('App Integration & Page Routing', () => {
     render(<AppShell />);
 
     // Click register
-    const createBtn = screen.getByRole('button', { name: 'Create account' });
+    const createBtn = await screen.findByRole('button', { name: 'Create account' });
     fireEvent.click(createBtn);
 
     // Fill register inputs
@@ -86,7 +88,7 @@ describe('App Integration & Page Routing', () => {
     render(<AppShell />);
 
     // Verify Shipper page loaded
-    expect(screen.getByText('Shipment Command')).toBeInTheDocument();
+    expect(await screen.findByText('Shipment Command')).toBeInTheDocument();
 
     // Navigate to Book page
     navigate('/app/book');
@@ -107,6 +109,7 @@ describe('App Integration & Page Routing', () => {
     // Submit shipment request
     const bookBtn = screen.getByRole('button', { name: 'Confirm Booking' });
     fireEvent.click(bookBtn);
+    await screen.findByText('Shipment Command');
 
     // Navigate to Bids page
     navigate('/app/bids');
@@ -133,6 +136,80 @@ describe('App Integration & Page Routing', () => {
     await screen.findByRole('heading', { name: 'Messages' });
   });
 
+  test('Direct booking links preserve marketplace carrier preference', async () => {
+    localStorage.setItem(
+      'itruck_user',
+      JSON.stringify({
+        id: 'usr-shipper',
+        email: 'shipper@example.com',
+        role: 'client',
+        isVerified: true
+      })
+    );
+    window.history.pushState({}, '', '/app/book?truck=TRK-001');
+
+    render(<AppShell />);
+
+    expect(await screen.findByRole('heading', { name: 'Isuzu FVZ 34' })).toBeInTheDocument();
+    expect(window.location.search).toBe('?truck=TRK-001');
+  });
+
+  test('restores a cookie-backed owner session on a protected direct link without local identity data', async () => {
+    server.use(
+      http.get('*/api/users/profile', async () => {
+        await delay(80);
+        return HttpResponse.json({
+          user: { id: 'usr-cookie-owner', email: 'owner@example.com', role: 'owner', isVerified: true }
+        });
+      })
+    );
+    window.history.pushState({}, '', '/app/owner');
+
+    render(<AppShell />);
+
+    expect(screen.getByText('Restoring your secure session...')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/app/owner');
+    expect(await screen.findByText('Job Board')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/app/owner');
+  });
+
+  test('uses the server role instead of a stale local role during refresh authorization', async () => {
+    localStorage.setItem(
+      'itruck_user',
+      JSON.stringify({ id: 'stale-admin', email: 'stale@example.com', role: 'admin', isVerified: true })
+    );
+    server.use(
+      http.get('*/api/users/profile', () =>
+        HttpResponse.json({
+          user: { id: 'usr-owner', email: 'owner@example.com', role: 'owner', isVerified: true }
+        })
+      )
+    );
+    window.history.pushState({}, '', '/app/admin');
+
+    render(<AppShell />);
+
+    expect(await screen.findByText('Job Board')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/app/owner');
+    expect(screen.queryByText('Approvals Console')).not.toBeInTheDocument();
+  });
+
+  test('keeps a protected direct link in place when session verification is temporarily unavailable', async () => {
+    server.use(
+      http.get('*/api/users/profile', () =>
+        HttpResponse.json({ message: 'Session service unavailable' }, { status: 503 })
+      )
+    );
+    window.history.pushState({}, '', '/app/tracking?shipment=ITK-1002');
+
+    render(<AppShell />);
+
+    expect(await screen.findByText('Your session could not be verified')).toBeInTheDocument();
+    expect(screen.getByText('Session service unavailable')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/app/tracking');
+    expect(window.location.search).toBe('?shipment=ITK-1002');
+  });
+
   test('Owner dashboard routes and interactive operations work', async () => {
     // Seed logged-in Owner user
     localStorage.setItem(
@@ -152,7 +229,7 @@ describe('App Integration & Page Routing', () => {
     render(<AppShell />);
 
     // Verify Owner Page loaded
-    expect(screen.getByText('Job Board')).toBeInTheDocument();
+    expect(await screen.findByText('Job Board')).toBeInTheDocument();
 
     // Verify Onboarding Verification page
     navigate('/app/onboarding');
@@ -185,6 +262,6 @@ describe('App Integration & Page Routing', () => {
     render(<AppShell />);
 
     // Verify Admin Console loaded
-    expect(screen.getByText('Approvals Console')).toBeInTheDocument();
+    expect(await screen.findByText('Approvals Console')).toBeInTheDocument();
   });
 });

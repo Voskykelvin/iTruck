@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bell } from 'lucide-react';
 
-export default function NotificationBell({ notifications, onMarkAllRead, onNavigate }) {
+export default function NotificationBell({
+  notifications,
+  loading = false,
+  error,
+  markingRead = false,
+  onRetry,
+  onMarkAllRead,
+  onNavigate
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -37,17 +45,34 @@ export default function NotificationBell({ notifications, onMarkAllRead, onNavig
             {unreadCount > 0 && (
               <button
                 type="button"
-                onClick={() => {
-                  onMarkAllRead();
-                  setOpen(false);
+                disabled={markingRead}
+                onClick={async () => {
+                  const result = onMarkAllRead();
+                  if (!result?.then) {
+                    if (result !== false) setOpen(false);
+                    return;
+                  }
+                  const succeeded = await result;
+                  if (succeeded !== false) setOpen(false);
                 }}
               >
-                Mark all read
+                {markingRead ? 'Marking...' : 'Mark all read'}
               </button>
             )}
           </div>
           <div className="notif-list">
-            {notifications.length === 0 ? (
+            {loading ? (
+              <div className="notif-empty">Loading notifications...</div>
+            ) : error ? (
+              <div className="notif-empty">
+                <span>Notifications unavailable</span>
+                {onRetry ? (
+                  <button type="button" onClick={onRetry}>
+                    Try again
+                  </button>
+                ) : null}
+              </div>
+            ) : notifications.length === 0 ? (
               <div className="notif-empty">No notifications yet</div>
             ) : (
               notifications.slice(0, 10).map((n) => (

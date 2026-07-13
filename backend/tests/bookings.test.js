@@ -1,5 +1,6 @@
-const { suggestPrice, buildEstimate, sequenceDispatchStops } = require('../services/matching');
+const { suggestPrice, buildEstimate, scoreTruck, sequenceDispatchStops } = require('../services/matching');
 const Booking = require('../models/Booking');
+const mongoose = require('mongoose');
 
 test('suggestPrice uses vehicle-specific rates', () => {
   expect(suggestPrice(100, 'Pickup')).toBe(110);
@@ -68,6 +69,33 @@ test('LTL stop sequencing never schedules delivery before pickup', () => {
     const delivery = stops.find((stop) => stop.booking === booking && stop.type === 'delivery');
     expect(pickup.sequence).toBeLessThan(delivery.sequence);
   });
+});
+
+test('matching marks and boosts a requested verified truck', () => {
+  const truckId = new mongoose.Types.ObjectId();
+  const baseTruck = {
+    _id: truckId,
+    type: 'Lorry',
+    capacityTonnes: 12,
+    reservedCapacityTonnes: 0,
+    routes: ['Nairobi-Kampala'],
+    ratingAverage: 4,
+    completedTrips: 20
+  };
+  const booking = {
+    requestedTruck: truckId,
+    vehicleType: 'Lorry',
+    pickup: 'Nairobi',
+    destination: 'Kampala',
+    cargoWeightTonnes: 4
+  };
+
+  const preferred = scoreTruck(baseTruck, booking);
+  const ordinary = scoreTruck({ ...baseTruck, _id: new mongoose.Types.ObjectId() }, booking);
+
+  expect(preferred.preferred).toBe(true);
+  expect(preferred.reasons).toContain('Shipper-preferred vehicle');
+  expect(preferred.score).toBeGreaterThan(ordinary.score);
 });
 
 test('booking status machine rejects skipped transitions', () => {

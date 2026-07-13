@@ -5,6 +5,7 @@ const {
   liveMongoIdParam,
   optionalPositiveNumber,
   optionalString,
+  liveMongoIdBody,
   pagination,
   positiveAmount,
   requiredString
@@ -20,6 +21,7 @@ const documentTypeParam = param('documentType')
 const createBookingSchema = [
   requiredString('pickup', 160),
   requiredString('destination', 160),
+  liveMongoIdBody('requestedTruck'),
   body('pickupCoordinates')
     .optional({ checkFalsy: true })
     .isObject()

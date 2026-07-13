@@ -212,8 +212,27 @@ export function navForUser(user) {
   return roleNavigation[roleForUser(user)] || roleNavigation.client;
 }
 
-export function navigate(path) {
-  window.history.pushState({}, '', path);
+let registeredNavigator = null;
+
+export function registerNavigator(navigator) {
+  registeredNavigator = typeof navigator === 'function' ? navigator : null;
+  return () => {
+    if (registeredNavigator === navigator) registeredNavigator = null;
+  };
+}
+
+export function navigate(path, options = {}) {
+  if (registeredNavigator) {
+    try {
+      registeredNavigator(path, options);
+      const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (current === path) return;
+    } catch (_err) {
+      // Fall through to browser history if the mounted router can no longer navigate.
+    }
+  }
+  const method = options.replace ? 'replaceState' : 'pushState';
+  window.history[method]({}, '', path);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 

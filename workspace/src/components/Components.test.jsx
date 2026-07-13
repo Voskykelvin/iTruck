@@ -12,6 +12,7 @@ import ChatBubble from './ChatBubble.jsx';
 import DarkModeToggle from './DarkModeToggle.jsx';
 import DocumentSlotButton from './DocumentSlotButton.jsx';
 import NotificationBell from './NotificationBell.jsx';
+import ConfirmDialog from './ConfirmDialog.jsx';
 import DocumentExpiryBanner from './DocumentExpiryBanner.jsx';
 import OnboardingBanner from './OnboardingBanner.jsx';
 import AppErrorBoundary from './AppErrorBoundary.jsx';
@@ -153,6 +154,43 @@ describe('Common Components', () => {
     render(<NotificationBell notifications={[]} onMarkAllRead={vi.fn()} onNavigate={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
     expect(screen.getByText('No notifications yet')).toBeInTheDocument();
+  });
+
+  test('NotificationBell keeps unread items visible when marking them read fails', async () => {
+    const notifications = [
+      { id: '1', title: 'Dispatch changed', read: false, createdAt: new Date().toISOString(), link: '/app/tracking' }
+    ];
+    const markRead = vi.fn().mockResolvedValue(false);
+    render(<NotificationBell notifications={notifications} onMarkAllRead={markRead} onNavigate={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mark all read' }));
+
+    await vi.waitFor(() => expect(markRead).toHaveBeenCalledOnce());
+    expect(screen.getByText('Dispatch changed')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
+  });
+
+  test('ConfirmDialog exposes an accessible destructive choice and supports Escape', () => {
+    const onCancel = vi.fn();
+    const onConfirm = vi.fn();
+    render(
+      <ConfirmDialog
+        open
+        title="Cancel shipment?"
+        description="This will withdraw active dispatch work."
+        confirmLabel="Cancel shipment"
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+      />
+    );
+
+    expect(screen.getByRole('alertdialog', { name: 'Cancel shipment?' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel shipment' }));
+    expect(onConfirm).toHaveBeenCalledOnce();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onCancel).toHaveBeenCalledOnce();
   });
 
   test('DocumentExpiryBanner lists expiring documents', () => {

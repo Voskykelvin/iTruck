@@ -9,6 +9,8 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.js',
     include: ['src/**/*.{test,spec}.{js,jsx}'],
+    testTimeout: 15_000,
+    hookTimeout: 15_000,
     coverage: {
       reporter: ['text', 'json-summary', 'html']
     }

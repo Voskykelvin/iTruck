@@ -1,8 +1,11 @@
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import OwnerPage from './OwnerPage.jsx';
 import { server } from '../test/mocks/server.js';
 import { http, HttpResponse } from 'msw';
+import { renderWithQuery } from '../test/renderWithQuery.jsx';
+
+const render = renderWithQuery;
 
 const mockNotify = vi.fn();
 
@@ -65,14 +68,13 @@ describe('OwnerPage Interaction & Verification Tests', () => {
 
     render(<OwnerPage notify={mockNotify} user={ownerUser} />);
 
-    await screen.findByText('Job Board');
-    expect(screen.getByText('Cement')).toBeInTheDocument();
-    expect(screen.getByText('KAA 123A')).toBeInTheDocument();
-    expect(screen.getByText('USD 4,120')).toBeInTheDocument(); // Wallet balance metric
+    await screen.findByText('Cement');
+    expect(await screen.findByText('KAA 123A')).toBeInTheDocument();
+    expect(await screen.findByText('USD 4,120')).toBeInTheDocument(); // Wallet balance metric
     expect(screen.getByText('1')).toBeInTheDocument(); // Gauge metric for 1 open load
   });
 
-  test('adds vehicle (online success and offline fallback)', async () => {
+  test('adds a vehicle online and keeps failed submissions unsaved', async () => {
     server.use(
       http.get('*/api/trucks/fleet', () => HttpResponse.json({ trucks: [] })),
       http.get('*/api/bookings/open', () => HttpResponse.json({ bookings: [] })),
@@ -113,7 +115,7 @@ describe('OwnerPage Interaction & Verification Tests', () => {
     });
     expect(screen.getByText('KAA 999B')).toBeInTheDocument();
 
-    // 2. Offline case (api.createTruck throws)
+    // A server failure must not create a local vehicle that looks persisted.
     cleanup();
     server.use(
       http.post('*/api/trucks', () => {
@@ -130,12 +132,13 @@ describe('OwnerPage Interaction & Verification Tests', () => {
     fireEvent.click(addBtn2);
 
     await waitFor(() => {
-      expect(mockNotify).toHaveBeenCalledWith('Sign in to save this vehicle to your fleet');
+      expect(mockNotify).toHaveBeenCalledWith('Request failed');
     });
-    expect(screen.getByText('KAA 777C')).toBeInTheDocument();
+    expect(screen.queryByText('KAA 777C')).not.toBeInTheDocument();
+    expect(input2).toHaveValue('KAA 777C');
   });
 
-  test('submits owner bid successfully and triggers offline save locally if API fails', async () => {
+  test('submits owner bid successfully and leaves failed bids open for retry', async () => {
     server.use(
       http.get('*/api/trucks/fleet', () => HttpResponse.json({ trucks: [] })),
       http.get('*/api/bookings/open', () => {
@@ -179,7 +182,7 @@ describe('OwnerPage Interaction & Verification Tests', () => {
     );
 
     render(<OwnerPage notify={mockNotify} user={ownerUser} />);
-    await screen.findByText('Job Board');
+    await screen.findByText('Cement');
 
     // Click "Review Bid"
     const reviewBtn = screen.getByRole('button', { name: 'Review Bid' });
@@ -221,7 +224,7 @@ describe('OwnerPage Interaction & Verification Tests', () => {
     );
 
     render(<OwnerPage notify={mockNotify} user={ownerUser} />);
-    await screen.findByText('Job Board');
+    await screen.findByText('Cement');
 
     const reviewBtn2 = screen.getByRole('button', { name: 'Review Bid' });
     fireEvent.click(reviewBtn2);
@@ -232,6 +235,8 @@ describe('OwnerPage Interaction & Verification Tests', () => {
     await waitFor(() => {
       expect(mockNotify).toHaveBeenCalledWith('Request failed');
     });
+    expect(screen.getByRole('button', { name: 'Place Bid' })).toBeInTheDocument();
+    expect(localStorage.getItem('itruck_bids')).toBeNull();
   });
 
   test('runs action queue actions: insurance updates and pickup start checks', async () => {
@@ -264,7 +269,9 @@ describe('OwnerPage Interaction & Verification Tests', () => {
     );
 
     render(<OwnerPage notify={mockNotify} user={ownerUser} />);
-    await screen.findByText('Action Queue');
+    await waitFor(() => {
+      expect(screen.getByText('Active Jobs').nextElementSibling).toHaveTextContent('1');
+    });
 
     // 1. Insurance upload action
     const insBtn = screen.getByRole('button', { name: 'Upload insurance - Toyota Hilux' });
@@ -307,12 +314,13 @@ describe('OwnerPage Interaction & Verification Tests', () => {
     );
 
     render(<OwnerPage notify={mockNotify} user={ownerUser} />);
-    await screen.findByText('Vehicle Readiness');
+    await screen.findByText('KAA 123A');
 
     const removeBtn = screen.getByRole('button', { name: 'Remove' });
     fireEvent.click(removeBtn);
 
-    expect(window.confirm).toHaveBeenCalledWith('Remove KAA 123A from your fleet?');
+    expect(screen.getByRole('alertdialog', { name: 'Remove vehicle?' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove vehicle' }));
     await waitFor(() => {
       expect(mockNotify).toHaveBeenCalledWith('Vehicle removed from fleet');
     });
