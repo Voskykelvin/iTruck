@@ -3,17 +3,9 @@ import { demoFleet, demoShipments } from '../../data.js';
 
 export const handlers = [
   http.get('*/api/users/profile', () => {
-    return HttpResponse.json({
-      user: {
-        id: 'usr-shipper',
-        email: 'shipper@example.com',
-        role: 'shipper',
-        isVerified: true,
-        displayName: 'Test Shipper',
-        phone: '+254700000000',
-        onboardingState: 'completed'
-      }
-    });
+    const cached = JSON.parse(localStorage.getItem('itruck_user') || '{}');
+    if (!cached.email) return HttpResponse.json({ message: 'Authentication required' }, { status: 401 });
+    return HttpResponse.json({ user: cached });
   }),
 
   http.patch('*/api/users/profile', async ({ request }) => {
@@ -169,14 +161,10 @@ export const handlers = [
 
   http.get('*/api/payments/wallet', () => {
     return HttpResponse.json({
-      wallet: {
-        balance: 2500,
-        escrowBalance: 1200,
-        currency: 'USD',
-        transactions: [
-          { id: 'tx-001', type: 'Credit', amount: 500, status: 'Completed', createdAt: new Date().toISOString() }
-        ]
-      }
+      balance: 2500,
+      transactions: [
+        { id: 'tx-001', type: 'Credit', amount: 500, status: 'Completed', createdAt: new Date().toISOString() }
+      ]
     });
   }),
 
@@ -206,14 +194,21 @@ export const handlers = [
 
   http.get('*/api/workflow/messages', () => {
     return HttpResponse.json({
-      messages: [{ id: 'm1', sender: 'Carrier', content: 'On my way to pickup', createdAt: new Date().toISOString() }]
+      items: [
+        {
+          id: 'm1',
+          user: { id: 'owner-1', role: 'owner', firstName: 'Carrier' },
+          payload: { text: 'On my way to pickup' },
+          createdAt: new Date().toISOString()
+        }
+      ]
     });
   }),
 
   http.post('*/api/workflow/messages', async ({ request }) => {
     const body = await request.json();
     return HttpResponse.json({
-      message: {
+      item: {
         id: `msg-${Math.random()}`,
         ...body,
         createdAt: new Date().toISOString()
@@ -297,11 +292,20 @@ export const handlers = [
     return HttpResponse.json({ googleMapsApiKey: 'mock-key' });
   }),
 
-  http.post('*/api/marketplace/estimate', () => {
+  http.post('*/api/marketplace/estimate', async ({ request }) => {
+    const body = await request.json();
     return HttpResponse.json({
-      estimatedPrice: 450,
-      distanceKm: 120,
-      durationHrs: 2.5
+      total: 450,
+      currency: 'USD',
+      confidence: 'high',
+      recommendedMode: 'instant-match',
+      routeRisk: 'low',
+      lineItems: [
+        { key: 'basePrice', label: `${body.vehicleType || 'Lorry'} lane estimate`, amount: 410 },
+        { key: 'escrowFee', label: 'Escrow and payment handling', amount: 40 }
+      ],
+      requiredDocuments: ['Waybill', 'Commercial invoice'],
+      route: { distance: Number(body.distance || 120) }
     });
   }),
 

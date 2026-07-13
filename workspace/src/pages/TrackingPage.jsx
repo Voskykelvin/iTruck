@@ -16,10 +16,10 @@ import {
 } from 'lucide-react';
 import io from 'socket.io-client';
 import { api } from '../api.js';
-import { workspaceShipments } from '../data.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import Panel from '../components/Panel.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import AsyncState from '../components/AsyncState.jsx';
 import DocumentSlotButton from '../components/DocumentSlotButton.jsx';
 import ChatBubble from '../components/ChatBubble.jsx';
 import ReportIssueModal from '../components/modals/ReportIssueModal.jsx';
@@ -27,10 +27,17 @@ import DeliveryProofModal from '../components/modals/DeliveryProofModal.jsx';
 import ProductionRouteMap from '../components/ProductionRouteMap.jsx';
 import ShipmentTimeline from '../components/ShipmentTimeline.jsx';
 import useAnimatedTrackingPoint from '../hooks/useAnimatedTrackingPoint.js';
+import { useBookingAction, useBookingCache, useBookings } from '../queries/commercial.js';
+import {
+  useCaseAction,
+  useConversationCache,
+  useMessages,
+  useSendMessage,
+  useShipmentCases
+} from '../queries/conversations.js';
 import { roleForUser } from '../utils/roles.js';
 import {
   userIdFor,
-  normalizeBookingShipment,
   latestTrackingPoint,
   formatCoordinatePair,
   formatTrackingTime,
@@ -44,16 +51,14 @@ import {
   hasReceiverGradeProof,
   statusLabel,
   upsertGeneratedBookingDocument,
-  readLocalChat,
-  persistLocalChat,
-  saveLocal,
   userDisplayName,
-  normalizeWorkflowMessage,
   copyToClipboard,
   documentUploadAccept,
   shipmentDocumentStatus,
   navigate
 } from '../utils/helpers.js';
+
+const EMPTY_SHIPMENTS = [];
 
 function LivePositionCard({ shipment }) {
   const targetPoint = latestTrackingPoint(shipment);
@@ -431,16 +436,13 @@ function DeliveryReadinessPanel({ shipment, activeRole, busyType, onConfirmDeliv
 export default function TrackingPage({ notify, route = '', user }) {
   const activeRole = roleForUser(user);
   const carrierOperator = ['owner', 'driver', 'admin'].includes(activeRole);
-  const [selected, setSelected] = useState(0);
-  const [shipments, setShipments] = useState(workspaceShipments);
-  const [messages, setMessages] = useState([]);
+  const [selectedShipmentId, setSelectedShipmentId] = useState('');
   const [draftMessage, setDraftMessage] = useState('');
   const [ratingBusy, setRatingBusy] = useState(false);
   const [issueModalOpen, setIssueModalOpen] = useState(false);
   const [deliveryProofModalOpen, setDeliveryProofModalOpen] = useState(false);
   const [deliveryProofUpload, setDeliveryProofUpload] = useState(null);
   const [issueBusy, setIssueBusy] = useState(false);
-  const [shipmentCases, setShipmentCases] = useState([]);
   const [selectedCaseId, setSelectedCaseId] = useState('');
   const [caseReply, setCaseReply] = useState('');
   const [caseReplyFiles, setCaseReplyFiles] = useState([]);
@@ -448,61 +450,41 @@ export default function TrackingPage({ notify, route = '', user }) {
   const [deliveryBusyType, setDeliveryBusyType] = useState('');
   const [dispatchPlan, setDispatchPlan] = useState(null);
   const chatInputRef = useRef(null);
+  const bookingsQuery = useBookings();
+  const shipments = bookingsQuery.data || EMPTY_SHIPMENTS;
+  const { updateBooking } = useBookingCache();
+  const confirmDeliveryMutation = useBookingAction(({ bookingId, location }) =>
+    api.confirmDelivery(bookingId, location ? { location } : {})
+  );
 
   const trackingParams = useMemo(() => new URLSearchParams(route.split('?')[1] || ''), [route]);
   const routeShipment = trackingParams.get('shipment');
   const contactMode = trackingParams.get('contact');
-  const currentUserId = userIdFor(user);
-  const upsertBookingShipment = useCallback((booking) => {
-    if (!booking) return;
-    const updated = normalizeBookingShipment(booking);
-    setShipments((current) => {
-      const index = current.findIndex((item) =>
-        [item.id, item.bookingId].some((value) => String(value) === String(updated.bookingId || updated.id))
-      );
-      if (index < 0) return [updated, ...current];
-      const next = [...current];
-      next[index] = updated;
-      return next;
-    });
-  }, []);
-
-  useEffect(() => {
-    api
-      .listBookings()
-      .then((data) => {
-        if (Array.isArray(data.bookings)) setShipments(data.bookings.map(normalizeBookingShipment));
-      })
-      .catch(() => setShipments(workspaceShipments));
-  }, []);
-
-  const shipment = shipments[selected] || shipments[0];
+  const upsertBookingShipment = useCallback((booking) => booking && updateBooking(booking), [updateBooking]);
+  const shipment =
+    shipments.find((item) =>
+      [item.id, item.bookingId].some((value) => String(value) === String(selectedShipmentId || routeShipment))
+    ) || shipments[0];
   const shipmentMessageKey = shipment?.bookingId || shipment?.id || '';
+  const messagesQuery = useMessages(shipmentMessageKey, user);
+  const sendMessageMutation = useSendMessage(user);
+  const receiveMessage = useConversationCache(user);
+  const casesQuery = useShipmentCases(shipmentMessageKey);
+  const reportCaseMutation = useCaseAction(({ payload }) => api.reportIssue(payload));
+  const replyCaseMutation = useCaseAction(({ caseId, payload }) => api.addCaseComment(caseId, payload));
+  const reopenCaseMutation = useCaseAction(({ caseId, payload }) => api.reopenCase(caseId, payload));
+  const messages = messagesQuery.data || [];
+  const shipmentCases = useMemo(() => casesQuery.data || [], [casesQuery.data]);
   const selectedCase =
     shipmentCases.find((record) => String(record._id || record.id) === String(selectedCaseId)) || shipmentCases[0];
 
-  const loadShipmentCases = useCallback(async () => {
-    if (!shipmentMessageKey) {
-      setShipmentCases([]);
-      return;
-    }
-    try {
-      const data = await api.listCases({ booking: shipmentMessageKey, limit: 20 });
-      const records = Array.isArray(data.cases) ? data.cases : [];
-      setShipmentCases(records);
-      setSelectedCaseId((current) =>
-        records.some((record) => String(record._id || record.id) === String(current))
-          ? current
-          : String(records[0]?._id || records[0]?.id || '')
-      );
-    } catch (_err) {
-      setShipmentCases([]);
-    }
-  }, [shipmentMessageKey]);
-
   useEffect(() => {
-    loadShipmentCases();
-  }, [loadShipmentCases]);
+    setSelectedCaseId((current) =>
+      shipmentCases.some((record) => String(record._id || record.id) === String(current))
+        ? current
+        : String(shipmentCases[0]?._id || shipmentCases[0]?.id || '')
+    );
+  }, [shipmentCases]);
 
   useEffect(() => {
     let active = true;
@@ -540,41 +522,16 @@ export default function TrackingPage({ notify, route = '', user }) {
     socket.on('delivery-confirmed', updateFromBooking);
     socket.on('delivery-proof-finalized', updateFromBooking);
     socket.on('tracking-updated', updateFromBooking);
+    socket.on('message:new', (item) => receiveMessage(shipmentMessageKey, item));
 
     return () => socket.disconnect();
-  }, [shipment?.bookingId, shipment?.id, upsertBookingShipment]);
+  }, [receiveMessage, shipment?.bookingId, shipment?.id, shipmentMessageKey, upsertBookingShipment]);
 
   useEffect(() => {
     if (!routeShipment || !shipments.length) return;
-    const index = shipments.findIndex((item) =>
-      [item.id, item.bookingId].some((value) => String(value) === routeShipment)
-    );
-    if (index >= 0 && index !== selected) setSelected(index);
-  }, [routeShipment, selected, shipments]);
-
-  useEffect(() => {
-    if (!shipment) return;
-
-    let active = true;
-    setMessages(readLocalChat(shipment));
-
-    api
-      .listMessages(shipmentMessageKey)
-      .then((data) => {
-        if (!active) return;
-        const items = Array.isArray(data.items) ? data.items : [];
-        if (items.length) {
-          const normalized = items.map((item) => normalizeWorkflowMessage(item, user));
-          setMessages(normalized);
-          persistLocalChat(shipment.id, normalized);
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      active = false;
-    };
-  }, [shipmentMessageKey, shipment, currentUserId, user]);
+    const match = shipments.find((item) => [item.id, item.bookingId].some((value) => String(value) === routeShipment));
+    if (match) setSelectedShipmentId(String(match.bookingId || match.id));
+  }, [routeShipment, shipments]);
 
   useEffect(() => {
     if (['driver', 'shipper'].includes(contactMode)) chatInputRef.current?.focus();
@@ -585,21 +542,8 @@ export default function TrackingPage({ notify, route = '', user }) {
     if (!shipment || !draftMessage.trim()) return;
 
     const text = draftMessage.trim();
-    const nextMessage = {
-      id: `local-message-${Date.now()}`,
-      author: 'me',
-      name: 'You',
-      text,
-      createdAt: new Date().toISOString()
-    };
-
-    const nextMessages = [...messages, nextMessage];
-    setMessages(nextMessages);
-    persistLocalChat(shipment.id, nextMessages);
-    setDraftMessage('');
-
     try {
-      await api.sendMessage({
+      await sendMessageMutation.mutateAsync({
         booking: shipment.bookingId,
         bookingId: shipment.bookingId,
         shipmentId: shipment.id,
@@ -611,8 +555,9 @@ export default function TrackingPage({ notify, route = '', user }) {
         sender: 'me',
         status: 'sent'
       });
-    } catch (_err) {
-      saveLocal('messages', { shipmentId: shipment.id, route: shipment.route, text, status: 'local' });
+      setDraftMessage('');
+    } catch (err) {
+      notify(err.message || 'Message was not sent');
     }
   }
 
@@ -625,11 +570,7 @@ export default function TrackingPage({ notify, route = '', user }) {
     setDeliveryBusyType(definition.type);
     try {
       await api.downloadDocument(definition.type, shipment.bookingId);
-      setShipments((current) =>
-        current.map((item) =>
-          item.bookingId === shipment.bookingId ? upsertGeneratedBookingDocument(item, definition.type) : item
-        )
-      );
+      updateBooking(upsertGeneratedBookingDocument(shipment, definition.type));
       notify(`${definition.label} ready`);
     } catch (err) {
       notify(err.message);
@@ -666,9 +607,7 @@ export default function TrackingPage({ notify, route = '', user }) {
 
     try {
       const location = latestTrackingPoint(shipment);
-      const data = await api.confirmDelivery(shipment.bookingId, location ? { location } : {});
-      const updated = normalizeBookingShipment(data.booking || {});
-      setShipments((current) => current.map((item) => (item.bookingId === shipment.bookingId ? updated : item)));
+      await confirmDeliveryMutation.mutateAsync({ bookingId: shipment.bookingId, location });
       notify('Delivery confirmed');
     } catch (err) {
       notify(err.message);
@@ -750,42 +689,30 @@ export default function TrackingPage({ notify, route = '', user }) {
     try {
       const upload = issue.photos?.length ? await api.uploadCargo(issue.photos) : { urls: [] };
       const evidenceUrls = upload.urls || [];
-      const data = await api.reportIssue({
-        booking: shipment.bookingId,
-        bookingId: shipment.bookingId,
-        shipmentId: shipment.id,
-        kind: issue.kind || 'support',
-        category: issue.issueType || 'other',
-        title: `${issue.issueType || 'Shipment'} ${issue.kind === 'dispute' ? 'dispute' : 'support case'}`,
-        message: issue.description || `Issue reported for ${shipment.route}`,
-        severity: issue.severity || 'normal',
-        evidenceUrls,
-        evidenceFileNames: Array.from(issue.photos || []).map((file) => file.name),
-        photoCount: evidenceUrls.length,
-        route: shipment.route
+      const data = await reportCaseMutation.mutateAsync({
+        bookingId: shipmentMessageKey,
+        payload: {
+          booking: shipment.bookingId,
+          bookingId: shipment.bookingId,
+          shipmentId: shipment.id,
+          kind: issue.kind || 'support',
+          category: issue.issueType || 'other',
+          title: `${issue.issueType || 'Shipment'} ${issue.kind === 'dispute' ? 'dispute' : 'support case'}`,
+          message: issue.description || `Issue reported for ${shipment.route}`,
+          severity: issue.severity || 'normal',
+          evidenceUrls,
+          evidenceFileNames: Array.from(issue.photos || []).map((file) => file.name),
+          photoCount: evidenceUrls.length,
+          route: shipment.route
+        }
       });
-      if (data.case) {
-        setShipmentCases((current) => [data.case, ...current.filter((item) => item._id !== data.case._id)]);
-        setSelectedCaseId(String(data.case._id || data.case.id || ''));
-      } else {
-        await loadShipmentCases();
-      }
+      if (data.case) setSelectedCaseId(String(data.case._id || data.case.id || ''));
       setIssueModalOpen(false);
       notify(
         issue.kind === 'dispute' ? 'Dispute opened and shipment held for review' : 'Support case sent to operations'
       );
     } catch (err) {
-      saveLocal('issue_reports', {
-        bookingId: shipment.bookingId,
-        shipmentId: shipment.id,
-        route: shipment.route,
-        issueType: issue.issueType,
-        description: issue.description,
-        severity: issue.severity,
-        photoNames: Array.from(issue.photos || []).map((file) => file.name),
-        status: 'local'
-      });
-      notify(err.message || 'Issue report queued for operations');
+      notify(err.message || 'Issue report was not sent to operations');
     } finally {
       setIssueBusy(false);
     }
@@ -798,20 +725,17 @@ export default function TrackingPage({ notify, route = '', user }) {
     setCaseActionBusy(`reply-${caseId}`);
     try {
       const upload = caseReplyFiles.length ? await api.uploadCargo(caseReplyFiles) : { urls: [] };
-      const data = await api.addCaseComment(caseId, {
-        body: caseReply.trim(),
-        evidenceUrls: upload.urls || [],
-        evidenceFileNames: caseReplyFiles.map((file) => file.name)
+      await replyCaseMutation.mutateAsync({
+        bookingId: shipmentMessageKey,
+        caseId,
+        payload: {
+          body: caseReply.trim(),
+          evidenceUrls: upload.urls || [],
+          evidenceFileNames: caseReplyFiles.map((file) => file.name)
+        }
       });
       setCaseReply('');
       setCaseReplyFiles([]);
-      if (data.case) {
-        setShipmentCases((current) =>
-          current.map((record) => (String(record._id || record.id) === String(caseId) ? data.case : record))
-        );
-      } else {
-        await loadShipmentCases();
-      }
       notify('Case update sent');
     } catch (err) {
       notify(err.message || 'Unable to update this case');
@@ -825,14 +749,11 @@ export default function TrackingPage({ notify, route = '', user }) {
     if (!caseId) return;
     setCaseActionBusy(`reopen-${caseId}`);
     try {
-      const data = await api.reopenCase(caseId, { note: 'Participant requested additional review' });
-      if (data.case) {
-        setShipmentCases((current) =>
-          current.map((record) => (String(record._id || record.id) === String(caseId) ? data.case : record))
-        );
-      } else {
-        await loadShipmentCases();
-      }
+      await reopenCaseMutation.mutateAsync({
+        bookingId: shipmentMessageKey,
+        caseId,
+        payload: { note: 'Participant requested additional review' }
+      });
       notify('Case reopened');
     } catch (err) {
       notify(err.message || 'Unable to reopen this case');
@@ -878,6 +799,28 @@ export default function TrackingPage({ notify, route = '', user }) {
     }
   }
 
+  if (bookingsQuery.isPending) {
+    return (
+      <Panel title="Live Tracking" eyebrow="Shipments">
+        <p className="refresh-status" role="status">
+          Loading live shipment positions...
+        </p>
+      </Panel>
+    );
+  }
+
+  if (bookingsQuery.isError) {
+    return (
+      <Panel title="Live Tracking" eyebrow="Shipments">
+        <AsyncState
+          title="Live tracking unavailable"
+          detail={bookingsQuery.error?.message || 'Shipment positions could not be loaded.'}
+          onRetry={() => bookingsQuery.refetch()}
+        />
+      </Panel>
+    );
+  }
+
   if (!shipment) {
     return (
       <Panel title="Live Tracking" eyebrow="Shipments">
@@ -918,20 +861,23 @@ export default function TrackingPage({ notify, route = '', user }) {
       <section className="tracking-layout">
         <Panel title="Active Routes" eyebrow="Shipments">
           <div className="tracking-list">
-            {shipments.map((item, index) => (
-              <button
-                className={index === selected ? 'active' : ''}
-                type="button"
-                key={item.id}
-                onClick={() => setSelected(index)}
-              >
-                <strong>{item.id}</strong>
-                <span>{item.route}</span>
-                <small>
-                  {item.progress}% - {item.position}
-                </small>
-              </button>
-            ))}
+            {shipments.map((item) => {
+              const itemId = String(item.bookingId || item.id);
+              return (
+                <button
+                  className={itemId === String(shipment.bookingId || shipment.id) ? 'active' : ''}
+                  type="button"
+                  key={item.id}
+                  onClick={() => setSelectedShipmentId(itemId)}
+                >
+                  <strong>{item.id}</strong>
+                  <span>{item.route}</span>
+                  <small>
+                    {item.progress}% - {item.position}
+                  </small>
+                </button>
+              );
+            })}
           </div>
         </Panel>
 
@@ -1080,6 +1026,15 @@ export default function TrackingPage({ notify, route = '', user }) {
                 <span>Report Issue</span>
               </button>
             </div>
+            {casesQuery.isPending ? <AsyncState compact title="Loading support cases..." /> : null}
+            {casesQuery.isError ? (
+              <AsyncState
+                compact
+                title="Support cases could not be loaded"
+                detail={casesQuery.error?.message}
+                onRetry={() => casesQuery.refetch()}
+              />
+            ) : null}
             {shipmentCases.length ? (
               <div className="shipment-case-workspace">
                 <div className="shipment-case-list">
@@ -1232,6 +1187,9 @@ export default function TrackingPage({ notify, route = '', user }) {
                 ) : null}
               </div>
             ) : null}
+            {!casesQuery.isPending && !casesQuery.isError && !shipmentCases.length ? (
+              <EmptyState title="No support cases" detail="Report an issue when operations assistance is required." />
+            ) : null}
             {shipment.rawStatus === 'delivered' ? (
               <div className="rating-panel">
                 <strong>{ratingTitle}</strong>
@@ -1260,18 +1218,36 @@ export default function TrackingPage({ notify, route = '', user }) {
               onAction={() => navigate(selectedShipmentRoute)}
             >
               <div className="chat-thread">
-                {messages.map((message) => (
-                  <ChatBubble message={message} key={message.id} />
-                ))}
+                {messagesQuery.isPending ? <AsyncState compact title="Loading message history..." /> : null}
+                {messagesQuery.isError ? (
+                  <AsyncState
+                    compact
+                    title="Message history could not be loaded"
+                    detail={messagesQuery.error?.message}
+                    onRetry={() => messagesQuery.refetch()}
+                  />
+                ) : null}
+                {!messagesQuery.isPending && !messagesQuery.isError
+                  ? messages.map((message) => <ChatBubble message={message} key={message.id} />)
+                  : null}
+                {!messagesQuery.isPending && !messagesQuery.isError && !messages.length ? (
+                  <EmptyState title="No messages in this thread" detail="Send the first shipment update." />
+                ) : null}
               </div>
               <form className="chat-compose" onSubmit={sendChatMessage}>
                 <input
                   ref={chatInputRef}
                   value={draftMessage}
+                  disabled={sendMessageMutation.isPending}
                   onChange={(event) => setDraftMessage(event.target.value)}
                   placeholder="Type a message..."
                 />
-                <button className="primary" type="submit" aria-label="Send message">
+                <button
+                  className="primary"
+                  type="submit"
+                  aria-label={sendMessageMutation.isPending ? 'Sending message' : 'Send message'}
+                  disabled={!draftMessage.trim() || sendMessageMutation.isPending}
+                >
                   <Send size={18} />
                 </button>
               </form>

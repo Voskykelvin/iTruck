@@ -130,7 +130,11 @@ async function request(path, options = {}, retry = true) {
 
   const type = response.headers.get('content-type') || '';
   const data = type.includes('application/json') ? await response.json().catch(() => ({})) : await response.text();
-  if (!response.ok) throw new Error(apiErrorMessage(data, 'Request failed'));
+  if (!response.ok) {
+    const error = new Error(apiErrorMessage(data, 'Request failed'));
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
@@ -252,7 +256,7 @@ export const api = {
   mapsConfig: () => request('/maps/config'),
   geocode: (payload) => request('/maps/geocode', { method: 'POST', body: JSON.stringify(payload) }),
   computeRoute: (payload) => request('/maps/route', { method: 'POST', body: JSON.stringify(payload) }),
-  listTrucks: () => request('/trucks'),
+  listTrucks: (params = {}) => request(`/trucks${queryString(params)}`),
   fleetTrucks: () => request('/trucks/fleet'),
   listBookings: () => request('/bookings'),
   listOpenBookings: () => request('/bookings/open'),

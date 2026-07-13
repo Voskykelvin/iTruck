@@ -95,6 +95,45 @@ textarea {
   padding: 16px 14px 92px;
 }
 
+.page-loading {
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.async-state {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--red) 35%, var(--line));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--red) 6%, var(--surface));
+}
+
+.async-state.compact {
+  padding: 12px;
+}
+
+.async-state p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.async-state .ghost {
+  justify-self: start;
+}
+
+.refresh-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
 .app-sidebar {
   position: fixed;
   inset: 0 auto 0 0;
@@ -3423,6 +3462,25 @@ input[type='radio'] {
   padding: 18px;
   display: grid;
   gap: 14px;
+}
+
+.confirm-dialog {
+  max-width: 440px;
+}
+
+.confirm-dialog .modal-card-body p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.confirm-dialog-actions button {
+  min-width: 110px;
 }
 
 .delivery-proof-modal {

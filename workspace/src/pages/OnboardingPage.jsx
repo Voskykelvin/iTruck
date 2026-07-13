@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useRef } from 'react';
 import { Image, Truck, Plus, BarChart3, UserRound } from 'lucide-react';
 import { api, setSession } from '../api.js';
-import { demoFleet } from '../data.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import Panel from '../components/Panel.jsx';
 import DocumentSlotButton from '../components/DocumentSlotButton.jsx';
 import Input from '../components/Input.jsx';
 import Select from '../components/Select.jsx';
-import { useCurrentUserPolling, usePollingEffect } from '../hooks/usePolling.js';
+import AsyncState from '../components/AsyncState.jsx';
+import { useCurrentUserPolling } from '../hooks/usePolling.js';
+import { useCreateFleetTruck, useFleetTrucks } from '../queries/commercial.js';
+import { useDocumentAction } from '../queries/documents.js';
 import {
   roleForUser,
   roleName,
@@ -19,18 +21,13 @@ import {
   documentUploadAccept,
   imageUploadAccept,
   documentUploadLimitText,
-  normalizeTruck,
   vehicleTypes,
   navigate
 } from '../utils/helpers.js';
 
-const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
-const workspaceFleet = DEMO_MODE ? demoFleet : [];
-
 export default function OnboardingPage({ notify, user, setUser }) {
   const role = roleForUser(user);
   const [uploading, setUploading] = useState('');
-  const [fleet, setFleet] = useState([]);
   const [truckDraft, setTruckDraft] = useState({
     plateNumber: '',
     type: 'Lorry',
@@ -41,24 +38,15 @@ export default function OnboardingPage({ notify, user, setUser }) {
   const pendingDocRef = useRef('');
   const profileDocInputRef = useRef(null);
   const vehiclePhotoInputRef = useRef(null);
+  const fleetQuery = useFleetTrucks({
+    enabled: role === 'owner' && Boolean(user.email),
+    refetchInterval: role === 'owner' ? 30000 : false
+  });
+  const createTruck = useCreateFleetTruck();
+  const profileUpload = useDocumentAction(({ documentType, file }) => api.uploadProfileDocument(documentType, file));
+  const fleet = fleetQuery.data || [];
 
   useCurrentUserPolling(Boolean(user.email), setUser, 30000);
-
-  const loadFleet = useCallback(async () => {
-    if (role !== 'owner') return;
-    try {
-      const data = await api.fleetTrucks();
-      if (Array.isArray(data.trucks)) setFleet(data.trucks.map(normalizeTruck));
-    } catch (_err) {
-      setFleet(workspaceFleet.slice(0, 2));
-    }
-  }, [role]);
-
-  useEffect(() => {
-    loadFleet();
-  }, [loadFleet]);
-
-  usePollingEffect(role === 'owner', loadFleet, 30000);
 
   const profileDocs = profileDocumentsForRole(role);
   const missingDocs = missingRequiredProfileDocuments(user, role);
@@ -120,7 +108,7 @@ export default function OnboardingPage({ notify, user, setUser }) {
 
     setUploading(pendingDocRef.current);
     try {
-      const data = await api.uploadProfileDocument(pendingDocRef.current, file);
+      const data = await profileUpload.mutateAsync({ documentType: pendingDocRef.current, file });
       if (data.user) {
         setSession({ user: data.user });
         setUser(data.user);
@@ -170,8 +158,7 @@ export default function OnboardingPage({ notify, user, setUser }) {
     };
 
     try {
-      const data = await api.createTruck(payload);
-      setFleet((current) => [normalizeTruck(data.truck || payload), ...current]);
+      await createTruck.mutateAsync(payload);
       notify('Vehicle sent to admin review');
       setTruckDraft((current) => ({ ...current, plateNumber: '', photos: [] }));
     } catch (err) {
@@ -266,6 +253,14 @@ export default function OnboardingPage({ notify, user, setUser }) {
 
         {role === 'owner' ? (
           <Panel title="Vehicle Registration" eyebrow="Owner Review">
+            {fleetQuery.isError ? (
+              <AsyncState
+                compact
+                title="Registered vehicles could not be loaded"
+                detail={fleetQuery.error?.message}
+                onRetry={() => fleetQuery.refetch()}
+              />
+            ) : null}
             <form className="modal-form" onSubmit={submitTruck}>
               <div className="form-grid">
                 <Input
@@ -328,9 +323,9 @@ export default function OnboardingPage({ notify, user, setUser }) {
                   <small>Supports JPEG, PNG, WEBP (Max 10MB)</small>
                 </button>
               </div>
-              <button className="primary icon-label" type="submit">
+              <button className="primary icon-label" type="submit" disabled={createTruck.isPending}>
                 <Truck size={18} />
-                <span>Send Vehicle for Review</span>
+                <span>{createTruck.isPending ? 'Sending...' : 'Send Vehicle for Review'}</span>
               </button>
             </form>
           </Panel>

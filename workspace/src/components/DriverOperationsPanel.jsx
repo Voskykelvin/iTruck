@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ShieldCheck, Truck, UserPlus, UsersRound } from 'lucide-react';
 import { api } from '../api.js';
+import { useDriverAction, useDriverOperations } from '../queries/operations.js';
+import AsyncState from './AsyncState.jsx';
 
 const driverName = (driver) =>
   [driver?.firstName, driver?.lastName].filter(Boolean).join(' ') || driver?.email || 'Driver';
 
 export default function DriverOperationsPanel({ fleet = [], notify }) {
-  const [drivers, setDrivers] = useState([]);
-  const [invitations, setInvitations] = useState([]);
-  const [assignments, setAssignments] = useState([]);
   const [busy, setBusy] = useState('');
   const [draft, setDraft] = useState({
     email: '',
@@ -17,49 +16,44 @@ export default function DriverOperationsPanel({ fleet = [], notify }) {
     country: 'Kenya',
     licenseNumber: ''
   });
-
-  const load = useCallback(async () => {
-    try {
-      const data = await api.listDrivers();
-      setDrivers(data.drivers || []);
-      setInvitations(data.invitations || []);
-      setAssignments(data.assignments || []);
-    } catch (err) {
-      notify(err.message || 'Unable to load drivers');
-    }
-  }, [notify]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const driversQuery = useDriverOperations();
+  const inviteDriver = useDriverAction((payload) => api.inviteDriver(payload));
+  const assignDriver = useDriverAction(({ driverId, truckId }) => api.assignDriverTruck(driverId, truckId));
+  const unassignDriver = useDriverAction(({ driverId }) =>
+    api.unassignDriverTruck(driverId, 'Unassigned by fleet owner')
+  );
+  const revokeInvitation = useDriverAction((invitationId) => api.revokeDriverInvitation(invitationId));
+  const { drivers = [], invitations = [], assignments = [] } = driversQuery.data || {};
 
   async function invite(event) {
     event.preventDefault();
     setBusy('invite');
     try {
-      const data = await api.inviteDriver(draft);
+      const data = await inviteDriver.mutateAsync(draft);
       setDraft((current) => ({ ...current, email: '', phone: '', licenseNumber: '' }));
-      await load();
       if (data.invitationUrl && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(data.invitationUrl).catch(() => {});
       }
       notify('Driver invitation created; its secure link was copied when supported');
     } catch (err) {
-      notify(err.message);
+      notify(err.message || 'Driver invitation was not created');
     } finally {
       setBusy('');
     }
   }
 
   async function assign(driverId, truckId) {
-    if (!truckId) return;
     setBusy(`assign-${driverId}`);
     try {
-      await api.assignDriverTruck(driverId, truckId);
-      await load();
-      notify('Driver assigned to vehicle');
+      if (truckId) {
+        await assignDriver.mutateAsync({ driverId, truckId });
+        notify('Driver assigned to vehicle');
+      } else {
+        await unassignDriver.mutateAsync({ driverId });
+        notify('Driver removed from vehicle');
+      }
     } catch (err) {
-      notify(err.message);
+      notify(err.message || 'Driver assignment was not updated');
     } finally {
       setBusy('');
     }
@@ -68,11 +62,10 @@ export default function DriverOperationsPanel({ fleet = [], notify }) {
   async function revoke(invitationId) {
     setBusy(`revoke-${invitationId}`);
     try {
-      await api.revokeDriverInvitation(invitationId);
-      await load();
+      await revokeInvitation.mutateAsync(invitationId);
       notify('Driver invitation revoked');
     } catch (err) {
-      notify(err.message);
+      notify(err.message || 'Driver invitation was not revoked');
     } finally {
       setBusy('');
     }
@@ -111,41 +104,56 @@ export default function DriverOperationsPanel({ fleet = [], notify }) {
           <span>{busy === 'invite' ? 'Inviting...' : 'Invite Driver'}</span>
         </button>
       </form>
-      <div className="shipment-stack">
-        {drivers.map((driver) => {
-          const assignment = assignments.find((item) => String(item.driver?._id || item.driver) === String(driver._id));
-          return (
-            <article className="shipment-row" key={driver._id}>
-              <div>
-                <span className="badge success">
-                  <ShieldCheck size={12} /> Active driver
-                </span>
-                <h3>{driverName(driver)}</h3>
-                <p>{driver.email}</p>
-                <small>{assignment?.truck?.plateNumber || 'No vehicle assigned'}</small>
-              </div>
-              <label className="field compact-driver-select">
-                <span>
-                  <Truck size={13} /> Vehicle
-                </span>
-                <select
-                  value={assignment?.truck?._id || ''}
-                  disabled={busy === `assign-${driver._id}`}
-                  onChange={(event) => assign(driver._id, event.target.value)}
-                >
-                  <option value="">Choose vehicle</option>
-                  {fleet.map((truck) => (
-                    <option key={truck.id} value={truck.id}>
-                      {truck.plate} · {truck.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </article>
-          );
-        })}
-        {!drivers.length ? <p className="muted-note">Invite a driver to create a job-scoped account.</p> : null}
-      </div>
+
+      {driversQuery.isPending ? (
+        <AsyncState compact title="Loading drivers..." detail="Checking invitations and vehicle assignments." />
+      ) : driversQuery.isError ? (
+        <AsyncState
+          compact
+          title="Drivers could not be loaded"
+          detail={driversQuery.error?.message || 'Try loading your fleet access records again.'}
+          onRetry={() => driversQuery.refetch()}
+        />
+      ) : (
+        <div className="shipment-stack">
+          {drivers.map((driver) => {
+            const assignment = assignments.find(
+              (item) => String(item.driver?._id || item.driver) === String(driver._id)
+            );
+            return (
+              <article className="shipment-row" key={driver._id}>
+                <div>
+                  <span className="badge success">
+                    <ShieldCheck size={12} /> Active driver
+                  </span>
+                  <h3>{driverName(driver)}</h3>
+                  <p>{driver.email}</p>
+                  <small>{assignment?.truck?.plateNumber || 'No vehicle assigned'}</small>
+                </div>
+                <label className="field compact-driver-select">
+                  <span>
+                    <Truck size={13} /> Vehicle
+                  </span>
+                  <select
+                    value={assignment?.truck?._id || ''}
+                    disabled={busy === `assign-${driver._id}`}
+                    onChange={(event) => assign(driver._id, event.target.value)}
+                  >
+                    <option value="">{assignment ? 'Remove vehicle assignment' : 'Choose vehicle'}</option>
+                    {fleet.map((truck) => (
+                      <option key={truck.id} value={truck.id}>
+                        {truck.plate} · {truck.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </article>
+            );
+          })}
+          {!drivers.length ? <p className="muted-note">Invite a driver to create a job-scoped account.</p> : null}
+        </div>
+      )}
+
       {invitations
         .filter((item) => item.status === 'pending')
         .map((invitation) => (

@@ -1,8 +1,11 @@
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import PaymentsPage from './PaymentsPage.jsx';
 import { server } from '../test/mocks/server.js';
 import { http, HttpResponse } from 'msw';
+import { renderWithQuery } from '../test/renderWithQuery.jsx';
+
+const render = renderWithQuery;
 
 const mockNotify = vi.fn();
 
@@ -42,12 +45,13 @@ describe('PaymentsPage Interaction & Verification Tests', () => {
   });
 
   test('Shipper: renders metrics, wallet balances, and funds shipment escrow via wallet', async () => {
+    let balance = 3000;
     server.use(
       http.get('*/api/payments/wallet', () => {
         return HttpResponse.json({
-          balance: 3000,
+          balance,
           wallet: {
-            balance: 3000
+            balance
           }
         });
       }),
@@ -73,6 +77,7 @@ describe('PaymentsPage Interaction & Verification Tests', () => {
         });
       }),
       http.post('*/api/payments/bookings/:bookingId/escrow', () => {
+        balance = 1500;
         return HttpResponse.json({
           success: true,
           balance: 1500,
@@ -102,8 +107,7 @@ describe('PaymentsPage Interaction & Verification Tests', () => {
 
     render(<PaymentsPage notify={mockNotify} user={clientUser} />);
 
-    await screen.findByText('Booking Funding');
-    expect(screen.getAllByText('USD 3,000')[0]).toBeInTheDocument(); // wallet balance
+    expect((await screen.findAllByText('USD 3,000'))[0]).toBeInTheDocument(); // wallet balance
 
     // Click "Wallet" button to fund escrow
     const walletBtn = screen.getByRole('button', { name: 'Wallet' });
@@ -157,7 +161,7 @@ describe('PaymentsPage Interaction & Verification Tests', () => {
     );
 
     render(<PaymentsPage notify={mockNotify} user={clientUser} />);
-    await screen.findByText('Booking Funding');
+    await screen.findByRole('button', { name: 'Mobile' });
 
     // Click "Mobile" button to open modal
     const mobileBtn = screen.getByRole('button', { name: 'Mobile' });
@@ -179,10 +183,12 @@ describe('PaymentsPage Interaction & Verification Tests', () => {
   });
 
   test('Owner: withdraws earnings form submission', async () => {
+    let balance = 1000;
     server.use(
-      http.get('*/api/payments/wallet', () => HttpResponse.json({ balance: 1000 })),
+      http.get('*/api/payments/wallet', () => HttpResponse.json({ balance })),
       http.get('*/api/bookings', () => HttpResponse.json({ bookings: [] })),
       http.post('*/api/payments/withdraw', () => {
+        balance = 800;
         return HttpResponse.json({
           success: true,
           transaction: {
@@ -196,7 +202,7 @@ describe('PaymentsPage Interaction & Verification Tests', () => {
     );
 
     render(<PaymentsPage notify={mockNotify} user={ownerUser} />);
-    await screen.findByText('Withdraw Earnings');
+    await screen.findAllByText('USD 1,000');
 
     // Fill form
     fireEvent.change(screen.getByLabelText('Amount USD'), { target: { value: '200' } });
@@ -214,10 +220,12 @@ describe('PaymentsPage Interaction & Verification Tests', () => {
   });
 
   test('Admin: topups wallet balance via topup modal', async () => {
+    let balance = 5000;
     server.use(
-      http.get('*/api/payments/wallet', () => HttpResponse.json({ balance: 5000 })),
+      http.get('*/api/payments/wallet', () => HttpResponse.json({ balance })),
       http.get('*/api/bookings', () => HttpResponse.json({ bookings: [] })),
       http.post('*/api/payments/wallet/credit', () => {
+        balance = 6000;
         return HttpResponse.json({
           id: 'tx-credit',
           type: 'Credit',
@@ -231,7 +239,7 @@ describe('PaymentsPage Interaction & Verification Tests', () => {
     );
 
     render(<PaymentsPage notify={mockNotify} user={adminUser} />);
-    await screen.findByText('Admin Wallet Adjustment');
+    await screen.findAllByText('USD 5,000');
 
     // Open topup modal
     const creditBtn = screen.getByRole('button', { name: 'Credit Admin Wallet' });
@@ -253,5 +261,46 @@ describe('PaymentsPage Interaction & Verification Tests', () => {
     });
     // Wallet balance should update to 6000
     expect(screen.getAllByText('USD 6,000')[0]).toBeInTheDocument();
+  });
+
+  test('keeps the authoritative wallet balance when withdrawal submission fails', async () => {
+    server.use(
+      http.get('*/api/payments/wallet', () => HttpResponse.json({ balance: 1000, transactions: [] })),
+      http.get('*/api/bookings', () => HttpResponse.json({ bookings: [] })),
+      http.post('*/api/payments/withdraw', () =>
+        HttpResponse.json({ message: 'Payout provider is unavailable' }, { status: 503 })
+      )
+    );
+
+    render(<PaymentsPage notify={mockNotify} user={ownerUser} />);
+    await screen.findAllByText('USD 1,000');
+    fireEvent.change(screen.getByLabelText('Amount USD'), { target: { value: '200' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
+
+    await waitFor(() => expect(mockNotify).toHaveBeenCalledWith('Payout provider is unavailable'));
+    expect(screen.getAllByText('USD 1,000')[0]).toBeInTheDocument();
+    expect(screen.queryByText('USD 800')).not.toBeInTheDocument();
+  });
+
+  test('shows independent retry states for wallet and payment booking failures', async () => {
+    let failing = true;
+    server.use(
+      http.get('*/api/payments/wallet', () =>
+        failing ? new HttpResponse(null, { status: 500 }) : HttpResponse.json({ balance: 25, transactions: [] })
+      ),
+      http.get('*/api/bookings', () =>
+        failing ? new HttpResponse(null, { status: 500 }) : HttpResponse.json({ bookings: [] })
+      )
+    );
+
+    render(<PaymentsPage notify={mockNotify} user={clientUser} />);
+    await screen.findByText('Wallet could not be loaded');
+    await screen.findByText('Payment bookings could not be loaded');
+    expect(screen.queryByText('ITK-1002')).not.toBeInTheDocument();
+
+    failing = false;
+    screen.getAllByRole('button', { name: 'Try again' }).forEach((button) => fireEvent.click(button));
+    expect(await screen.findByText('No payment bookings')).toBeInTheDocument();
+    expect((await screen.findAllByText('USD 25'))[0]).toBeInTheDocument();
   });
 });

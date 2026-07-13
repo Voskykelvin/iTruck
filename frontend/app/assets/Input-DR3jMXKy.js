@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-CdvZGgm7.js";var t=e();function n({label:e,value:n,onChange:r,type:i=`text`}){return(0,t.jsxs)(`label`,{className:`field`,children:[(0,t.jsx)(`span`,{children:e}),(0,t.jsx)(`input`,{type:i,value:n??``,onChange:e=>r(e.target.value)})]})}export{n as t};

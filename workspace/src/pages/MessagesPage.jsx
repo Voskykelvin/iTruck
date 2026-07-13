@@ -1,67 +1,57 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Send } from 'lucide-react';
-import { api } from '../api.js';
-import { demoShipments } from '../data.js';
+import io from 'socket.io-client';
 import Panel from '../components/Panel.jsx';
 import ChatBubble from '../components/ChatBubble.jsx';
 import EmptyState from '../components/EmptyState.jsx';
-import {
-  normalizeBookingShipment,
-  userIdFor,
-  readLocalChat,
-  normalizeWorkflowMessage,
-  persistLocalChat,
-  userDisplayName,
-  roleForUser
-} from '../utils/helpers.js';
-
-const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
-const workspaceShipments = DEMO_MODE ? demoShipments : [];
+import AsyncState from '../components/AsyncState.jsx';
+import { useBookings } from '../queries/commercial.js';
+import { useConversationCache, useMessages, useSendMessage } from '../queries/conversations.js';
+import { roleForUser, userDisplayName, userIdFor } from '../utils/helpers.js';
 
 export default function MessagesPage({ notify, user }) {
-  const [shipments, setShipments] = useState([]);
-  const [selected, setSelected] = useState(0);
-  const [messages, setMessages] = useState([]);
+  const [selectedId, setSelectedId] = useState('');
   const [draft, setDraft] = useState('');
-
-  useEffect(() => {
-    api
-      .listBookings()
-      .then((data) => Array.isArray(data.bookings) && setShipments(data.bookings.map(normalizeBookingShipment)))
-      .catch(() => setShipments(workspaceShipments));
-  }, []);
-
-  const shipment = shipments[selected] || shipments[0];
+  const bookingsQuery = useBookings();
+  const shipments = useMemo(() => bookingsQuery.data || [], [bookingsQuery.data]);
+  const shipment =
+    shipments.find((item) => String(item.bookingId || item.id) === String(selectedId)) || shipments[0] || null;
   const messageKey = shipment?.bookingId || shipment?.id || '';
-  const currentUserId = userIdFor(user);
+  const messagesQuery = useMessages(messageKey, user);
+  const sendMessageMutation = useSendMessage(user);
+  const receiveMessage = useConversationCache(user);
+  const messages = messagesQuery.data || [];
 
   useEffect(() => {
-    if (!shipment) return;
-    setMessages(readLocalChat(shipment));
-    api
-      .listMessages(messageKey)
-      .then((data) => {
-        const items = Array.isArray(data.items) ? data.items : [];
-        if (items.length) setMessages(items.map((item) => normalizeWorkflowMessage(item, user)));
-      })
-      .catch(() => {});
-  }, [messageKey, shipment, currentUserId, user]);
+    if (!shipment) {
+      setSelectedId('');
+      return;
+    }
+    setSelectedId((current) =>
+      shipments.some((item) => String(item.bookingId || item.id) === String(current))
+        ? current
+        : String(shipment.bookingId || shipment.id)
+    );
+  }, [shipment, shipments]);
+
+  useEffect(() => {
+    if (!messageKey) return undefined;
+    const socket = io(window.location.origin, {
+      withCredentials: true,
+      transports: ['websocket', 'polling']
+    });
+    socket.emit('join-booking', messageKey);
+    socket.on('message:new', (item) => receiveMessage(messageKey, item));
+    return () => socket.disconnect();
+  }, [messageKey, receiveMessage]);
 
   async function sendMessage(event) {
     event.preventDefault();
-    if (!shipment || !draft.trim()) return;
-
     const text = draft.trim();
-    setDraft('');
-    const next = [
-      ...messages,
-      { id: `message-${Date.now()}`, author: 'me', name: 'You', text, createdAt: new Date().toISOString() }
-    ];
-    setMessages(next);
-    persistLocalChat(shipment.id, next);
+    if (!shipment || !text) return;
 
     try {
-      await api.sendMessage({
+      await sendMessageMutation.mutateAsync({
         booking: shipment.bookingId,
         bookingId: shipment.bookingId,
         shipmentId: shipment.id,
@@ -70,11 +60,11 @@ export default function MessagesPage({ notify, user }) {
         senderId: userIdFor(user),
         senderName: userDisplayName(user),
         senderRole: roleForUser(user),
-        sender: 'me',
         status: 'sent'
       });
+      setDraft('');
     } catch (err) {
-      notify(err.message);
+      notify(err.message || 'Message was not sent');
     }
   }
 
@@ -82,32 +72,71 @@ export default function MessagesPage({ notify, user }) {
     <section className="tracking-layout">
       <Panel title="Threads" eyebrow="Shipments">
         <div className="tracking-list">
-          {shipments.map((item, index) => (
-            <button
-              className={index === selected ? 'active' : ''}
-              type="button"
-              key={item.id}
-              onClick={() => setSelected(index)}
-            >
-              <strong>{item.id}</strong>
-              <span>{item.route}</span>
-              <small>{item.status}</small>
-            </button>
-          ))}
-          {!shipments.length ? (
+          {bookingsQuery.isPending ? <AsyncState compact title="Loading conversations..." /> : null}
+          {bookingsQuery.isError ? (
+            <AsyncState
+              compact
+              title="Conversations could not be loaded"
+              detail={bookingsQuery.error?.message}
+              onRetry={() => bookingsQuery.refetch()}
+            />
+          ) : null}
+          {!bookingsQuery.isPending && !bookingsQuery.isError
+            ? shipments.map((item) => {
+                const identity = String(item.bookingId || item.id);
+                return (
+                  <button
+                    className={identity === String(messageKey) ? 'active' : ''}
+                    type="button"
+                    key={identity}
+                    onClick={() => setSelectedId(identity)}
+                  >
+                    <strong>{item.id}</strong>
+                    <span>{item.route}</span>
+                    <small>{item.status}</small>
+                  </button>
+                );
+              })
+            : null}
+          {!bookingsQuery.isPending && !bookingsQuery.isError && !shipments.length ? (
             <EmptyState title="No messages" detail="Messages attach to synced shipment records." />
           ) : null}
         </div>
       </Panel>
       <Panel title={shipment?.route || 'Messages'} eyebrow="In-house Text">
         <div className="chat-thread">
-          {messages.map((message) => (
-            <ChatBubble message={message} key={message.id} />
-          ))}
+          {messagesQuery.isPending ? <AsyncState compact title="Loading message history..." /> : null}
+          {messagesQuery.isError ? (
+            <AsyncState
+              compact
+              title="Message history could not be loaded"
+              detail={messagesQuery.error?.message}
+              onRetry={() => messagesQuery.refetch()}
+            />
+          ) : null}
+          {!messagesQuery.isPending && !messagesQuery.isError
+            ? messages.map((message) => <ChatBubble message={message} key={message.id} />)
+            : null}
+          {!messagesQuery.isPending && !messagesQuery.isError && shipment && !messages.length ? (
+            <EmptyState title="No messages in this thread" detail="Send the first update for this shipment." />
+          ) : null}
+          {!shipment && !bookingsQuery.isPending ? (
+            <EmptyState title="Select a shipment" detail="A synced shipment is required before messaging." />
+          ) : null}
         </div>
         <form className="chat-compose" onSubmit={sendMessage}>
-          <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Type a message..." />
-          <button className="primary" type="submit" aria-label="Send message">
+          <input
+            value={draft}
+            disabled={!shipment || sendMessageMutation.isPending}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="Type a message..."
+          />
+          <button
+            className="primary"
+            type="submit"
+            aria-label={sendMessageMutation.isPending ? 'Sending message' : 'Send message'}
+            disabled={!shipment || !draft.trim() || sendMessageMutation.isPending}
+          >
             <Send size={18} />
           </button>
         </form>

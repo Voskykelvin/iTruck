@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Wallet, CreditCard, PackageCheck, FileText } from 'lucide-react';
 import { api } from '../api.js';
-import { demoShipments } from '../data.js';
 import MetricCard from '../components/MetricCard.jsx';
 import Panel from '../components/Panel.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -10,42 +9,34 @@ import Input from '../components/Input.jsx';
 import Select from '../components/Select.jsx';
 import WalletTopupModal from '../components/modals/WalletTopupModal.jsx';
 import MobileMoneyEscrowModal from '../components/modals/MobileMoneyEscrowModal.jsx';
-import { roleForUser, roleName, money, statusLabel, paymentTone, normalizeBookingShipment } from '../utils/helpers.js';
-
-const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
-const workspaceShipments = DEMO_MODE ? demoShipments : [];
+import AsyncState from '../components/AsyncState.jsx';
+import { useBookings } from '../queries/commercial.js';
+import { useDownloadDocument } from '../queries/documents.js';
+import { usePaymentAction, useWalletAccount } from '../queries/payments.js';
+import { roleForUser, roleName, money, statusLabel, paymentTone } from '../utils/helpers.js';
 
 export default function PaymentsPage({ notify, user }) {
   const role = roleForUser(user);
-  const [walletBalance, setWalletBalance] = useState(0);
-  const [shipments, setShipments] = useState([]);
-  const [withdrawBusy, setWithdrawBusy] = useState(false);
-  const [paymentBusy, setPaymentBusy] = useState('');
   const [topupOpen, setTopupOpen] = useState(false);
-  const [topupBusy, setTopupBusy] = useState(false);
   const [mobileMoneyTarget, setMobileMoneyTarget] = useState(null);
-  const [mobileMoneyBusy, setMobileMoneyBusy] = useState(false);
-  const [walletTransactions, setWalletTransactions] = useState([]);
   const [withdrawDraft, setWithdrawDraft] = useState({
     amount: 100,
     method: 'mpesa',
     destination: '+254700000000',
     accountName: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'iTruck User'
   });
-
-  useEffect(() => {
-    api
-      .wallet()
-      .then((data) => {
-        if (Number.isFinite(Number(data.balance))) setWalletBalance(Number(data.balance));
-        if (Array.isArray(data.transactions)) setWalletTransactions(data.transactions);
-      })
-      .catch(() => {});
-    api
-      .listBookings()
-      .then((data) => Array.isArray(data.bookings) && setShipments(data.bookings.map(normalizeBookingShipment)))
-      .catch(() => setShipments(workspaceShipments));
-  }, []);
+  const walletQuery = useWalletAccount();
+  const bookingsQuery = useBookings();
+  const fundEscrow = usePaymentAction(({ bookingId, amount }) => api.fundEscrow(bookingId, { amount }));
+  const initiateMobileMoney = usePaymentAction(({ bookingId, amount, method, phone }) =>
+    api.initiateMobileMoneyEscrow(bookingId, { amount, method, phone })
+  );
+  const withdraw = usePaymentAction((payload) => api.withdraw(payload));
+  const creditWallet = usePaymentAction((payload) => api.creditWallet(payload));
+  const invoiceDownload = useDownloadDocument();
+  const walletBalance = walletQuery.data?.balance || 0;
+  const walletTransactions = walletQuery.data?.transactions || [];
+  const shipments = bookingsQuery.data || [];
 
   const escrowedCount = shipments.filter((shipment) =>
     ['escrowed', 'release_pending', 'released'].includes(shipment.paymentStatus)
@@ -54,29 +45,6 @@ export default function PaymentsPage({ notify, user }) {
 
   function updateWithdraw(key, value) {
     setWithdrawDraft((current) => ({ ...current, [key]: value }));
-  }
-
-  function recordTransaction(transaction) {
-    if (!transaction) return;
-    const transactionId =
-      transaction._id || transaction.id || transaction.reference || `${transaction.type}-${Date.now()}`;
-    setWalletTransactions((current) =>
-      [
-        transaction,
-        ...current.filter((item) => String(item._id || item.id || item.reference) !== String(transactionId))
-      ].slice(0, 12)
-    );
-  }
-
-  function replaceShipment(booking) {
-    if (!booking) return null;
-    const updated = normalizeBookingShipment(booking);
-    setShipments((current) =>
-      current.map((shipment) =>
-        String(shipment.bookingId || shipment.id) === String(updated.bookingId || updated.id) ? updated : shipment
-      )
-    );
-    return updated;
   }
 
   function canFundShipment(shipment) {
@@ -100,18 +68,11 @@ export default function PaymentsPage({ notify, user }) {
       return;
     }
 
-    setPaymentBusy(`escrow-${shipment.bookingId}`);
     try {
-      const data = await api.fundEscrow(shipment.bookingId, { amount: shipment.amount });
-      const updated = replaceShipment(data.booking);
-      recordTransaction(data.transaction);
-      const nextBalance = Number(data.balance ?? data.transaction?.metadata?.walletBalance);
-      if (Number.isFinite(nextBalance)) setWalletBalance(nextBalance);
-      notify(data.alreadyFunded ? 'Escrow was already funded' : `Escrow funded for ${updated?.id || shipment.id}`);
+      const data = await fundEscrow.mutateAsync({ bookingId: shipment.bookingId, amount: shipment.amount });
+      notify(data.alreadyFunded ? 'Escrow was already funded' : `Escrow funded for ${shipment.id}`);
     } catch (err) {
       notify(err.message);
-    } finally {
-      setPaymentBusy('');
     }
   }
 
@@ -130,36 +91,36 @@ export default function PaymentsPage({ notify, user }) {
       return;
     }
 
-    setMobileMoneyBusy(true);
     try {
-      const data = await api.initiateMobileMoneyEscrow(mobileMoneyTarget.bookingId, {
+      const data = await initiateMobileMoney.mutateAsync({
+        bookingId: mobileMoneyTarget.bookingId,
         amount: mobileMoneyTarget.amount,
         method,
         phone
       });
-      replaceShipment(data.booking);
-      recordTransaction(data.transaction);
       setMobileMoneyTarget(null);
       notify(data.message || 'Mobile money authorization sent');
     } catch (err) {
       notify(err.message);
-    } finally {
-      setMobileMoneyBusy(false);
     }
   }
 
   async function requestWithdrawal(event) {
     event.preventDefault();
-    setWithdrawBusy(true);
+    const amount = Number(withdrawDraft.amount || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      notify('Enter a withdrawal amount greater than zero');
+      return;
+    }
+    if (amount > walletBalance) {
+      notify('Wallet balance is below the withdrawal amount');
+      return;
+    }
     try {
-      const data = await api.withdraw({ ...withdrawDraft, amount: Number(withdrawDraft.amount) });
-      setWalletBalance((current) => Math.max(0, current - Number(withdrawDraft.amount || 0)));
-      recordTransaction(data.transaction);
+      await withdraw.mutateAsync({ ...withdrawDraft, amount });
       notify('Withdrawal queued');
     } catch (err) {
       notify(err.message);
-    } finally {
-      setWithdrawBusy(false);
     }
   }
 
@@ -170,21 +131,28 @@ export default function PaymentsPage({ notify, user }) {
       return;
     }
 
-    setTopupBusy(true);
     try {
-      const transaction = await api.creditWallet({
+      await creditWallet.mutateAsync({
         amount: value,
         description: `${method} admin wallet adjustment`
       });
-      const nextBalance = Number(transaction?.metadata?.walletBalance);
-      if (Number.isFinite(nextBalance)) setWalletBalance(nextBalance);
-      recordTransaction(transaction);
       setTopupOpen(false);
       notify('Admin wallet credited');
     } catch (err) {
       notify(err.message);
-    } finally {
-      setTopupBusy(false);
+    }
+  }
+
+  async function downloadInvoice(shipment) {
+    if (!shipment.bookingId) {
+      notify('Invoice needs a synced booking');
+      return;
+    }
+    try {
+      await invoiceDownload.mutateAsync({ type: 'invoice', bookingId: shipment.bookingId });
+      notify(`Invoice downloaded for ${shipment.id}`);
+    } catch (err) {
+      notify(err.message);
     }
   }
 
@@ -192,11 +160,24 @@ export default function PaymentsPage({ notify, user }) {
     <section className="workspace-layout">
       <div className="stack">
         <section className="metrics-grid">
-          <MetricCard icon={Wallet} label="Wallet" value={money(walletBalance)} detail="Live payment balance" />
+          <MetricCard
+            icon={Wallet}
+            label="Wallet"
+            value={walletQuery.isError ? 'Unavailable' : money(walletBalance)}
+            detail={walletQuery.isPending ? 'Loading payment balance' : 'Live payment balance'}
+          />
           <MetricCard icon={CreditCard} label="Role" value={roleName(role)} detail="Payment mode" />
           <MetricCard icon={PackageCheck} label="Shipments" value={shipments.length} detail="Billing records" />
           <MetricCard icon={FileText} label="Escrow" value={escrowedCount} detail={`${payableCount} ready to fund`} />
         </section>
+        {walletQuery.isError ? (
+          <AsyncState
+            compact
+            title="Wallet could not be loaded"
+            detail={walletQuery.error?.message}
+            onRetry={() => walletQuery.refetch()}
+          />
+        ) : null}
         {role === 'admin' ? (
           <Panel title="Admin Wallet Adjustment" eyebrow="Funding">
             <div className="result-bar">
@@ -222,10 +203,19 @@ export default function PaymentsPage({ notify, user }) {
         )}
         <Panel title="Shipment Escrow" eyebrow="Bookings">
           <div className="bid-options payment-list">
-            {shipments.length ? (
+            {bookingsQuery.isPending ? (
+              <AsyncState compact title="Loading payment bookings..." />
+            ) : bookingsQuery.isError ? (
+              <AsyncState
+                compact
+                title="Payment bookings could not be loaded"
+                detail={bookingsQuery.error?.message}
+                onRetry={() => bookingsQuery.refetch()}
+              />
+            ) : shipments.length ? (
               shipments.map((shipment) => {
                 const canFund = canFundShipment(shipment);
-                const isBusy = paymentBusy === `escrow-${shipment.bookingId}`;
+                const isBusy = fundEscrow.isPending && fundEscrow.variables?.bookingId === shipment.bookingId;
                 const funded = ['escrowed', 'release_pending', 'released'].includes(shipment.paymentStatus);
                 const lowBalance = canFund && walletBalance < shipment.amount;
                 return (
@@ -245,18 +235,20 @@ export default function PaymentsPage({ notify, user }) {
                           <button
                             className={funded ? 'secondary' : 'primary'}
                             type="button"
-                            disabled={!canFund || lowBalance || isBusy}
+                            disabled={!canFund || lowBalance || isBusy || walletQuery.isPending || walletQuery.isError}
                             onClick={() => fundShipmentEscrow(shipment)}
                           >
                             {isBusy
                               ? 'Funding...'
-                              : funded
-                                ? 'Escrowed'
-                                : !canFund
-                                  ? 'Not Ready'
-                                  : lowBalance
-                                    ? 'Low Balance'
-                                    : 'Wallet'}
+                              : walletQuery.isPending
+                                ? 'Loading Balance'
+                                : funded
+                                  ? 'Escrowed'
+                                  : !canFund
+                                    ? 'Not Ready'
+                                    : lowBalance
+                                      ? 'Low Balance'
+                                      : 'Wallet'}
                           </button>
                           <button
                             className="secondary"
@@ -281,6 +273,34 @@ export default function PaymentsPage({ notify, user }) {
             )}
           </div>
         </Panel>
+        <Panel title="Wallet Activity" eyebrow="Transactions">
+          {walletQuery.isPending ? (
+            <AsyncState compact title="Loading wallet activity..." />
+          ) : walletQuery.isError ? (
+            <AsyncState
+              compact
+              title="Wallet activity could not be loaded"
+              detail={walletQuery.error?.message}
+              onRetry={() => walletQuery.refetch()}
+            />
+          ) : walletTransactions.length ? (
+            <div className="shipment-stack">
+              {walletTransactions.slice(0, 12).map((transaction) => (
+                <article className="shipment-row" key={transaction._id || transaction.id || transaction.reference}>
+                  <div>
+                    <StatusBadge>{statusLabel(transaction.status || 'pending')}</StatusBadge>
+                    <h3>{statusLabel(transaction.type || 'payment')}</h3>
+                    <p>{transaction.description || transaction.reference || 'Wallet transaction'}</p>
+                    {transaction.createdAt ? <small>{new Date(transaction.createdAt).toLocaleString()}</small> : null}
+                  </div>
+                  <strong>{money(transaction.amount)}</strong>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="No wallet activity" detail="Completed funding and payout records will appear here." />
+          )}
+        </Panel>
         <Panel title={role === 'owner' ? 'Withdraw Earnings' : 'Shipment Invoices'} eyebrow="Payments">
           {role === 'owner' ? (
             <form className="payout-form" onSubmit={requestWithdrawal}>
@@ -301,8 +321,12 @@ export default function PaymentsPage({ notify, user }) {
                 value={withdrawDraft.destination}
                 onChange={(value) => updateWithdraw('destination', value)}
               />
-              <button className="primary full" type="submit" disabled={withdrawBusy}>
-                {withdrawBusy ? 'Queuing...' : 'Withdraw'}
+              <button
+                className="primary full"
+                type="submit"
+                disabled={withdraw.isPending || walletQuery.isPending || walletQuery.isError}
+              >
+                {withdraw.isPending ? 'Queuing...' : walletQuery.isPending ? 'Loading wallet...' : 'Withdraw'}
               </button>
             </form>
           ) : (
@@ -311,15 +335,12 @@ export default function PaymentsPage({ notify, user }) {
                 <button
                   type="button"
                   key={shipment.id}
-                  onClick={() => {
-                    if (!shipment.bookingId) {
-                      notify('Invoice needs a synced booking');
-                      return;
-                    }
-                    api.downloadDocument('invoice', shipment.bookingId).catch((err) => notify(err.message));
-                  }}
+                  disabled={invoiceDownload.isPending && invoiceDownload.variables?.bookingId === shipment.bookingId}
+                  onClick={() => downloadInvoice(shipment)}
                 >
-                  {shipment.id} invoice
+                  {invoiceDownload.isPending && invoiceDownload.variables?.bookingId === shipment.bookingId
+                    ? `Opening ${shipment.id} invoice...`
+                    : `${shipment.id} invoice`}
                 </button>
               ))}
               {!shipments.length ? <span>No invoices yet</span> : null}
@@ -330,7 +351,7 @@ export default function PaymentsPage({ notify, user }) {
       {role === 'admin' && topupOpen ? (
         <WalletTopupModal
           balance={walletBalance}
-          busy={topupBusy}
+          busy={creditWallet.isPending}
           transactions={walletTransactions}
           onClose={() => setTopupOpen(false)}
           onTopup={topupWallet}
@@ -339,7 +360,7 @@ export default function PaymentsPage({ notify, user }) {
       {mobileMoneyTarget ? (
         <MobileMoneyEscrowModal
           shipment={mobileMoneyTarget}
-          busy={mobileMoneyBusy}
+          busy={initiateMobileMoney.isPending}
           onClose={() => setMobileMoneyTarget(null)}
           onSubmit={initiateMobileMoneyEscrow}
         />

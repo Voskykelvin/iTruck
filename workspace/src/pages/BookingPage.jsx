@@ -5,9 +5,10 @@ import Input from '../components/Input.jsx';
 import TextArea from '../components/TextArea.jsx';
 import Select from '../components/Select.jsx';
 import Panel from '../components/Panel.jsx';
+import AsyncState from '../components/AsyncState.jsx';
+import { useBookingEstimate, useCreateBooking, useTrucks } from '../queries/commercial.js';
 import {
   defaultBooking,
-  fallbackEstimate,
   money,
   documentActionFor,
   saveLocal,
@@ -18,34 +19,46 @@ import {
   documentActions
 } from '../utils/helpers.js';
 
-export default function BookingPage({ notify }) {
+export default function BookingPage({ notify, route = '/app/book' }) {
   const [form, setForm] = useState(defaultBooking);
-  const [estimate, setEstimate] = useState(null);
-  const [saving, setSaving] = useState(false);
   const [ack, setAck] = useState(false);
   const [quoteDocument, setQuoteDocument] = useState(null);
   const [quoteDocBusy, setQuoteDocBusy] = useState('');
   const quoteUploadInputRef = useRef(null);
   const pendingQuoteUploadRef = useRef(null);
+
+  const requestedTruckKey = useMemo(() => new URLSearchParams(route.split('?')[1] || '').get('truck') || '', [route]);
+  const preferenceQuery = useTrucks(
+    { verified: true, isAvailable: true, limit: 50 },
+    { enabled: Boolean(requestedTruckKey) }
+  );
+  const requestedTruck = useMemo(() => {
+    if (!requestedTruckKey) return null;
+    return (preferenceQuery.data || []).find((truck) =>
+      [truck.id, truck.plate].some((value) => String(value) === requestedTruckKey)
+    );
+  }, [preferenceQuery.data, requestedTruckKey]);
+  const requestedTruckError = useMemo(() => {
+    if (!requestedTruckKey || preferenceQuery.isPending) return '';
+    if (preferenceQuery.isError) return preferenceQuery.error?.message || 'Carrier preference could not be loaded.';
+    if (!requestedTruck) return 'That carrier is no longer verified and available. Choose another vehicle.';
+    return '';
+  }, [preferenceQuery.error, preferenceQuery.isError, preferenceQuery.isPending, requestedTruck, requestedTruckKey]);
+  const estimatePayload = useMemo(() => ({ ...form, crossBorder: form.border === 'Cross-border' }), [form]);
+  const estimateQuery = useBookingEstimate(estimatePayload);
+  const estimate = estimateQuery.data;
+  const createBooking = useCreateBooking();
   const quoteDocuments = useMemo(
     () => [...new Set([...(estimate?.requiredDocuments || []), ...demoDocuments])],
     [estimate]
   );
 
   useEffect(() => {
-    let active = true;
-    const payload = { ...form, crossBorder: form.border === 'Cross-border' };
-    const timer = window.setTimeout(() => {
-      api
-        .estimate(payload)
-        .then((data) => active && setEstimate(data))
-        .catch(() => active && setEstimate(fallbackEstimate(payload)));
-    }, 450);
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [form]);
+    if (!requestedTruck?.type) return;
+    setForm((current) =>
+      current.vehicleType === requestedTruck.type ? current : { ...current, vehicleType: requestedTruck.type }
+    );
+  }, [requestedTruck]);
 
   function update(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -136,21 +149,19 @@ export default function BookingPage({ notify }) {
       ...form,
       ...(estimate?.route || {}),
       estimate,
+      ...(requestedTruck?.id ? { requestedTruck: requestedTruck.id } : {}),
       quoteAcknowledged: true
     };
-    setSaving(true);
+    createBooking.reset();
     try {
-      await api.createBooking(payload);
+      await createBooking.mutateAsync(payload);
       notify('Booking request created');
       navigate('/app/shipper');
     } catch (err) {
       if (import.meta.env.NODE_ENV === 'development') {
         console.error('Booking submission failed:', err);
       }
-      saveLocal('bookings', payload);
-      notify('Sign in to save this booking to your account');
-    } finally {
-      setSaving(false);
+      notify(err.message || 'Booking request was not created. Review the form and try again.');
     }
   }
 
@@ -165,6 +176,41 @@ export default function BookingPage({ notify }) {
         style={{ display: 'none' }}
       />
       <section className="form-sections">
+        {requestedTruck ? (
+          <section className="truck-profile-panel" aria-label="Requested carrier preference">
+            <div>
+              <p className="eyebrow">Carrier preference</p>
+              <h2>{requestedTruck.name}</h2>
+              <p>
+                {requestedTruck.plate} · {requestedTruck.type}. This preference is saved with the request; final
+                assignment still requires an eligible carrier award.
+              </p>
+            </div>
+            <button
+              className="ghost"
+              type="button"
+              onClick={() => {
+                navigate('/app/book');
+              }}
+            >
+              Clear preference
+            </button>
+          </section>
+        ) : null}
+        {requestedTruckKey && preferenceQuery.isPending ? (
+          <section className="async-state compact" role="status" aria-live="polite">
+            <strong>Checking carrier availability...</strong>
+          </section>
+        ) : null}
+        {requestedTruckError ? (
+          <AsyncState
+            compact
+            title="Carrier preference unavailable"
+            detail={requestedTruckError}
+            actionLabel={preferenceQuery.isError ? 'Retry availability check' : 'Choose another carrier'}
+            onRetry={preferenceQuery.isError ? () => preferenceQuery.refetch() : () => navigate('/app/marketplace')}
+          />
+        ) : null}
         <Panel title="Route" eyebrow="Step 1">
           <div className="form-grid">
             <Input label="Pickup" value={form.pickup} onChange={(value) => update('pickup', value)} />
@@ -275,6 +321,28 @@ export default function BookingPage({ notify }) {
 
       <aside className="quote-panel">
         <Panel title="Quote Review" eyebrow="Live Estimate">
+          {estimateQuery.isPending ? (
+            <p className="refresh-status" role="status">
+              Calculating live quote...
+            </p>
+          ) : null}
+          {estimateQuery.isFetching && !estimateQuery.isPending ? (
+            <p className="refresh-status" role="status">
+              Updating live quote...
+            </p>
+          ) : null}
+          {estimateQuery.isError ? (
+            <AsyncState
+              compact
+              title={estimate ? 'Quote refresh failed' : 'Live quote unavailable'}
+              detail={
+                estimate
+                  ? 'The last live quote remains visible while you retry.'
+                  : estimateQuery.error?.message || 'Pricing could not be calculated.'
+              }
+              onRetry={() => estimateQuery.refetch()}
+            />
+          ) : null}
           <div className="estimate-total">
             <span>{estimate?.confidence || 'medium'} confidence</span>
             <strong>{money(estimate?.total, estimate?.currency)}</strong>
@@ -316,9 +384,16 @@ export default function BookingPage({ notify }) {
             <input type="checkbox" checked={ack} onChange={(event) => setAck(event.target.checked)} />
             <span>I reviewed fees, optional services, and required documents.</span>
           </label>
-          <button className="primary full icon-label" type="submit" disabled={saving}>
+          {createBooking.isError ? (
+            <AsyncState
+              compact
+              title="Booking request was not created"
+              detail={createBooking.error?.message || 'Review the form and try again.'}
+            />
+          ) : null}
+          <button className="primary full icon-label" type="submit" disabled={createBooking.isPending}>
             <Send size={18} />
-            <span>{saving ? 'Submitting...' : 'Confirm Booking'}</span>
+            <span>{createBooking.isPending ? 'Submitting...' : 'Confirm Booking'}</span>
           </button>
         </Panel>
       </aside>

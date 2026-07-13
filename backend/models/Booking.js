@@ -116,6 +116,7 @@ const bookingSchema = new mongoose.Schema(
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     driver: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     truck: { type: mongoose.Schema.Types.ObjectId, ref: 'Truck' },
+    requestedTruck: { type: mongoose.Schema.Types.ObjectId, ref: 'Truck' },
     pickup: String,
     destination: String,
     pickupCoordinates: {
@@ -302,6 +303,7 @@ bookingSchema.index({ paymentStatus: 1, updatedAt: -1 });
 bookingSchema.index({ disputeCase: 1 }, { sparse: true });
 bookingSchema.index({ paymentReference: 1 }, { sparse: true });
 bookingSchema.index({ truck: 1, createdAt: -1 });
+bookingSchema.index({ requestedTruck: 1, createdAt: -1 });
 bookingSchema.index({ 'bids.owner': 1, createdAt: -1 });
 bookingSchema.index({ 'documents.type': 1 });
 bookingSchema.index({ loadMode: 1, routeKey: 1, status: 1, pickupDate: 1 });

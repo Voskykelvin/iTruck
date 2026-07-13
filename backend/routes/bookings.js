@@ -44,6 +44,7 @@ const {
   canManageBookingStatus
 } = require('../services/bookingAccess');
 const { recordAudit } = require('../services/audit');
+const { demoTrucks } = require('../data/demo-users');
 
 const router = express.Router();
 router.use(protect);
@@ -382,6 +383,10 @@ router.get('/', listBookingsSchema, validate, async (req, res, next) => {
     res.json({
       bookings: await Booking.find(q)
         .populate('driver', 'firstName lastName email phone role')
+        .populate(
+          'requestedTruck',
+          'type make model plateNumber capacityTonnes ratingAverage ratingCount isVerified isAvailable'
+        )
         .populate('bids.owner', 'firstName lastName company rating ratingCount isVerified')
         .populate('bids.truck', 'type make model plateNumber capacityTonnes ratingAverage ratingCount isVerified')
         .sort('-createdAt')
@@ -431,6 +436,10 @@ router.get('/:id', bookingIdSchema, validate, async (req, res, next) => {
 
     const booking = await Booking.findById(req.params.id)
       .populate('truck owner client driver')
+      .populate(
+        'requestedTruck',
+        'type make model plateNumber capacityTonnes ratingAverage ratingCount isVerified isAvailable'
+      )
       .populate('bids.owner', 'firstName lastName company rating ratingCount isVerified')
       .populate('bids.truck', 'type make model plateNumber capacityTonnes ratingAverage ratingCount isVerified');
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
@@ -447,6 +456,16 @@ router.post('/', createBookingSchema, validate, async (req, res, next) => {
     if (requireDatabase(req, res)) return;
 
     if (!mongoReady()) {
+      if (payload.requestedTruck) {
+        const requestedTruck = demoTrucks.find(
+          (truck) =>
+            String(truck._id || truck.id) === String(payload.requestedTruck) &&
+            truck.isVerified === true &&
+            truck.isAvailable !== false &&
+            !truck.archivedAt
+        );
+        if (!requestedTruck) return res.status(409).json({ message: 'Requested carrier is no longer available' });
+      }
       const booking = {
         _id: `ITK-${Date.now().toString().slice(-6)}`,
         ...payload,
@@ -458,6 +477,16 @@ router.post('/', createBookingSchema, validate, async (req, res, next) => {
       };
       memoryBookings.unshift(booking);
       return res.status(201).json({ booking, mode: 'memory' });
+    }
+
+    if (payload.requestedTruck) {
+      const requestedTruck = await Truck.exists({
+        _id: payload.requestedTruck,
+        archivedAt: null,
+        isVerified: true,
+        isAvailable: true
+      });
+      if (!requestedTruck) return res.status(409).json({ message: 'Requested carrier is no longer available' });
     }
 
     res.status(201).json({ booking: await Booking.create({ ...payload, client: req.user._id, status: 'bidding' }) });

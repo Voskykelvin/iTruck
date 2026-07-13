@@ -8,7 +8,15 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import Panel from '../components/Panel.jsx';
 import DocumentSlotButton from '../components/DocumentSlotButton.jsx';
 import Input from '../components/Input.jsx';
+import AsyncState from '../components/AsyncState.jsx';
 import { useCurrentUserPolling } from '../hooks/usePolling.js';
+import { useDocumentAction } from '../queries/documents.js';
+import { useUpdateProfile } from '../queries/operations.js';
+import {
+  useNotificationPreferences,
+  useSendTestNotification,
+  useUpdateNotificationPreferences
+} from '../queries/notifications.js';
 import {
   roleForUser,
   profileDocumentsForRole,
@@ -36,6 +44,10 @@ export default function ProfilePage({ notify, route, user, setUser, signOut }) {
   const [pendingDocument, setPendingDocument] = useState('');
   const pendingDocumentRef = useRef('');
   const documentInputRef = useRef(null);
+  const profileDocumentUpload = useDocumentAction(({ documentType, file }) =>
+    api.uploadProfileDocument(documentType, file)
+  );
+  const profileUpdate = useUpdateProfile();
   const profileDetailsRef = useRef(null);
   const signedIn = Boolean(user.email);
   const driverInvitationToken = new URLSearchParams(route.split('?')[1] || '').get('driverInvite') || '';
@@ -48,20 +60,16 @@ export default function ProfilePage({ notify, route, user, setUser, signOut }) {
     country: user.country || '',
     company: user.company || ''
   }));
-  const [profileSaving, setProfileSaving] = useState(false);
   const [notificationPreferences, setNotificationPreferences] = useState(defaultNotificationPreferences);
-  const [notificationPreferencesSaving, setNotificationPreferencesSaving] = useState(false);
-  const [notificationTestBusy, setNotificationTestBusy] = useState(false);
+  const notificationPreferencesQuery = useNotificationPreferences(user, { enabled: signedIn });
+  const updateNotificationPreferencesMutation = useUpdateNotificationPreferences(user);
+  const sendTestNotificationMutation = useSendTestNotification();
 
   useCurrentUserPolling(signedIn, setUser, 30000);
 
   useEffect(() => {
-    if (!signedIn) return;
-    api
-      .notificationPreferences()
-      .then((data) => data.preferences && setNotificationPreferences(data.preferences))
-      .catch((err) => notify(err.message || 'Unable to load notification preferences'));
-  }, [notify, signedIn]);
+    if (notificationPreferencesQuery.data) setNotificationPreferences(notificationPreferencesQuery.data);
+  }, [notificationPreferencesQuery.data]);
 
   const selectPendingDocument = useCallback((item) => {
     pendingDocumentRef.current = item;
@@ -228,7 +236,10 @@ export default function ProfilePage({ notify, route, user, setUser, signOut }) {
 
     setUploadingDocument(documentType);
     try {
-      const data = await api.uploadProfileDocument(normalizeProfileDocumentType(documentType, activeUserRole), file);
+      const data = await profileDocumentUpload.mutateAsync({
+        documentType: normalizeProfileDocumentType(documentType, activeUserRole),
+        file
+      });
       if (data.user) {
         setSession({ user: data.user });
         setUser(data.user);
@@ -247,12 +258,11 @@ export default function ProfilePage({ notify, route, user, setUser, signOut }) {
 
   async function saveProfileDetails(event) {
     event.preventDefault();
-    setProfileSaving(true);
     try {
       const payload = Object.fromEntries(
         Object.entries(profileDraft).map(([key, value]) => [key, String(value || '').trim()])
       );
-      const data = await api.updateProfile(payload);
+      const data = await profileUpdate.mutateAsync(payload);
       if (data.user) {
         setSession({ user: data.user });
         setUser(data.user);
@@ -260,8 +270,6 @@ export default function ProfilePage({ notify, route, user, setUser, signOut }) {
       notify('Profile details updated');
     } catch (err) {
       notify(err.message);
-    } finally {
-      setProfileSaving(false);
     }
   }
 
@@ -277,27 +285,21 @@ export default function ProfilePage({ notify, route, user, setUser, signOut }) {
 
   async function saveNotificationPreferences(event) {
     event.preventDefault();
-    setNotificationPreferencesSaving(true);
     try {
-      const data = await api.updateNotificationPreferences(notificationPreferences);
+      const data = await updateNotificationPreferencesMutation.mutateAsync(notificationPreferences);
       if (data.preferences) setNotificationPreferences(data.preferences);
       notify('Notification preferences saved');
     } catch (err) {
       notify(err.message || 'Unable to save notification preferences');
-    } finally {
-      setNotificationPreferencesSaving(false);
     }
   }
 
   async function sendNotificationTest() {
-    setNotificationTestBusy(true);
     try {
-      await api.sendTestNotification();
+      await sendTestNotificationMutation.mutateAsync();
       notify('Test notification queued');
     } catch (err) {
       notify(err.message || 'Unable to queue test notification');
-    } finally {
-      setNotificationTestBusy(false);
     }
   }
 
@@ -573,9 +575,9 @@ export default function ProfilePage({ notify, route, user, setUser, signOut }) {
                   onChange={(value) => updateProfileDraft('company', value)}
                 />
               </div>
-              <button className="primary icon-label" type="submit" disabled={profileSaving}>
+              <button className="primary icon-label" type="submit" disabled={profileUpdate.isPending}>
                 <CheckCircle2 size={18} />
-                <span>{profileSaving ? 'Saving...' : 'Save details'}</span>
+                <span>{profileUpdate.isPending ? 'Saving...' : 'Save details'}</span>
               </button>
             </form>
           </Panel>
@@ -627,111 +629,133 @@ export default function ProfilePage({ notify, route, user, setUser, signOut }) {
       ) : null}
       {signedIn ? (
         <Panel title="Notifications" eyebrow="Preferences">
-          <form className="notification-preferences" onSubmit={saveNotificationPreferences}>
-            <div>
-              <strong>Delivery channels</strong>
-              <span>In-app alerts are immediate. Email and SMS are delivered by the configured providers.</span>
-            </div>
-            <div className="preference-toggle-grid">
-              {[
-                ['inApp', 'In-app'],
-                ['email', 'Email'],
-                ['sms', 'SMS']
-              ].map(([key, label]) => (
-                <label className="preference-toggle" key={key}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(notificationPreferences.channels?.[key])}
-                    onChange={(event) => updateNotificationPreference('channels', key, event.target.checked)}
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
-            </div>
-            <PushNotificationControl
-              notify={notify}
-              onChange={(enabled) => updateNotificationPreference('channels', 'push', enabled)}
+          {notificationPreferencesQuery.isPending ? (
+            <AsyncState compact title="Loading notification preferences..." />
+          ) : null}
+          {notificationPreferencesQuery.isError ? (
+            <AsyncState
+              compact
+              title="Notification preferences unavailable"
+              detail={notificationPreferencesQuery.error?.message}
+              onRetry={() => notificationPreferencesQuery.refetch()}
             />
-
-            <div>
-              <strong>Events</strong>
-              <span>Choose which activity can use your enabled channels.</span>
-            </div>
-            <div className="preference-toggle-grid">
-              {[
-                ['bookings', 'Bookings and bids'],
-                ['tracking', 'Tracking and delivery'],
-                ['documents', 'Documents and verification'],
-                ['payments', 'Payments'],
-                ['security', 'Security'],
-                ['system', 'System notices'],
-                ['marketing', 'Product announcements']
-              ].map(([key, label]) => (
-                <label className="preference-toggle" key={key}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(notificationPreferences.categories?.[key])}
-                    onChange={(event) => updateNotificationPreference('categories', key, event.target.checked)}
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
-            </div>
-
-            <label className="preference-toggle quiet-hours-toggle">
-              <input
-                type="checkbox"
-                checked={Boolean(notificationPreferences.quietHours?.enabled)}
-                onChange={(event) => updateNotificationPreference('quietHours', 'enabled', event.target.checked)}
-              />
-              <span>Use quiet hours</span>
-            </label>
-            {notificationPreferences.quietHours?.enabled ? (
-              <div className="form-grid">
-                <label className="field">
-                  <span>From</span>
-                  <input
-                    type="time"
-                    value={notificationPreferences.quietHours.start}
-                    onChange={(event) => updateNotificationPreference('quietHours', 'start', event.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>Until</span>
-                  <input
-                    type="time"
-                    value={notificationPreferences.quietHours.end}
-                    onChange={(event) => updateNotificationPreference('quietHours', 'end', event.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>Timezone</span>
-                  <input
-                    value={notificationPreferences.quietHours.timezone}
-                    onChange={(event) => updateNotificationPreference('quietHours', 'timezone', event.target.value)}
-                  />
-                </label>
-                <label className="preference-toggle">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(notificationPreferences.quietHours.allowHighPriority)}
-                    onChange={(event) =>
-                      updateNotificationPreference('quietHours', 'allowHighPriority', event.target.checked)
-                    }
-                  />
-                  <span>Allow urgent alerts during quiet hours</span>
-                </label>
+          ) : null}
+          {!notificationPreferencesQuery.isError ? (
+            <form className="notification-preferences" onSubmit={saveNotificationPreferences}>
+              <div>
+                <strong>Delivery channels</strong>
+                <span>In-app alerts are immediate. Email and SMS are delivered by the configured providers.</span>
               </div>
-            ) : null}
-            <div className="notification-preference-actions">
-              <button className="primary" type="submit" disabled={notificationPreferencesSaving}>
-                {notificationPreferencesSaving ? 'Saving...' : 'Save preferences'}
-              </button>
-              <button className="ghost" type="button" disabled={notificationTestBusy} onClick={sendNotificationTest}>
-                {notificationTestBusy ? 'Queuing...' : 'Send test'}
-              </button>
-            </div>
-          </form>
+              <div className="preference-toggle-grid">
+                {[
+                  ['inApp', 'In-app'],
+                  ['email', 'Email'],
+                  ['sms', 'SMS']
+                ].map(([key, label]) => (
+                  <label className="preference-toggle" key={key}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(notificationPreferences.channels?.[key])}
+                      onChange={(event) => updateNotificationPreference('channels', key, event.target.checked)}
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+              <PushNotificationControl
+                notify={notify}
+                onChange={(enabled) => updateNotificationPreference('channels', 'push', enabled)}
+              />
+
+              <div>
+                <strong>Events</strong>
+                <span>Choose which activity can use your enabled channels.</span>
+              </div>
+              <div className="preference-toggle-grid">
+                {[
+                  ['bookings', 'Bookings and bids'],
+                  ['tracking', 'Tracking and delivery'],
+                  ['documents', 'Documents and verification'],
+                  ['payments', 'Payments'],
+                  ['security', 'Security'],
+                  ['system', 'System notices'],
+                  ['marketing', 'Product announcements']
+                ].map(([key, label]) => (
+                  <label className="preference-toggle" key={key}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(notificationPreferences.categories?.[key])}
+                      onChange={(event) => updateNotificationPreference('categories', key, event.target.checked)}
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+
+              <label className="preference-toggle quiet-hours-toggle">
+                <input
+                  type="checkbox"
+                  checked={Boolean(notificationPreferences.quietHours?.enabled)}
+                  onChange={(event) => updateNotificationPreference('quietHours', 'enabled', event.target.checked)}
+                />
+                <span>Use quiet hours</span>
+              </label>
+              {notificationPreferences.quietHours?.enabled ? (
+                <div className="form-grid">
+                  <label className="field">
+                    <span>From</span>
+                    <input
+                      type="time"
+                      value={notificationPreferences.quietHours.start}
+                      onChange={(event) => updateNotificationPreference('quietHours', 'start', event.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Until</span>
+                    <input
+                      type="time"
+                      value={notificationPreferences.quietHours.end}
+                      onChange={(event) => updateNotificationPreference('quietHours', 'end', event.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Timezone</span>
+                    <input
+                      value={notificationPreferences.quietHours.timezone}
+                      onChange={(event) => updateNotificationPreference('quietHours', 'timezone', event.target.value)}
+                    />
+                  </label>
+                  <label className="preference-toggle">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(notificationPreferences.quietHours.allowHighPriority)}
+                      onChange={(event) =>
+                        updateNotificationPreference('quietHours', 'allowHighPriority', event.target.checked)
+                      }
+                    />
+                    <span>Allow urgent alerts during quiet hours</span>
+                  </label>
+                </div>
+              ) : null}
+              <div className="notification-preference-actions">
+                <button
+                  className="primary"
+                  type="submit"
+                  disabled={notificationPreferencesQuery.isPending || updateNotificationPreferencesMutation.isPending}
+                >
+                  {updateNotificationPreferencesMutation.isPending ? 'Saving...' : 'Save preferences'}
+                </button>
+                <button
+                  className="ghost"
+                  type="button"
+                  disabled={notificationPreferencesQuery.isPending || sendTestNotificationMutation.isPending}
+                  onClick={sendNotificationTest}
+                >
+                  {sendTestNotificationMutation.isPending ? 'Queuing...' : 'Send test'}
+                </button>
+              </div>
+            </form>
+          ) : null}
         </Panel>
       ) : null}
       {signedIn ? (

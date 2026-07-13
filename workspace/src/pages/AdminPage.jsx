@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { ShieldCheck, Truck, CreditCard, FileText } from 'lucide-react';
 import { api } from '../api.js';
 import MetricCard from '../components/MetricCard.jsx';
 import Panel from '../components/Panel.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import EmptyState from '../components/EmptyState.jsx';
-import { usePollingEffect } from '../hooks/usePolling.js';
+import AsyncState from '../components/AsyncState.jsx';
+import { useAdminWorkspace } from '../queries/admin.js';
 import {
-  mergeDocumentIndex,
   statusLabel,
   normalizeProfileDocumentType,
   normalizeBookingDocumentType,
@@ -21,8 +21,9 @@ import {
 } from '../utils/helpers.js';
 
 export default function AdminPage({ notify, user }) {
-  const [stats, setStats] = useState(null);
-  const [adminData, setAdminData] = useState({
+  const adminQuery = useAdminWorkspace();
+  const stats = adminQuery.data?.stats || null;
+  const adminData = adminQuery.data?.data || {
     users: [],
     trucks: [],
     bookings: [],
@@ -31,60 +32,14 @@ export default function AdminPage({ notify, user }) {
     cases: [],
     notificationDeliveries: [],
     logs: []
-  });
+  };
+  const adminErrors = adminQuery.data?.errors || [];
   const [busyAction, setBusyAction] = useState('');
   const [activeReview, setActiveReview] = useState('kyc');
   const [reviewNotes, setReviewNotes] = useState({});
   const [caseDrafts, setCaseDrafts] = useState({});
 
-  const loadAdminData = useCallback(async () => {
-    const [
-      statsResult,
-      usersResult,
-      trucksResult,
-      bookingsResult,
-      documentsResult,
-      paymentsResult,
-      casesResult,
-      deliveriesResult,
-      logsResult
-    ] = await Promise.allSettled([
-      api.adminStats(),
-      api.adminListUsers(),
-      api.adminListTrucks(),
-      api.adminListBookings(),
-      api.listDocuments({ limit: 100 }),
-      api.adminListPayments(),
-      api.adminCases({ limit: 100 }),
-      api.adminNotificationDeliveries(),
-      api.adminAuditLogs()
-    ]);
-
-    if (statsResult.status === 'fulfilled') setStats(statsResult.value);
-    else setStats(null);
-
-    const indexedDocuments = documentsResult.status === 'fulfilled' ? documentsResult.value.documents || [] : [];
-    const users = usersResult.status === 'fulfilled' ? usersResult.value.users || [] : [];
-    const trucks = trucksResult.status === 'fulfilled' ? trucksResult.value.trucks || [] : [];
-    const bookings = bookingsResult.status === 'fulfilled' ? bookingsResult.value.bookings || [] : [];
-
-    setAdminData({
-      users: mergeDocumentIndex(users, indexedDocuments, 'user'),
-      trucks: mergeDocumentIndex(trucks, indexedDocuments, 'truck'),
-      bookings: mergeDocumentIndex(bookings, indexedDocuments, 'booking'),
-      documents: indexedDocuments,
-      payments: paymentsResult.status === 'fulfilled' ? paymentsResult.value.transactions || [] : [],
-      cases: casesResult.status === 'fulfilled' ? casesResult.value.cases || [] : [],
-      notificationDeliveries: deliveriesResult.status === 'fulfilled' ? deliveriesResult.value.deliveries || [] : [],
-      logs: logsResult.status === 'fulfilled' ? logsResult.value.logs || [] : []
-    });
-  }, []);
-
-  useEffect(() => {
-    loadAdminData();
-  }, [loadAdminData]);
-
-  usePollingEffect(true, loadAdminData, 30000);
+  const loadAdminData = adminQuery.refetch;
 
   function recordId(record) {
     if (typeof record === 'string' || typeof record === 'number') return String(record);
@@ -435,8 +390,13 @@ export default function AdminPage({ notify, user }) {
 
   async function refreshAdminData() {
     await withAdminAction('refresh', async () => {
-      await loadAdminData();
-      notify('Admin review data refreshed');
+      const result = await loadAdminData();
+      const failures = result.data?.errors || [];
+      notify(
+        failures.length
+          ? `Admin data refreshed with ${failures.length} unavailable queue${failures.length === 1 ? '' : 's'}`
+          : 'Admin review data refreshed'
+      );
     });
   }
 
@@ -1670,8 +1630,30 @@ export default function AdminPage({ notify, user }) {
     return renderKycReview();
   }
 
+  if (adminQuery.isPending) {
+    return <AsyncState title="Loading admin review queues..." detail="Fetching live operational records." />;
+  }
+
+  if (adminQuery.isError) {
+    return (
+      <AsyncState
+        title="Admin review workspace unavailable"
+        detail={adminQuery.error?.message}
+        onRetry={() => adminQuery.refetch()}
+      />
+    );
+  }
+
   return (
     <div className="page-grid">
+      {adminErrors.length ? (
+        <AsyncState
+          compact
+          title={`${adminErrors.length} admin queue${adminErrors.length === 1 ? '' : 's'} unavailable`}
+          detail={adminErrors.map((error) => `${error.label}: ${error.message}`).join(' · ')}
+          onRetry={() => adminQuery.refetch()}
+        />
+      ) : null}
       <section className="metrics-grid">
         <MetricCard icon={ShieldCheck} label="Users" value={stats?.totalUsers ?? 0} detail="Registered accounts" />
         <MetricCard icon={Truck} label="Trucks" value={stats?.totalTrucks ?? 0} detail="Registered vehicles" />

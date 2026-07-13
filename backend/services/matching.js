@@ -243,15 +243,20 @@ function scoreTruck(truck, booking, remainingCapacity) {
   const distance =
     booking.pickupCoordinates && truck.location ? geoDistanceMeters(truck.location, booking.pickupCoordinates) : null;
   const proximity = distance === null ? 0.35 : Math.max(0, 1 - distance / 500_000);
-  const score = 25 + 20 * capacityFit + 20 * lane + 15 * rating + 10 * experience + 10 * proximity;
+  const requestedTruckId = booking.requestedTruck?._id || booking.requestedTruck;
+  const preferred = Boolean(requestedTruckId) && String(requestedTruckId) === String(truck._id);
+  const score =
+    25 + 20 * capacityFit + 20 * lane + 15 * rating + 10 * experience + 10 * proximity + (preferred ? 12 : 0);
   return {
     score: Number(Math.min(100, score).toFixed(2)),
+    preferred,
     capacityFit: Number(capacityFit.toFixed(3)),
     laneFit: Number(lane.toFixed(3)),
     pickupDistanceMeters: distance,
     remainingCapacityTonnes: capacity,
     reasons: [
       'Verified carrier and vehicle',
+      ...(preferred ? ['Shipper-preferred vehicle'] : []),
       lane >= 0.85 ? 'Strong route-history fit' : lane > 0 ? 'Partial route-history fit' : 'No recorded lane history',
       `${capacity.toFixed(1)} tonnes available`,
       distance === null ? 'Pickup proximity unavailable' : `${Math.round(distance / 1000)} km from pickup`

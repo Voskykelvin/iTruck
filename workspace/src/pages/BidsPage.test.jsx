@@ -1,8 +1,9 @@
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import BidsPage from './BidsPage.jsx';
 import { server } from '../test/mocks/server.js';
 import { http, HttpResponse } from 'msw';
+import { renderWithQuery as render } from '../test/renderWithQuery.jsx';
 
 const mockNotify = vi.fn();
 
@@ -83,8 +84,7 @@ describe('BidsPage Interaction & Verification Tests', () => {
     render(<BidsPage notify={mockNotify} user={ownerUser} />);
 
     // Renders "Available Loads" panel
-    await screen.findByText('Available Loads');
-    expect(screen.getByText('Machine parts')).toBeInTheDocument();
+    expect(await screen.findByText('Machine parts')).toBeInTheDocument();
 
     // Click "Review Bid" to open panel
     const reviewBtn = screen.getByRole('button', { name: 'Review Bid' });
@@ -104,9 +104,39 @@ describe('BidsPage Interaction & Verification Tests', () => {
     await waitFor(() => {
       expect(mockNotify).toHaveBeenCalledWith(expect.stringContaining('Bid submitted for Mombasa to Dar es Salaam'));
     });
+    expect(screen.queryByRole('button', { name: 'Review Bid' })).not.toBeInTheDocument();
   });
 
-  test('holds bid in My Bids locally when submission fails (Owner offline sync flow)', async () => {
+  test('reports available-load failures and retries without sample work', async () => {
+    let available = false;
+    server.use(
+      http.get('*/api/bookings/open', () =>
+        available
+          ? HttpResponse.json({
+              bookings: [
+                {
+                  id: 'ITK-RETRY',
+                  bookingId: 'ITK-RETRY',
+                  route: 'Accra to Kumasi',
+                  cargo: 'Retail goods',
+                  status: 'Bidding'
+                }
+              ]
+            })
+          : HttpResponse.json({ message: 'Opportunity service unavailable' }, { status: 503 })
+      )
+    );
+
+    render(<BidsPage notify={mockNotify} user={ownerUser} />);
+    expect(await screen.findByText('Available loads unavailable')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Review Bid' })).not.toBeInTheDocument();
+
+    available = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('button', { name: 'Review Bid' })).toBeInTheDocument();
+  });
+
+  test('keeps a failed bid open for retry without creating a local bid', async () => {
     server.use(
       http.get('*/api/bookings/open', () => {
         return HttpResponse.json({
@@ -131,8 +161,7 @@ describe('BidsPage Interaction & Verification Tests', () => {
 
     render(<BidsPage notify={mockNotify} user={ownerUser} />);
 
-    await screen.findByText('Available Loads');
-    const reviewBtn = screen.getByRole('button', { name: 'Review Bid' });
+    const reviewBtn = await screen.findByRole('button', { name: 'Review Bid' });
     fireEvent.click(reviewBtn);
 
     const input = screen.getByLabelText('Your bid amount USD');
@@ -145,8 +174,8 @@ describe('BidsPage Interaction & Verification Tests', () => {
       expect(mockNotify).toHaveBeenCalledWith('Request failed');
     });
 
-    // Check that it shows in My Bids
-    expect(screen.getByText('Mombasa to Dar es Salaam')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Place Bid' })).toBeInTheDocument();
+    expect(localStorage.getItem('itruck_bids')).toBeNull();
   });
 
   test('Owner: Accept counter', async () => {
@@ -425,10 +454,8 @@ describe('BidsPage Interaction & Verification Tests', () => {
     );
 
     render(<BidsPage notify={mockNotify} user={shipperUser} />);
-    await screen.findByText('Bids Received');
-
     // 1. Find verified trucks (matches)
-    const findTrucksBtn = screen.getByRole('button', { name: 'Find Verified Trucks' });
+    const findTrucksBtn = await screen.findByRole('button', { name: 'Find Verified Trucks' });
     fireEvent.click(findTrucksBtn);
     await screen.findByText(/KAA 123A/);
     expect(mockNotify).toHaveBeenCalledWith('1 verified truck matches found');
@@ -535,12 +562,11 @@ describe('BidsPage Interaction & Verification Tests', () => {
 
     // 1. Counter Bid
     render(<BidsPage notify={mockNotify} user={shipperUser} />);
-    await screen.findByText('Bids Received');
     window.prompt = vi.fn().mockImplementation((prompt) => {
       if (prompt.includes('amount')) return '1950';
       return 'Let us meet in the middle';
     });
-    const counterBtn = screen.getByRole('button', { name: 'Counter' });
+    const counterBtn = await screen.findByRole('button', { name: 'Counter' });
     fireEvent.click(counterBtn);
     await waitFor(() => {
       expect(mockNotify).toHaveBeenCalledWith('Counteroffer sent to carrier');
@@ -549,9 +575,8 @@ describe('BidsPage Interaction & Verification Tests', () => {
     // 2. Reject Bid
     cleanup();
     render(<BidsPage notify={mockNotify} user={shipperUser} />);
-    await screen.findByText('Bids Received');
     window.prompt = vi.fn().mockReturnValue('Outside budget');
-    const rejectBtn = screen.getByRole('button', { name: 'Reject' });
+    const rejectBtn = await screen.findByRole('button', { name: 'Reject' });
     fireEvent.click(rejectBtn);
     await waitFor(() => {
       expect(mockNotify).toHaveBeenCalledWith('Bid rejected with reason');
@@ -560,11 +585,11 @@ describe('BidsPage Interaction & Verification Tests', () => {
     // 3. Award Bid
     cleanup();
     render(<BidsPage notify={mockNotify} user={shipperUser} />);
-    await screen.findByText('Bids Received');
-    const awardBtn = screen.getByRole('button', { name: 'Award' });
+    const awardBtn = await screen.findByRole('button', { name: 'Award' });
     fireEvent.click(awardBtn);
     await waitFor(() => {
       expect(mockNotify).toHaveBeenCalledWith('Awarded Carrier One');
     });
+    expect((await screen.findAllByText('Accepted')).length).toBeGreaterThan(0);
   });
 });

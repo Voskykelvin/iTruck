@@ -1,77 +1,53 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Wallet, Truck, Gauge, ShieldCheck, Plus } from 'lucide-react';
 import { api } from '../api.js';
-import { demoFleet, demoLoads } from '../data.js';
 import MetricCard from '../components/MetricCard.jsx';
 import Panel from '../components/Panel.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import OwnerBidReviewPanel from '../components/OwnerBidReviewPanel.jsx';
+import DriverOperationsPanel from '../components/DriverOperationsPanel.jsx';
+import AsyncState from '../components/AsyncState.jsx';
+import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import {
-  readLocal,
-  normalizeOwnerBidRecord,
+  useBookingAction,
+  useBookings,
+  useCreateFleetTruck,
+  useFleetTrucks,
+  useOpenBookings,
+  useRemoveFleetTruck
+} from '../queries/commercial.js';
+import { useWallet } from '../queries/operations.js';
+import {
   bidDraftForLoad,
-  normalizeTruck,
-  normalizeOpenLoad,
-  normalizeBookingShipment,
   uniqueBidRecords,
   ownerBidRecordsFromShipments,
   activateOnEnter,
   money,
-  saveLocal,
   bidPayloadForDraft,
   navigate
 } from '../utils/helpers.js';
 
-const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
-const workspaceFleet = DEMO_MODE ? demoFleet : [];
-const workspaceLoads = DEMO_MODE ? demoLoads : [];
-
 export default function OwnerPage({ notify, user }) {
-  const [fleet, setFleet] = useState(workspaceFleet.slice(0, 3));
-  const [loads, setLoads] = useState(workspaceLoads);
-  const [ownerBookings, setOwnerBookings] = useState([]);
-  const [localBids, setLocalBids] = useState(() => readLocal('bids').map(normalizeOwnerBidRecord));
   const [draftPlate, setDraftPlate] = useState('');
-  const [walletBalance, setWalletBalance] = useState(3180);
   const [bidTarget, setBidTarget] = useState(null);
   const [bidDraft, setBidDraft] = useState(() => bidDraftForLoad(null));
-  const [bidBusy, setBidBusy] = useState(false);
-  const [busyAction, setBusyAction] = useState('');
-
-  useEffect(() => {
-    api
-      .fleetTrucks()
-      .then((data) => {
-        if (Array.isArray(data.trucks)) setFleet(data.trucks.map(normalizeTruck));
-      })
-      .catch(() => setFleet(workspaceFleet.slice(0, 3)));
-
-    api
-      .listOpenBookings()
-      .then((data) => {
-        if (Array.isArray(data.bookings)) setLoads(data.bookings.map(normalizeOpenLoad));
-      })
-      .catch(() => setLoads(workspaceLoads));
-
-    api
-      .listBookings()
-      .then((data) => {
-        if (Array.isArray(data.bookings)) setOwnerBookings(data.bookings.map(normalizeBookingShipment));
-      })
-      .catch(() => {});
-
-    api
-      .wallet()
-      .then((data) => {
-        if (Number.isFinite(Number(data.balance))) setWalletBalance(Number(data.balance));
-      })
-      .catch(() => {});
-  }, []);
+  const [removalTarget, setRemovalTarget] = useState(null);
+  const fleetQuery = useFleetTrucks();
+  const loadsQuery = useOpenBookings();
+  const bookingsQuery = useBookings();
+  const walletQuery = useWallet();
+  const createTruck = useCreateFleetTruck();
+  const removeTruck = useRemoveFleetTruck();
+  const submitBid = useBookingAction(({ bookingId, payload }) => api.submitBookingBid(bookingId, payload));
+  const updateStatus = useBookingAction(({ bookingId, payload }) => api.updateBookingStatus(bookingId, payload));
+  const fleet = fleetQuery.data || [];
+  const loads = useMemo(() => loadsQuery.data || [], [loadsQuery.data]);
+  const ownerBookings = useMemo(() => bookingsQuery.data || [], [bookingsQuery.data]);
 
   const ownerBidRecords = useMemo(
-    () => uniqueBidRecords([...ownerBidRecordsFromShipments(ownerBookings, user), ...localBids]),
-    [localBids, ownerBookings, user]
+    () => uniqueBidRecords(ownerBidRecordsFromShipments(ownerBookings, user)),
+    [ownerBookings, user]
   );
   const ownerBidLoadIds = useMemo(
     () => new Set(ownerBidRecords.map((record) => String(record.bookingId)).filter(Boolean)),
@@ -81,6 +57,17 @@ export default function OwnerPage({ notify, user }) {
     () => loads.filter((load) => !load.bidSubmitted && !ownerBidLoadIds.has(String(load.id || load.bookingId))),
     [loads, ownerBidLoadIds]
   );
+
+  async function confirmTruckRemoval() {
+    if (!removalTarget) return;
+    try {
+      await removeTruck.mutateAsync(removalTarget.id);
+      notify('Vehicle removed from fleet');
+      setRemovalTarget(null);
+    } catch (err) {
+      notify(err.message);
+    }
+  }
 
   async function addTruck() {
     if (!draftPlate.trim()) {
@@ -97,16 +84,11 @@ export default function OwnerPage({ notify, user }) {
     };
 
     try {
-      const data = await api.createTruck(payload);
-      setFleet((current) => [normalizeTruck(data.truck || payload), ...current]);
-      notify('Vehicle sent to admin review');
-    } catch (_err) {
-      const truck = normalizeTruck({ ...payload, id: draftPlate, plate: draftPlate });
-      setFleet((current) => [truck, ...current]);
-      saveLocal('vehicles', truck);
-      notify('Sign in to save this vehicle to your fleet');
-    } finally {
+      await createTruck.mutateAsync(payload);
       setDraftPlate('');
+      notify('Vehicle sent to admin review');
+    } catch (err) {
+      notify(err.message || 'Vehicle was not saved. Try again.');
     }
   }
 
@@ -135,38 +117,13 @@ export default function OwnerPage({ notify, user }) {
     }
 
     const payload = bidPayloadForDraft(bidDraft, fleet);
-    const localPayload = {
-      ...payload,
-      bookingId: bidTarget.id,
-      route: bidTarget.route,
-      cargo: bidTarget.cargo,
-      status: 'submitted'
-    };
-
-    setBidBusy(true);
     try {
       if (!bidTarget.id) throw new Error('Bid needs a synced booking');
-      const data = await api.submitBookingBid(bidTarget.id, payload);
-      if (data.booking) {
-        const updated = normalizeBookingShipment(data.booking);
-        setOwnerBookings((current) => [
-          updated,
-          ...current.filter(
-            (booking) => String(booking.bookingId || booking.id) !== String(updated.bookingId || updated.id)
-          )
-        ]);
-      }
-      setLoads((current) => current.filter((load) => String(load.id || load.bookingId) !== String(bidTarget.id)));
+      await submitBid.mutateAsync({ bookingId: bidTarget.id, payload, removeFromOpen: true });
       notify(`Bid submitted for ${bidTarget.route}. Moved to My Bids.`);
       setBidTarget(null);
     } catch (err) {
-      const record = saveLocal('bids', localPayload);
-      setLocalBids((current) => [normalizeOwnerBidRecord(record), ...current]);
-      setLoads((current) => current.filter((load) => String(load.id || load.bookingId) !== String(bidTarget.id)));
-      setBidTarget(null);
-      notify(err.message || 'Bid held in My Bids until account sync completes');
-    } finally {
-      setBidBusy(false);
+      notify(err.message || 'Bid was not submitted. Try again.');
     }
   }
 
@@ -208,14 +165,15 @@ export default function OwnerPage({ notify, user }) {
     }
 
     try {
-      const data = await api.updateBookingStatus(target.bookingId, {
-        status: 'in_transit',
-        location: { lat: -1.2921, lng: 36.8219, speed: 0, heading: 0 }
+      await updateStatus.mutateAsync({
+        bookingId: target.bookingId,
+        payload: {
+          status: 'in_transit',
+          location: { lat: -1.2921, lng: 36.8219, speed: 0, heading: 0 }
+        }
       });
-      const updated = normalizeBookingShipment(data.booking || {});
-      setOwnerBookings((current) => current.map((item) => (item.bookingId === target.bookingId ? updated : item)));
-      notify(`Pickup started for ${updated.id}`);
-      navigate(`/app/tracking?shipment=${encodeURIComponent(updated.id)}`);
+      notify(`Pickup started for ${target.id}`);
+      navigate(`/app/tracking?shipment=${encodeURIComponent(target.id)}`);
     } catch (err) {
       notify(err.message);
     }
@@ -232,7 +190,12 @@ export default function OwnerPage({ notify, user }) {
   return (
     <div className="page-grid">
       <section className="metrics-grid">
-        <MetricCard icon={Wallet} label="Wallet Balance" value={money(walletBalance)} detail="Available for payout" />
+        <MetricCard
+          icon={Wallet}
+          label="Wallet Balance"
+          value={walletQuery.isError ? 'Unavailable' : money(walletQuery.data || 0)}
+          detail={walletQuery.isPending ? 'Loading balance' : 'Available for payout'}
+        />
         <MetricCard icon={Truck} label="Active Jobs" value={activeJobs} detail="Confirmed or in transit" />
         <MetricCard icon={Gauge} label="Open Loads" value={availableLoads.length} detail="Ready for owner bids" />
         <MetricCard
@@ -250,8 +213,18 @@ export default function OwnerPage({ notify, user }) {
       <section className="workspace-layout">
         <div className="stack">
           <Panel title="Job Board" eyebrow="Available Loads">
+            {loadsQuery.isError ? (
+              <AsyncState
+                compact
+                title="Loads could not be loaded"
+                detail={loadsQuery.error?.message}
+                onRetry={() => loadsQuery.refetch()}
+              />
+            ) : null}
             <div className="shipment-stack">
-              {availableLoads.length ? (
+              {loadsQuery.isPending ? (
+                <AsyncState compact title="Loading available loads..." />
+              ) : loadsQuery.isError ? null : availableLoads.length ? (
                 availableLoads.map((load) => (
                   <article
                     className="load-row"
@@ -297,83 +270,98 @@ export default function OwnerPage({ notify, user }) {
             load={bidTarget}
             draft={bidDraft}
             fleet={fleet}
-            busy={bidBusy}
+            busy={submitBid.isPending}
             onChange={updateBidDraft}
             onSubmit={submitOwnerBid}
             onClose={() => setBidTarget(null)}
           />
 
           <Panel title="Vehicle Readiness" eyebrow="Fleet">
+            {fleetQuery.isError ? (
+              <AsyncState
+                compact
+                title="Fleet could not be loaded"
+                detail={fleetQuery.error?.message}
+                onRetry={() => fleetQuery.refetch()}
+              />
+            ) : null}
             <div className="add-row">
               <input
                 value={draftPlate}
                 onChange={(event) => setDraftPlate(event.target.value)}
                 placeholder="Plate number"
               />
-              <button className="secondary icon-label" type="button" onClick={addTruck}>
+              <button
+                className="secondary icon-label"
+                type="button"
+                disabled={createTruck.isPending}
+                onClick={addTruck}
+              >
                 <Plus size={18} />
-                <span>Add</span>
+                <span>{createTruck.isPending ? 'Adding...' : 'Add'}</span>
               </button>
             </div>
             <div className="shipment-stack">
-              {fleet.map((truck) => (
-                <article
-                  className="shipment-row"
-                  key={truck.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => openTruckReadiness(truck)}
-                  onKeyDown={(event) => activateOnEnter(event, () => openTruckReadiness(truck))}
-                >
-                  <div>
-                    <StatusBadge tone={truck.verified ? 'success' : 'warn'}>{truck.documentStatus}</StatusBadge>
-                    <h3>{truck.plate}</h3>
-                    <p>{truck.name}</p>
-                    <small>
-                      {truck.routes[0] || 'Route pending'} - {truck.availability}
-                    </small>
-                  </div>
-                  <div className="progress-block">
-                    <strong>{truck.routeFit}%</strong>
-                    <div className="progress">
-                      <span style={{ width: `${truck.routeFit}%` }} />
+              {fleetQuery.isPending ? (
+                <AsyncState compact title="Loading fleet..." />
+              ) : fleetQuery.isError ? null : fleet.length ? (
+                fleet.map((truck) => (
+                  <article
+                    className="shipment-row"
+                    key={truck.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openTruckReadiness(truck)}
+                    onKeyDown={(event) => activateOnEnter(event, () => openTruckReadiness(truck))}
+                  >
+                    <div>
+                      <StatusBadge tone={truck.verified ? 'success' : 'warn'}>{truck.documentStatus}</StatusBadge>
+                      <h3>{truck.plate}</h3>
+                      <p>{truck.name}</p>
+                      <small>
+                        {truck.routes[0] || 'Route pending'} - {truck.availability}
+                      </small>
                     </div>
-                    <button
-                      className="ghost"
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openTruckReadiness(truck);
-                      }}
-                    >
-                      Manage
-                    </button>
-                    <button
-                      className="ghost danger-action"
-                      type="button"
-                      disabled={busyAction === `remove-truck-${truck.id}`}
-                      onClick={async (event) => {
-                        event.stopPropagation();
-                        if (!window.confirm(`Remove ${truck.plate} from your fleet?`)) return;
-                        setBusyAction(`remove-truck-${truck.id}`);
-                        try {
-                          await api.removeTruck(truck.id);
-                          setFleet((current) => current.filter((t) => t.id !== truck.id));
-                          notify('Vehicle removed from fleet');
-                        } catch (err) {
-                          notify(err.message);
-                        } finally {
-                          setBusyAction('');
-                        }
-                      }}
-                    >
-                      {busyAction === `remove-truck-${truck.id}` ? 'Removing...' : 'Remove'}
-                    </button>
-                  </div>
-                </article>
-              ))}
+                    <div className="progress-block">
+                      <strong>{truck.routeFit}%</strong>
+                      <div className="progress">
+                        <span style={{ width: `${truck.routeFit}%` }} />
+                      </div>
+                      <button
+                        className="ghost"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openTruckReadiness(truck);
+                        }}
+                      >
+                        Manage
+                      </button>
+                      <button
+                        className="ghost danger-action"
+                        type="button"
+                        disabled={removeTruck.isPending && String(removeTruck.variables) === String(truck.id)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setRemovalTarget(truck);
+                        }}
+                      >
+                        {removeTruck.isPending && String(removeTruck.variables) === String(truck.id)
+                          ? 'Removing...'
+                          : 'Remove'}
+                      </button>
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <EmptyState
+                  title="No vehicles registered"
+                  detail="Add a plate number to begin vehicle verification and fleet setup."
+                />
+              )}
             </div>
           </Panel>
+          <DriverOperationsPanel fleet={fleet} notify={notify} />
         </div>
 
         <aside className="side-stack">
@@ -392,6 +380,15 @@ export default function OwnerPage({ notify, user }) {
           </Panel>
         </aside>
       </section>
+      <ConfirmDialog
+        open={Boolean(removalTarget)}
+        title="Remove vehicle?"
+        description={`${removalTarget?.plate || 'This vehicle'} will be removed from your fleet. This does not delete completed shipment history.`}
+        confirmLabel="Remove vehicle"
+        busy={removeTruck.isPending}
+        onCancel={() => setRemovalTarget(null)}
+        onConfirm={confirmTruckRemoval}
+      />
     </div>
   );
 }

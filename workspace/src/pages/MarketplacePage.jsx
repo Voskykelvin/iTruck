@@ -1,27 +1,26 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Filter, Search, Truck, Plus } from 'lucide-react';
-import { api } from '../api.js';
-import { workspaceFleet } from '../data.js';
 import Select from '../components/Select.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import AsyncState from '../components/AsyncState.jsx';
 import { normalizeTruck, ratingSummary, vehicleTypes, navigate } from '../utils/helpers.js';
+import { useTrucks } from '../queries/commercial.js';
 
 export default function MarketplacePage({ route }) {
-  const [trucks, setTrucks] = useState(workspaceFleet);
   const [search, setSearch] = useState('');
   const [type, setType] = useState('');
-  const [verified, setVerified] = useState(false);
+  const [verified, setVerified] = useState(true);
   const [sort, setSort] = useState('best');
-
-  useEffect(() => {
-    api
-      .listTrucks()
-      .then((data) => {
-        if (Array.isArray(data.trucks) && data.trucks.length) setTrucks(data.trucks.map(normalizeTruck));
-      })
-      .catch(() => setTrucks(workspaceFleet));
-  }, []);
+  const truckParams = useMemo(() => ({ type, verified, isAvailable: true, limit: 50 }), [type, verified]);
+  const {
+    data: trucks = [],
+    error: trucksError,
+    isError: trucksFailed,
+    isFetching: trucksRefreshing,
+    isPending: trucksPending,
+    refetch: retryTrucks
+  } = useTrucks(truckParams);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -140,7 +139,7 @@ export default function MarketplacePage({ route }) {
               <button
                 className="primary"
                 type="button"
-                onClick={() => navigate(`/app/book?truck=${encodeURIComponent(selectedTruck.plate)}`)}
+                onClick={() => navigate(`/app/book?truck=${encodeURIComponent(selectedTruck.id)}`)}
               >
                 Request Truck
               </button>
@@ -151,12 +150,28 @@ export default function MarketplacePage({ route }) {
           </section>
         ) : null}
         <div className="result-bar">
-          <strong>{filtered.length} trucks found</strong>
+          <strong>{trucksPending ? 'Loading live fleet...' : `${filtered.length} trucks found`}</strong>
+          {trucksRefreshing && !trucksPending ? (
+            <span className="refresh-status" role="status">
+              Updating results...
+            </span>
+          ) : null}
           <button className="ghost icon-label" type="button" onClick={() => navigate('/app/book')}>
             <Plus size={18} />
             <span>Create Request</span>
           </button>
         </div>
+        {trucksFailed ? (
+          <AsyncState
+            title={trucks.length ? 'Live fleet refresh failed' : 'Live fleet unavailable'}
+            detail={
+              trucks.length
+                ? 'Showing the last loaded results. Retry to check current availability.'
+                : trucksError?.message || 'We could not load verified, available vehicles.'
+            }
+            onRetry={() => retryTrucks()}
+          />
+        ) : null}
         <div className="cards-grid truck-grid">
           {filtered.map((truck) => (
             <article className="truck-card" key={truck.id}>
@@ -219,13 +234,17 @@ export default function MarketplacePage({ route }) {
                 >
                   View Profile
                 </button>
-                <button className="ghost" type="button" onClick={() => navigate(`/app/book?truck=${truck.plate}`)}>
+                <button
+                  className="ghost"
+                  type="button"
+                  onClick={() => navigate(`/app/book?truck=${encodeURIComponent(truck.id)}`)}
+                >
                   Request
                 </button>
               </div>
             </article>
           ))}
-          {!filtered.length ? (
+          {!trucksPending && !trucksFailed && !filtered.length ? (
             <EmptyState
               title="No trucks found"
               detail="Live marketplace data will appear here after carriers are added and verified."

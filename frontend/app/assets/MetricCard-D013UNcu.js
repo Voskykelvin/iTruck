@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-CdvZGgm7.js";var t=e();function n({icon:e,label:n,value:r,detail:i}){return(0,t.jsxs)(`article`,{className:`metric-card`,children:[(0,t.jsx)(e,{size:20}),(0,t.jsx)(`span`,{children:n}),(0,t.jsx)(`strong`,{children:r}),(0,t.jsx)(`small`,{children:i})]})}export{n as t};

@@ -1,6 +1,9 @@
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import AdminPage from './AdminPage.jsx';
+import { renderWithQuery as render } from '../test/renderWithQuery.jsx';
+import { server } from '../test/mocks/server.js';
+import { http, HttpResponse } from 'msw';
 
 const mockNotify = vi.fn();
 const adminUser = {
@@ -77,6 +80,20 @@ describe('AdminPage Integration and Interaction Tests', () => {
 
     // Switch back to KYC Tab
     fireEvent.click(kycTab);
+  });
+
+  test('discloses a failed review queue instead of presenting it as a successful empty result', async () => {
+    server.use(
+      http.get('*/api/admin/users', () =>
+        HttpResponse.json({ message: 'Profile review service unavailable' }, { status: 503 })
+      )
+    );
+
+    render(<AdminPage notify={mockNotify} user={adminUser} />);
+
+    expect(await screen.findByText('1 admin queue unavailable')).toBeInTheDocument();
+    expect(screen.getByText(/Profiles: Profile review service unavailable/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
   });
 
   test('verifies user profile and document actions', async () => {

@@ -2,6 +2,10 @@
 
 Date: 2026-05-25
 
+> Modernization note (2026-07-13): The current end-to-end audit and proposed progressive rebuild are documented in
+> [MODERNIZATION_REBUILD_PLAN.md](./MODERNIZATION_REBUILD_PLAN.md). That plan was checked against the current code;
+> some older “missing” items below have since been implemented and should not be treated as the current backlog.
+
 ## Complete Codebase Sweep — 2026-06-20
 
 - Required authentication for every Socket.IO connection and authorization before joining a booking room, closing a denial-of-service path and preventing arbitrary shipment subscriptions.

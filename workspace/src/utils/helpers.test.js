@@ -45,6 +45,18 @@ describe('helpers.js unit tests', () => {
     expect(dispatchSpy).toHaveBeenCalled();
   });
 
+  it('falls back to browser history when a registered navigator does not move location', () => {
+    const routerNavigate = vi.fn();
+    const unregister = helpers.registerNavigator(routerNavigate);
+    const pushSpy = vi.spyOn(window.history, 'pushState');
+
+    helpers.navigate('/router-fallback');
+
+    expect(routerNavigate).toHaveBeenCalledWith('/router-fallback', {});
+    expect(pushSpy).toHaveBeenCalledWith({}, '', '/router-fallback');
+    unregister();
+  });
+
   it('copyToClipboard', async () => {
     const writeTextSpy = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, {

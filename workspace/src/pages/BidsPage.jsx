@@ -1,81 +1,43 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Plus } from 'lucide-react';
 import { api } from '../api.js';
-import { demoFleet, demoLoads, demoShipments } from '../data.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import Panel from '../components/Panel.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import AsyncState from '../components/AsyncState.jsx';
 import OwnerBidReviewPanel from '../components/OwnerBidReviewPanel.jsx';
+import { useBookingAction, useBookings, useFleetTrucks, useOpenBookings } from '../queries/commercial.js';
 import {
   roleForUser,
-  readLocal,
-  normalizeOwnerBidRecord,
   bidDraftForLoad,
-  normalizeOpenLoad,
-  normalizeBookingShipment,
-  normalizeTruck,
   uniqueBidRecords,
   ownerBidRecordsFromShipments,
   bidPayloadForDraft,
-  saveLocal,
   statusLabel,
   money,
   navigate
 } from '../utils/helpers.js';
 
-const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
-const workspaceFleet = DEMO_MODE ? demoFleet : [];
-const workspaceLoads = DEMO_MODE ? demoLoads : [];
-const workspaceShipments = DEMO_MODE ? demoShipments : [];
+const EMPTY_RESULTS = [];
 
 export default function BidsPage({ notify, user }) {
   const role = roleForUser(user);
-  const [items, setItems] = useState([]);
-  const [ownerBookings, setOwnerBookings] = useState([]);
-  const [localBids, setLocalBids] = useState(() => readLocal('bids').map(normalizeOwnerBidRecord));
-  const [fleet, setFleet] = useState([]);
   const [busy, setBusy] = useState('');
   const [bidTarget, setBidTarget] = useState(null);
   const [bidDraft, setBidDraft] = useState(() => bidDraftForLoad(null));
   const [matchOptions, setMatchOptions] = useState({});
-
-  useEffect(() => {
-    if (role === 'owner') {
-      api
-        .listOpenBookings()
-        .then((data) => {
-          const bookings = Array.isArray(data.bookings) ? data.bookings : [];
-          setItems(bookings.map(normalizeOpenLoad));
-        })
-        .catch(() => setItems(workspaceLoads));
-
-      api
-        .listBookings()
-        .then((data) => {
-          const bookings = Array.isArray(data.bookings) ? data.bookings : [];
-          setOwnerBookings(bookings.map(normalizeBookingShipment));
-        })
-        .catch(() => {});
-
-      api
-        .fleetTrucks()
-        .then((data) => Array.isArray(data.trucks) && setFleet(data.trucks.map(normalizeTruck)))
-        .catch(() => setFleet(workspaceFleet.slice(0, 3)));
-      return;
-    }
-
-    api
-      .listBookings()
-      .then((data) => {
-        const bookings = Array.isArray(data.bookings) ? data.bookings : [];
-        setItems(bookings.map(normalizeBookingShipment));
-      })
-      .catch(() => setItems(workspaceShipments));
-  }, [role]);
+  const ownerMode = role === 'owner';
+  const bookingsQuery = useBookings();
+  const openBookingsQuery = useOpenBookings({ enabled: ownerMode });
+  const fleetQuery = useFleetTrucks({ enabled: ownerMode });
+  const bookingAction = useBookingAction(({ action }) => action());
+  const items = ownerMode ? openBookingsQuery.data || EMPTY_RESULTS : bookingsQuery.data || EMPTY_RESULTS;
+  const ownerBookings = ownerMode ? bookingsQuery.data || EMPTY_RESULTS : EMPTY_RESULTS;
+  const fleet = ownerMode ? fleetQuery.data || EMPTY_RESULTS : EMPTY_RESULTS;
 
   const ownerBidRecords = useMemo(
-    () => uniqueBidRecords([...ownerBidRecordsFromShipments(ownerBookings, user), ...localBids]),
-    [localBids, ownerBookings, user]
+    () => uniqueBidRecords(ownerBidRecordsFromShipments(ownerBookings, user)),
+    [ownerBookings, user]
   );
   const ownerBidLoadIds = useMemo(
     () => new Set(ownerBidRecords.map((record) => String(record.bookingId)).filter(Boolean)),
@@ -106,36 +68,17 @@ export default function BidsPage({ notify, user }) {
     }
 
     const payload = bidPayloadForDraft(bidDraft, fleet);
-    const localPayload = {
-      ...payload,
-      bookingId: bidTarget.id,
-      route: bidTarget.route,
-      cargo: bidTarget.cargo,
-      status: 'submitted'
-    };
-
     setBusy(`bid-${bidTarget.id || bidTarget.route}`);
     try {
       if (!bidTarget.id) throw new Error('Bid needs a synced booking');
-      const data = await api.submitBookingBid(bidTarget.id, payload);
-      if (data.booking) {
-        const updated = normalizeBookingShipment(data.booking);
-        setOwnerBookings((current) => [
-          updated,
-          ...current.filter(
-            (booking) => String(booking.bookingId || booking.id) !== String(updated.bookingId || updated.id)
-          )
-        ]);
-      }
-      setItems((current) => current.filter((load) => String(load.id || load.bookingId) !== String(bidTarget.id)));
+      await bookingAction.mutateAsync({
+        action: () => api.submitBookingBid(bidTarget.id, payload),
+        removeFromOpen: true
+      });
       notify(`Bid submitted for ${bidTarget.route}. Moved to My Bids.`);
       setBidTarget(null);
     } catch (err) {
-      const record = saveLocal('bids', localPayload);
-      setLocalBids((current) => [normalizeOwnerBidRecord(record), ...current]);
-      setItems((current) => current.filter((load) => String(load.id || load.bookingId) !== String(bidTarget.id)));
-      setBidTarget(null);
-      notify(err.message || 'Bid held in My Bids until account sync completes');
+      notify(err.message || 'Bid was not submitted. Try again.');
     } finally {
       setBusy('');
     }
@@ -144,9 +87,7 @@ export default function BidsPage({ notify, user }) {
   async function acceptBid(booking, bid) {
     setBusy(`${booking.bookingId}-${bid.id}`);
     try {
-      const data = await api.acceptBookingBid(booking.bookingId, bid.id);
-      const updated = normalizeBookingShipment(data.booking || {});
-      setItems((current) => current.map((item) => (item.bookingId === updated.bookingId ? updated : item)));
+      await bookingAction.mutateAsync({ action: () => api.acceptBookingBid(booking.bookingId, bid.id) });
       notify(`Awarded ${bid.ownerName}`);
     } catch (err) {
       notify(err.message);
@@ -155,24 +96,15 @@ export default function BidsPage({ notify, user }) {
     }
   }
 
-  function replaceBooking(data, setter = setItems) {
-    if (!data?.booking) return;
-    const updated = normalizeBookingShipment(data.booking);
-    setter((current) =>
-      current.map((item) =>
-        String(item.bookingId || item.id) === String(updated.bookingId || updated.id) ? updated : item
-      )
-    );
-  }
-
   async function counterBid(booking, bid) {
     const amount = Number(window.prompt('Counteroffer amount', String(bid.amount || '')) || 0);
     if (!Number.isFinite(amount) || amount <= 0) return;
     const message = window.prompt('Counteroffer note', 'Please confirm this revised rate.') || '';
     setBusy(`counter-${bid.id}`);
     try {
-      const data = await api.counterBookingBid(booking.bookingId, bid.id, { amount, message });
-      replaceBooking(data);
+      await bookingAction.mutateAsync({
+        action: () => api.counterBookingBid(booking.bookingId, bid.id, { amount, message })
+      });
       notify('Counteroffer sent to carrier');
     } catch (err) {
       notify(err.message);
@@ -186,8 +118,9 @@ export default function BidsPage({ notify, user }) {
     if (!reason?.trim()) return;
     setBusy(`reject-${bid.id}`);
     try {
-      const data = await api.rejectBookingBid(booking.bookingId, bid.id, { reason: reason.trim() });
-      replaceBooking(data);
+      await bookingAction.mutateAsync({
+        action: () => api.rejectBookingBid(booking.bookingId, bid.id, { reason: reason.trim() })
+      });
       notify('Bid rejected with reason');
     } catch (err) {
       notify(err.message);
@@ -201,8 +134,9 @@ export default function BidsPage({ notify, user }) {
       decision === 'reject' ? window.prompt('Reason for declining this counteroffer') || '' : 'Counteroffer accepted';
     setBusy(`counter-response-${bid.bidId}`);
     try {
-      const data = await api.respondBookingCounter(bid.bookingId, bid.bidId, { decision, reason });
-      replaceBooking(data, setOwnerBookings);
+      await bookingAction.mutateAsync({
+        action: () => api.respondBookingCounter(bid.bookingId, bid.bidId, { decision, reason })
+      });
       notify(`Counteroffer ${decision === 'accept' ? 'accepted' : 'declined'}`);
     } catch (err) {
       notify(err.message);
@@ -215,8 +149,7 @@ export default function BidsPage({ notify, user }) {
     const reason = window.prompt('Optional withdrawal reason') || '';
     setBusy(`withdraw-${bid.bidId}`);
     try {
-      const data = await api.withdrawBookingBid(bid.bookingId, bid.bidId, { reason });
-      replaceBooking(data, setOwnerBookings);
+      await bookingAction.mutateAsync({ action: () => api.withdrawBookingBid(bid.bookingId, bid.bidId, { reason }) });
       notify('Bid withdrawn');
     } catch (err) {
       notify(err.message);
@@ -228,8 +161,7 @@ export default function BidsPage({ notify, user }) {
   async function acknowledgeBid(bid) {
     setBusy(`ack-${bid.bidId}`);
     try {
-      const data = await api.acknowledgeBookingBid(bid.bookingId, bid.bidId);
-      replaceBooking(data, setOwnerBookings);
+      await bookingAction.mutateAsync({ action: () => api.acknowledgeBookingBid(bid.bookingId, bid.bidId) });
       notify('Bid decision acknowledged');
     } catch (err) {
       notify(err.message);
@@ -254,8 +186,7 @@ export default function BidsPage({ notify, user }) {
   async function autoAssign(booking) {
     setBusy(`auto-${booking.bookingId}`);
     try {
-      const data = await api.autoAssignBooking(booking.bookingId);
-      replaceBooking(data);
+      const data = await bookingAction.mutateAsync({ action: () => api.autoAssignBooking(booking.bookingId) });
       notify(`Assigned ${data.truck?.plateNumber || 'best verified truck'}`);
     } catch (err) {
       notify(err.message);
@@ -269,8 +200,21 @@ export default function BidsPage({ notify, user }) {
       <section className="workspace-layout">
         <div className="stack">
           <Panel title="Available Loads" eyebrow="Find Work">
+            {openBookingsQuery.isPending ? (
+              <p className="refresh-status" role="status">
+                Loading live opportunities...
+              </p>
+            ) : null}
+            {openBookingsQuery.isError ? (
+              <AsyncState
+                compact
+                title="Available loads unavailable"
+                detail={openBookingsQuery.error?.message || 'Open shipment requests could not be loaded.'}
+                onRetry={() => openBookingsQuery.refetch()}
+              />
+            ) : null}
             <div className="shipment-stack">
-              {availableOwnerLoads.length ? (
+              {!openBookingsQuery.isPending && availableOwnerLoads.length ? (
                 availableOwnerLoads.map((load) => (
                   <article className="load-row" key={load.id || load.route}>
                     <div>
@@ -294,11 +238,19 @@ export default function BidsPage({ notify, user }) {
                     </div>
                   </article>
                 ))
-              ) : (
+              ) : !openBookingsQuery.isPending && !openBookingsQuery.isError ? (
                 <EmptyState title="No unbid loads" detail="Submitted offers are tracked below in My Bids." />
-              )}
+              ) : null}
             </div>
           </Panel>
+          {fleetQuery.isError ? (
+            <AsyncState
+              compact
+              title="Fleet options unavailable"
+              detail="You can review the load, but vehicle selection requires a live fleet refresh."
+              onRetry={() => fleetQuery.refetch()}
+            />
+          ) : null}
           <OwnerBidReviewPanel
             load={bidTarget}
             draft={bidDraft}
@@ -309,8 +261,21 @@ export default function BidsPage({ notify, user }) {
             onClose={() => setBidTarget(null)}
           />
           <Panel title="My Bids" eyebrow="Submitted Offers">
+            {bookingsQuery.isPending ? (
+              <p className="refresh-status" role="status">
+                Loading submitted offers...
+              </p>
+            ) : null}
+            {bookingsQuery.isError ? (
+              <AsyncState
+                compact
+                title="Submitted offers unavailable"
+                detail={bookingsQuery.error?.message || 'Your bid history could not be loaded.'}
+                onRetry={() => bookingsQuery.refetch()}
+              />
+            ) : null}
             <div className="bid-options">
-              {ownerBidRecords.length ? (
+              {!bookingsQuery.isPending && ownerBidRecords.length ? (
                 ownerBidRecords.map((bid) => (
                   <div className="bid-option" key={bid.id}>
                     <div>
@@ -381,12 +346,12 @@ export default function BidsPage({ notify, user }) {
                     </div>
                   </div>
                 ))
-              ) : (
+              ) : !bookingsQuery.isPending && !bookingsQuery.isError ? (
                 <EmptyState
                   title="No bids submitted"
                   detail="Review an available load, enter your rate, and place a bid."
                 />
-              )}
+              ) : null}
             </div>
           </Panel>
         </div>
@@ -407,8 +372,21 @@ export default function BidsPage({ notify, user }) {
     <section className="workspace-layout">
       <div className="stack">
         <Panel title="Bids Received" eyebrow="Shipper Review">
+          {bookingsQuery.isPending ? (
+            <p className="refresh-status" role="status">
+              Loading live carrier offers...
+            </p>
+          ) : null}
+          {bookingsQuery.isError ? (
+            <AsyncState
+              compact
+              title="Carrier offers unavailable"
+              detail={bookingsQuery.error?.message || 'Bid records could not be loaded.'}
+              onRetry={() => bookingsQuery.refetch()}
+            />
+          ) : null}
           <div className="cards-grid">
-            {items.length ? (
+            {!bookingsQuery.isPending && items.length ? (
               items.map((booking) => (
                 <article className="quote-card" key={booking.id}>
                   <StatusBadge tone={booking.bids?.length ? 'warn' : 'default'}>{booking.status}</StatusBadge>
@@ -508,9 +486,9 @@ export default function BidsPage({ notify, user }) {
                   </div>
                 </article>
               ))
-            ) : (
+            ) : !bookingsQuery.isPending && !bookingsQuery.isError ? (
               <EmptyState title="No bid records" detail="Create a shipment request to receive carrier bids." />
-            )}
+            ) : null}
           </div>
         </Panel>
       </div>

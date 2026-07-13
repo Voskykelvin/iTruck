@@ -14,6 +14,12 @@ class AppErrorBoundary extends Component {
     console.error('iTruck workspace render failed', error, info);
   }
 
+  componentDidUpdate(previousProps) {
+    if (this.state.failed && previousProps.resetKey !== this.props.resetKey) {
+      this.setState({ failed: false });
+    }
+  }
+
   render() {
     if (!this.state.failed) return this.props.children;
 

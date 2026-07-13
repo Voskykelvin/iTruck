@@ -1,12 +1,22 @@
 import '@testing-library/jest-dom/vitest';
 import { beforeAll, afterEach, afterAll, vi } from 'vitest';
+import { configure } from '@testing-library/dom';
 import { server } from './mocks/server.js';
 
+configure({ asyncUtilTimeout: 5_000 });
+
 vi.mock('socket.io-client', () => {
+  const handlers = {};
+  globalThis.__itruckSocketHandlers = handlers;
   const mockSocket = {
-    on: () => mockSocket,
+    on: (event, handler) => {
+      handlers[event] = handler;
+      return mockSocket;
+    },
     emit: () => mockSocket,
-    disconnect: () => {}
+    disconnect: () => {
+      Object.keys(handlers).forEach((event) => delete handlers[event]);
+    }
   };
   return {
     default: () => mockSocket
