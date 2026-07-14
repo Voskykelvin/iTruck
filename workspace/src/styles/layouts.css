@@ -152,17 +152,147 @@
   }
 
   .page-container {
-    padding: var(--space-4);
+    padding: var(--space-4) var(--space-3);
     padding-bottom: calc(var(--space-6) + var(--mobile-nav-height));
   }
 
   .topbar-wrapper {
-    padding: 0 var(--space-4);
+    height: 56px;
+    padding: 0 var(--space-3);
+    gap: var(--space-2);
   }
 
   .page-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+  }
+
+  .page-title {
+    font-size: clamp(1.65rem, 8vw, 2rem);
+  }
+
+  .stack-lg {
+    gap: var(--space-6);
+  }
+
+  .stack-lg > .page-header {
+    margin-bottom: 0;
+  }
+
+  .grid-2,
+  .grid-3,
+  .grid-4 {
+    gap: var(--space-3);
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-auto-columns: minmax(152px, 58vw);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 2px 2px var(--space-2);
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-inline: contain;
+  }
+
+  .metrics-grid > * {
+    scroll-snap-align: start;
+  }
+
+  .metric-card {
+    min-height: 116px;
+    padding: var(--space-3) !important;
+  }
+
+  .metric-card-icon {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+  }
+
+  .metric-card-value {
+    font-size: 1.75rem;
+  }
+
+  .settings-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar-wrapper > .row:first-child > .btn:first-child {
+    display: none;
+  }
+
+  .topbar-mobile-brand {
+    display: inline-flex;
+  }
+
+  .topbar-search {
+    width: 40px !important;
+    height: 40px;
+    justify-content: center;
+    padding: 0 !important;
+  }
+
+  .topbar-search > span,
+  .topbar-search > .badge {
+    display: none;
+  }
+
+  .topbar-actions {
+    gap: var(--space-1);
+  }
+
+  .topbar-divider {
+    display: none;
+  }
+
+  .topbar-actions .btn {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+  }
+
+  .auth-form-container {
+    align-items: flex-start;
+    min-height: 100vh;
+    padding: max(var(--space-6), env(safe-area-inset-top)) var(--space-4);
+  }
+
+  .auth-mobile-brand {
+    display: inline-flex;
+    margin-bottom: var(--space-8);
+  }
+
+  .modal-content {
+    max-height: calc(100dvh - var(--space-4));
+  }
+
+  .modal-header,
+  .modal-body,
+  .modal-footer {
+    padding: var(--space-4);
+  }
+
+  .modal-footer .btn {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .topbar-primary-action {
+    display: none !important;
+  }
+
+  .page-header > .btn {
+    width: 100%;
+  }
+
+  .proof-gallery-item {
+    width: 82vw;
   }
 }
 
