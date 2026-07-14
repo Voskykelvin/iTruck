@@ -47,6 +47,14 @@ const {
   WalletService
 } = require('../services/payment');
 
+beforeAll(() => {
+  process.env.DELIVERY_PROOF_MODE = 'strict';
+});
+
+afterAll(() => {
+  delete process.env.DELIVERY_PROOF_MODE;
+});
+
 beforeEach(() => {
   Wallet.findOneAndUpdate.mockReset();
   Wallet.updateOne.mockReset();

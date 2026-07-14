@@ -214,10 +214,10 @@ async function uploadDeliveryProofPhotos(bookingId, files, metadata) {
   list.forEach((file) => assertUploadFile(file, imageUploadTypes, 'Delivery photo'));
 
   const body = filesBody('files', list);
-  body.set('capturedAt', metadata.capturedAt);
-  body.set('lat', metadata.lat);
-  body.set('lng', metadata.lng);
-  if (metadata.accuracy !== undefined && metadata.accuracy !== null) body.set('accuracy', metadata.accuracy);
+  if (metadata?.capturedAt) body.set('capturedAt', metadata.capturedAt);
+  if (metadata?.lat !== undefined && metadata?.lat !== null) body.set('lat', metadata.lat);
+  if (metadata?.lng !== undefined && metadata?.lng !== null) body.set('lng', metadata.lng);
+  if (metadata?.accuracy !== undefined && metadata?.accuracy !== null) body.set('accuracy', metadata.accuracy);
   return request(`/bookings/${encodeURIComponent(bookingId)}/delivery-proof/assets`, {
     method: 'POST',
     body
@@ -276,6 +276,7 @@ export const api = {
       ...(Object.keys(payload || {}).length ? { body: JSON.stringify(payload) } : {})
     }),
   getDeliveryProof: (bookingId) => request(`/bookings/${encodeURIComponent(bookingId)}/delivery-proof`),
+  getDeliveryProofPolicy: () => request('/bookings/delivery-proof/policy'),
   requestDeliveryOtp: (bookingId) =>
     request(`/bookings/${encodeURIComponent(bookingId)}/delivery-proof/otp`, { method: 'POST' }),
   uploadDeliveryProofPhotos,

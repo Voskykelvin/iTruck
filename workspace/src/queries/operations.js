@@ -6,8 +6,18 @@ export const operationsQueryKeys = {
   all: ['operations'],
   drivers: () => ['operations', 'drivers'],
   profile: () => ['operations', 'profile'],
+  deliveryProofPolicy: () => ['operations', 'delivery-proof-policy'],
   wallet: () => ['operations', 'wallet']
 };
+
+export function useDeliveryProofPolicy(options = {}) {
+  return useQuery({
+    queryKey: operationsQueryKeys.deliveryProofPolicy(),
+    queryFn: () => api.getDeliveryProofPolicy(),
+    staleTime: 5 * 60 * 1000,
+    ...options
+  });
+}
 
 export function useProfile(user, options = {}) {
   return useQuery({

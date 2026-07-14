@@ -1,53 +1,54 @@
 const { body } = require('express-validator');
-const { liveMongoIdParam, optionalString, requiredString } = require('./common');
+const { liveMongoIdParam } = require('./common');
+const { strictDeliveryProof } = require('../config/deliveryProofPolicy');
 
 const proofBookingIdSchema = [liveMongoIdParam('id')];
 
 const proofAssetUploadSchema = [
   ...proofBookingIdSchema,
-  body('capturedAt').isISO8601().withMessage('capturedAt is required and must be a valid timestamp').toDate(),
-  body('lat').isFloat({ min: -90, max: 90 }).withMessage('Photo latitude is invalid').toFloat(),
-  body('lng').isFloat({ min: -180, max: 180 }).withMessage('Photo longitude is invalid').toFloat(),
-  body('accuracy')
-    .optional({ checkFalsy: true })
-    .isFloat({ min: 0, max: 10000 })
-    .withMessage('Photo GPS accuracy is invalid')
-    .toFloat()
+  body().custom((_, { req }) => {
+    if (!strictDeliveryProof()) return true;
+    const capturedAt = new Date(req.body.capturedAt);
+    const lat = Number(req.body.lat);
+    const lng = Number(req.body.lng);
+    const accuracy = req.body.accuracy;
+    if (Number.isNaN(capturedAt.getTime())) throw new Error('capturedAt is required and must be a valid timestamp');
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) throw new Error('Photo latitude is invalid');
+    if (!Number.isFinite(lng) || lng < -180 || lng > 180) throw new Error('Photo longitude is invalid');
+    if (accuracy !== undefined && accuracy !== '' && (!Number.isFinite(Number(accuracy)) || Number(accuracy) < 0)) {
+      throw new Error('Photo GPS accuracy is invalid');
+    }
+    return true;
+  })
 ];
 
 const finalizeDeliveryProofSchema = [
   ...proofBookingIdSchema,
-  body('otp')
-    .trim()
-    .matches(/^\d{6}$/)
-    .withMessage('otp must be a 6-digit code'),
   body('assetIds').isArray({ min: 1, max: 5 }).withMessage('assetIds must contain between 1 and 5 delivery photos'),
   body('assetIds.*').isMongoId().withMessage('Every delivery photo id must be valid'),
-  requiredString('signerName', 120),
-  optionalString('signerRole', 120),
-  body('signatureType')
-    .optional({ checkFalsy: true })
-    .isIn(['typed', 'drawn'])
-    .withMessage('signatureType must be typed or drawn'),
-  requiredString('signatureValue', 200),
-  body('consent')
-    .isBoolean()
-    .withMessage('consent must be true')
-    .toBoolean()
-    .equals('true')
-    .withMessage('consent is required'),
-  body('signedAt').isISO8601().withMessage('signedAt must be a valid timestamp').toDate(),
-  body('clientTimestamp').isISO8601().withMessage('clientTimestamp must be a valid timestamp').toDate(),
-  optionalString('timezone', 100),
-  body('location').isObject().withMessage('location is required'),
-  body('location.lat').isFloat({ min: -90, max: 90 }).withMessage('Delivery latitude is invalid').toFloat(),
-  body('location.lng').isFloat({ min: -180, max: 180 }).withMessage('Delivery longitude is invalid').toFloat(),
-  body('location.accuracy')
-    .optional({ checkFalsy: true })
-    .isFloat({ min: 0, max: 10000 })
-    .withMessage('Delivery GPS accuracy is invalid')
-    .toFloat(),
-  body('location.recordedAt').isISO8601().withMessage('Delivery GPS timestamp is required').toDate()
+  body().custom((_, { req }) => {
+    if (!strictDeliveryProof()) return true;
+    const payload = req.body || {};
+    if (!/^\d{6}$/.test(String(payload.otp || ''))) throw new Error('otp must be a 6-digit code');
+    if (!String(payload.signerName || '').trim()) throw new Error('signerName is required');
+    if (!['typed', 'drawn'].includes(payload.signatureType || 'typed')) {
+      throw new Error('signatureType must be typed or drawn');
+    }
+    if (!String(payload.signatureValue || '').trim()) throw new Error('signatureValue is required');
+    if (payload.consent !== true) throw new Error('consent is required');
+    if (Number.isNaN(new Date(payload.signedAt).getTime())) throw new Error('signedAt must be a valid timestamp');
+    if (Number.isNaN(new Date(payload.clientTimestamp).getTime())) {
+      throw new Error('clientTimestamp must be a valid timestamp');
+    }
+    const lat = Number(payload.location?.lat);
+    const lng = Number(payload.location?.lng);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) throw new Error('Delivery latitude is invalid');
+    if (!Number.isFinite(lng) || lng < -180 || lng > 180) throw new Error('Delivery longitude is invalid');
+    if (Number.isNaN(new Date(payload.location?.recordedAt).getTime())) {
+      throw new Error('Delivery GPS timestamp is required');
+    }
+    return true;
+  })
 ];
 
 module.exports = {

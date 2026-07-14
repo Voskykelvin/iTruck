@@ -74,6 +74,7 @@ describe('receiver-grade delivery proof', () => {
     jest.clearAllMocks();
     process.env.DELIVERY_OTP_PEPPER = 'test-delivery-otp-pepper';
     process.env.DELIVERY_OTP_COOLDOWN_SECONDS = '0';
+    process.env.DELIVERY_PROOF_MODE = 'strict';
 
     actor = { _id: id(), role: 'owner' };
     booking = {
@@ -147,6 +148,7 @@ describe('receiver-grade delivery proof', () => {
   afterEach(() => {
     delete process.env.DELIVERY_OTP_PEPPER;
     delete process.env.DELIVERY_OTP_COOLDOWN_SECONDS;
+    delete process.env.DELIVERY_PROOF_MODE;
   });
 
   test('creates a hash-linked OTP, photo, signature, GPS, and receiver proof chain', async () => {
@@ -236,6 +238,44 @@ describe('receiver-grade delivery proof', () => {
     events[0].metadata.receiverPhoneLast4 = '0000';
     const verification = await verifyCustodyChain(booking._id);
     expect(verification).toEqual(expect.objectContaining({ valid: false, brokenAtSequence: 1 }));
+  });
+
+  test('completes a delivery with one photo and no OTP, signature, or GPS in simple mode', async () => {
+    process.env.DELIVERY_PROOF_MODE = 'simple';
+    const asset = await createProofAsset({
+      booking,
+      actor,
+      file: {
+        buffer: Buffer.from('simple-delivery-photo'),
+        originalname: 'delivered.webp',
+        mimetype: 'image/webp',
+        size: 21
+      },
+      uploadUrl: 'https://example.com/delivered.webp',
+      capturedAt: new Date()
+    });
+
+    const result = await finalizeDeliveryProof({
+      booking,
+      actor,
+      payload: { assetIds: [String(asset._id)] },
+      req: { ip: '127.0.0.1', get: jest.fn(() => 'Jest browser') }
+    });
+
+    expect(sendSMS).not.toHaveBeenCalled();
+    expect(result.policy).toEqual(expect.objectContaining({ mode: 'simple', autoComplete: true }));
+    expect(result.proof.verification.method).toBe('photo');
+    expect(result.proof.signature).toBeUndefined();
+    expect(result.proof.location).toBeUndefined();
+    expect(booking.status).toBe('delivered');
+    expect(booking.deliveredAt).toBeInstanceOf(Date);
+    expect(booking.deliveryProof).toEqual(
+      expect.objectContaining({ verificationMethod: 'photo', photoCount: 1, chainHeadHash: result.chainHeadHash })
+    );
+    expect(events.map((event) => event.eventType)).toEqual(['photo.captured', 'proof.finalized', 'delivery.confirmed']);
+    await expect(verifyCustodyChain(booking._id)).resolves.toEqual(
+      expect.objectContaining({ valid: true, count: 3, headHash: result.chainHeadHash })
+    );
   });
 
   test('canonical hashing is stable across object key order', () => {

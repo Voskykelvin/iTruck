@@ -8,6 +8,14 @@ const {
   missingApprovedDocuments
 } = require('../services/operationsPolicy');
 
+beforeAll(() => {
+  process.env.DELIVERY_PROOF_MODE = 'strict';
+});
+
+afterAll(() => {
+  delete process.env.DELIVERY_PROOF_MODE;
+});
+
 const ownerDocs = [
   { type: 'owner-kyc', status: 'approved', url: 'https://example.com/owner-kyc.pdf' },
   { type: 'driver-id', status: 'approved', url: 'https://example.com/driver-id.pdf' },

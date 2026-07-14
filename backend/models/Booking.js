@@ -214,7 +214,7 @@ const bookingSchema = new mongoose.Schema(
     deliveryProof: {
       proof: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryProof' },
       recordHash: { type: String, match: /^[a-f0-9]{64}$/ },
-      verificationMethod: { type: String, enum: ['sms_otp'] },
+      verificationMethod: { type: String, enum: ['sms_otp', 'photo'] },
       verifiedAt: Date,
       receiverName: String,
       receiverPhoneLast4: String,

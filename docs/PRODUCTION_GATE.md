@@ -1,5 +1,7 @@
 # Production Gate
 
+Delivery confirmation currently defaults to `DELIVERY_PROOF_MODE=simple` for photo-only end-to-end testing. Before full production, set `DELIVERY_PROOF_MODE=strict` to restore receiver OTP, typed signature, GPS metadata, and geofence enforcement.
+
 This checklist is the final stop before treating the structure as frozen.
 
 ## Local Gate
