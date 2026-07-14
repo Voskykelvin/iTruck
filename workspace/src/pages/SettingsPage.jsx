@@ -7,6 +7,7 @@ import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import { User, Shield, LogOut, Laptop, Smartphone } from 'lucide-react';
 import { useToast } from '../components/ui/Toast';
+import PushNotificationControl from '../components/domain/PushNotificationControl';
 
 export default function SettingsPage() {
   const { data: user } = useSessionBootstrap();
@@ -198,6 +199,14 @@ export default function SettingsPage() {
             <Button variant="ghost" icon={LogOut} className="sign-out-button" onClick={() => logout.mutate()}>
               Sign Out
             </Button>
+          </Card>
+
+          <Card className="stack">
+            <div className="row" style={{ color: 'var(--ink)' }}>
+              <Shield size={20} style={{ marginRight: 'var(--space-2)' }} />
+              <h3 style={{ fontSize: 'var(--text-md)', margin: 0 }}>Notifications</h3>
+            </div>
+            <PushNotificationControl subscribed={Boolean(profile?.pushSubscription)} />
           </Card>
         </div>
       </div>

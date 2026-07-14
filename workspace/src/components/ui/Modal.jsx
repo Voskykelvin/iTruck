@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
 
 export function Modal({ isOpen, onClose, title, children, footer }) {
   const modalRef = useRef(null);
+  const titleId = useId();
 
   useEffect(() => {
     const handleEscape = (e) => {
@@ -31,9 +32,11 @@ export function Modal({ isOpen, onClose, title, children, footer }) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="modal-content" role="dialog" aria-modal="true" ref={modalRef}>
+      <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={modalRef}>
         <div className="modal-header">
-          <h2 className="modal-title">{title}</h2>
+          <h2 id={titleId} className="modal-title">
+            {title}
+          </h2>
           <button
             onClick={onClose}
             className="btn btn-ghost"
