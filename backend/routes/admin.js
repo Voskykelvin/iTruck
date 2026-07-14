@@ -19,6 +19,7 @@ const {
   notifySchema,
   notificationDeliveryListSchema,
   notificationDeliveryRetrySchema,
+  securitySessionRevokeSchema,
   truckVerificationSchema,
   userDeletionSchema,
   userStatusSchema,
@@ -116,7 +117,12 @@ router.get('/stats', async (req, res, next) => {
         { $group: { _id: null, total: { $sum: '$amount' } } }
       ])
     ]);
-    res.json({ totalUsers, totalTrucks, totalBookings, totalRevenue: totalRevenue[0]?.total || 0 });
+    res.json({
+      totalUsers,
+      totalTrucks,
+      totalBookings,
+      totalRevenue: totalRevenue[0]?.total || 0
+    });
   } catch (err) {
     next(err);
   }
@@ -137,7 +143,11 @@ router.get('/trucks', async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) return res.json({ trucks: demoTrucks, mode: 'memory' });
-    res.json({ trucks: await Truck.find().limit(100) });
+    res.json({
+      trucks: await Truck.find({ archivedAt: null })
+        .populate('owner', 'firstName lastName email role isVerified isActive')
+        .limit(100)
+    });
   } catch (err) {
     next(err);
   }
@@ -200,6 +210,41 @@ router.get('/notification-deliveries', notificationDeliveryListSchema, validate,
       .sort('-createdAt')
       .limit(req.query.limit || 100);
     res.json({ deliveries });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/security/sessions', async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.json({ sessions: [], mode: 'memory' });
+
+    const sessions = await RefreshToken.find({ revokedAt: null, expiresAt: { $gt: new Date() } })
+      .select('user deviceId deviceName deviceType ipAddress lastUsedAt createdAt expiresAt')
+      .populate('user', 'firstName lastName email role isActive')
+      .sort({ lastUsedAt: -1 })
+      .limit(100);
+    res.json({ sessions });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/security/sessions/:id/revoke', securitySessionRevokeSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) return res.status(404).json({ message: 'Session not found', mode: 'memory' });
+
+    const session = await RefreshToken.findOne({ _id: req.params.id, revokedAt: null });
+    if (!session) return res.status(404).json({ message: 'Active session not found' });
+    await session.revoke();
+    await recordAudit(req, 'security.session.revoked', 'session', session._id, {
+      user: session.user,
+      deviceType: session.deviceType,
+      deviceName: session.deviceName
+    });
+    res.json({ message: 'Session revoked', session: { id: session._id, user: session.user } });
   } catch (err) {
     next(err);
   }

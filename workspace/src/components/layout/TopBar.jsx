@@ -6,6 +6,7 @@ import SearchPalette from '../domain/SearchPalette';
 import { useSessionBootstrap } from '../../queries/session';
 import { roleForUser } from '../../utils/roles';
 import BrandHomeLink from '../ui/BrandHomeLink';
+import NetworkStatus from '../ui/NetworkStatus';
 
 export default function TopBar({ onToggleSidebar }) {
   const { data: user } = useSessionBootstrap();
@@ -78,6 +79,8 @@ export default function TopBar({ onToggleSidebar }) {
         </div>
 
         <div className="row topbar-actions">
+          <NetworkStatus className="topbar-network-status" />
+
           <button
             onClick={toggleTheme}
             className="btn btn-ghost"

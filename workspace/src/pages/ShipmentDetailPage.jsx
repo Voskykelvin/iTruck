@@ -12,9 +12,10 @@ import ProgressRing from '../components/ui/ProgressRing';
 import BidCard from '../components/domain/BidCard';
 import DeliveryProofModal from '../components/domain/DeliveryProofModal';
 import DeliveryProofViewer from '../components/domain/DeliveryProofViewer';
-import { Box, Truck, ShieldCheck, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Box, ShieldCheck, Truck } from 'lucide-react';
 import { money } from '../utils/helpers';
 import { useToast } from '../components/ui/Toast';
+import Modal from '../components/ui/Modal';
 
 export default function ShipmentDetailPage() {
   const { id } = useParams();
@@ -28,6 +29,14 @@ export default function ShipmentDetailPage() {
   const [shipment, setShipment] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isProofModalOpen, setIsProofModalOpen] = useState(false);
+  const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
+  const [isSubmittingIssue, setIsSubmittingIssue] = useState(false);
+  const [issueDraft, setIssueDraft] = useState({
+    kind: 'support',
+    category: 'delivery',
+    severity: 'normal',
+    message: ''
+  });
 
   const actionMutation = useBookingAction(async (actionFn) => {
     const data = await actionFn();
@@ -85,6 +94,31 @@ export default function ShipmentDetailPage() {
     });
   };
 
+  const submitIssue = async () => {
+    const message = issueDraft.message.trim();
+    if (message.length < 5) {
+      addToast({ title: 'Describe the issue', message: 'Please add at least a short explanation.', type: 'warning' });
+      return;
+    }
+
+    setIsSubmittingIssue(true);
+    try {
+      await api.reportIssue({
+        ...issueDraft,
+        message,
+        bookingId: shipment.id,
+        title: `${issueDraft.category} ${issueDraft.kind}`
+      });
+      setIssueDraft({ kind: 'support', category: 'delivery', severity: 'normal', message: '' });
+      setIsIssueModalOpen(false);
+      addToast({ title: 'Issue reported', message: 'Our operations team will review this case.', type: 'success' });
+    } catch (error) {
+      addToast({ title: 'Report not sent', message: error.message, type: 'error' });
+    } finally {
+      setIsSubmittingIssue(false);
+    }
+  };
+
   return (
     <div className="animate-fade-in stack-lg">
       <div className="row">
@@ -95,7 +129,7 @@ export default function ShipmentDetailPage() {
 
       <div
         className="page-header"
-        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}
       >
         <div>
           <div className="row" style={{ gap: 'var(--space-3)' }}>
@@ -107,7 +141,12 @@ export default function ShipmentDetailPage() {
           </p>
         </div>
 
-        <div className="row">
+        <div className="row" style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {role !== 'admin' && (
+            <Button variant="secondary" size="sm" icon={AlertTriangle} onClick={() => setIsIssueModalOpen(true)}>
+              Report issue
+            </Button>
+          )}
           {isOwner && isPending && (
             <Button
               variant="primary"
@@ -271,6 +310,79 @@ export default function ShipmentDetailPage() {
         onClose={() => setIsProofModalOpen(false)}
         shipmentId={shipment.id}
       />
+
+      <Modal
+        isOpen={isIssueModalOpen}
+        onClose={() => setIsIssueModalOpen(false)}
+        title="Report an issue"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setIsIssueModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={isSubmittingIssue} onClick={submitIssue}>
+              Send report
+            </Button>
+          </>
+        }
+      >
+        <div className="stack">
+          <p className="text-secondary">Reports are linked to this shipment and routed to the operations queue.</p>
+          <div className="grid-2">
+            <label className="input-group">
+              <span className="input-label">Report type</span>
+              <select
+                className="input-field"
+                value={issueDraft.kind}
+                onChange={(event) => setIssueDraft({ ...issueDraft, kind: event.target.value })}
+              >
+                <option value="support">Support request</option>
+                <option value="dispute">Dispute</option>
+              </select>
+            </label>
+            <label className="input-group">
+              <span className="input-label">Category</span>
+              <select
+                className="input-field"
+                value={issueDraft.category}
+                onChange={(event) => setIssueDraft({ ...issueDraft, category: event.target.value })}
+              >
+                <option value="delivery">Delivery</option>
+                <option value="delay">Delay</option>
+                <option value="damage">Damage or loss</option>
+                <option value="payment">Payment</option>
+                <option value="tracking">Tracking</option>
+                <option value="conduct">Conduct</option>
+                <option value="technical">Technical</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+          </div>
+          <label className="input-group">
+            <span className="input-label">Urgency</span>
+            <select
+              className="input-field"
+              value={issueDraft.severity}
+              onChange={(event) => setIssueDraft({ ...issueDraft, severity: event.target.value })}
+            >
+              <option value="low">Low</option>
+              <option value="normal">Normal</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </label>
+          <label className="input-group">
+            <span className="input-label">What happened?</span>
+            <textarea
+              className="input-field"
+              rows="5"
+              value={issueDraft.message}
+              onChange={(event) => setIssueDraft({ ...issueDraft, message: event.target.value })}
+              placeholder="Describe what happened, where it happened, and what you need next."
+            />
+          </label>
+        </div>
+      </Modal>
     </div>
   );
 }

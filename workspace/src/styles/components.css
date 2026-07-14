@@ -584,6 +584,234 @@ textarea.input-field {
   color: var(--ink);
 }
 
+/* Admin operations workspace */
+.admin-workspace {
+  min-width: 0;
+}
+
+.admin-page-header {
+  align-items: flex-end;
+}
+
+.admin-connection-status,
+.network-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 650;
+}
+
+.network-status {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  padding: 5px 9px;
+}
+
+.network-status.is-online {
+  color: var(--success);
+}
+
+.network-status.is-offline {
+  border-color: var(--warning-border);
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.admin-section-nav,
+.admin-subnav {
+  display: flex;
+  gap: var(--space-2);
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+  scrollbar-width: thin;
+}
+
+.admin-section-nav button,
+.admin-subnav button {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+  font-weight: 650;
+}
+
+.admin-section-nav button:hover,
+.admin-subnav button:hover {
+  border-color: var(--brand-border);
+  color: var(--brand);
+}
+
+.admin-section-nav button.active,
+.admin-subnav button.active {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: var(--text-on-brand);
+}
+
+.admin-warning-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  border-color: var(--warning-border);
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.admin-warning-card p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.admin-content-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-content-heading h2 {
+  margin-bottom: var(--space-1);
+}
+
+.admin-content-heading p {
+  margin: 0;
+}
+
+.admin-evidence-count {
+  align-self: center;
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.admin-action-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.admin-action-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: var(--space-4);
+  color: var(--ink);
+  text-align: left;
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color var(--duration-fast),
+    box-shadow var(--duration-fast),
+    transform var(--duration-fast);
+}
+
+.admin-action-card:hover {
+  border-color: var(--brand-border);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.admin-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.admin-action-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.admin-action-copy strong,
+.admin-action-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-action-copy small {
+  color: var(--text-secondary);
+}
+
+.admin-action-value {
+  min-width: 1.7ch;
+  color: var(--ink);
+  font-family: var(--font-heading);
+  font-size: var(--text-2xl);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.admin-empty-state {
+  display: grid;
+  min-height: 180px;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.admin-empty-state svg {
+  color: var(--success);
+}
+
+.admin-document-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+}
+
+.admin-timeline-row {
+  border-left: 2px solid var(--brand-border);
+  padding: 0 0 var(--space-3) var(--space-3);
+}
+
+.admin-timeline-row span,
+.admin-timeline-row p {
+  display: block;
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.push-notification-control {
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.push-notification-control p {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+}
+
 /* These overrides live after component defaults so they remain effective with the
    stylesheet import order used by the app. */
 @media (max-width: 768px) {
@@ -598,5 +826,61 @@ textarea.input-field {
 
   .settings-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .topbar-network-status span {
+    display: none;
+  }
+
+  .topbar-network-status {
+    width: 32px;
+    height: 32px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .admin-page-header {
+    align-items: flex-start;
+  }
+
+  .admin-connection-status {
+    flex-wrap: wrap;
+  }
+
+  .admin-content-card {
+    padding: var(--space-4);
+  }
+
+  .admin-content-heading.row-between {
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+
+  .admin-evidence-count {
+    display: none;
+  }
+
+  .admin-action-grid {
+    grid-auto-columns: minmax(230px, 78vw);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 2px 2px var(--space-2);
+    scroll-snap-type: x mandatory;
+  }
+
+  .admin-action-card {
+    scroll-snap-align: start;
+  }
+
+  .admin-document-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .push-notification-control {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

@@ -405,7 +405,26 @@ export const api = {
   adminListTrucks: () => request('/admin/trucks'),
   adminListBookings: () => request('/admin/bookings'),
   adminListPayments: () => request('/admin/payments'),
+  adminProviderOperations: () => request('/payments/provider-operations'),
+  adminReleaseBookingPayment: (bookingId) =>
+    request(`/payments/bookings/${encodeURIComponent(bookingId)}/release`, {
+      method: 'POST',
+      body: JSON.stringify({})
+    }),
+  adminRefundPayment: (transactionId, payload = {}) =>
+    request(`/payments/transactions/${encodeURIComponent(transactionId)}/refund`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  adminExecutePayout: (transactionId) =>
+    request(`/payments/withdrawals/${encodeURIComponent(transactionId)}/execute`, {
+      method: 'POST',
+      body: JSON.stringify({})
+    }),
   adminAuditLogs: () => request('/admin/audit-logs'),
+  adminSecuritySessions: () => request('/admin/security/sessions'),
+  adminRevokeSecuritySession: (sessionId) =>
+    request(`/admin/security/sessions/${encodeURIComponent(sessionId)}/revoke`, { method: 'POST' }),
   adminCases: (params = {}) => request(`/admin/cases${queryString(params)}`),
   adminAssignCase: (id, payload) =>
     request(`/admin/cases/${encodeURIComponent(id)}/assign`, {

@@ -58,6 +58,7 @@ const notificationDeliveryListSchema = [
 ];
 
 const notificationDeliveryRetrySchema = [liveMongoIdParam('id')];
+const securitySessionRevokeSchema = [liveMongoIdParam('id')];
 
 const documentReviewSchema = [
   liveMongoIdParam('id'),
@@ -72,6 +73,7 @@ module.exports = {
   notifySchema,
   notificationDeliveryListSchema,
   notificationDeliveryRetrySchema,
+  securitySessionRevokeSchema,
   userDeletionSchema,
   truckVerificationSchema,
   userStatusSchema,
