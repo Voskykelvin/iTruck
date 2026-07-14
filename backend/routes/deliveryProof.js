@@ -167,7 +167,7 @@ router.post(
         {
           title: `${result.booking._id} receiver proof verified`,
           message: 'Receiver OTP, electronic signature, GPS, and delivery photos were verified.',
-          link: '/app/tracking',
+          link: '/app/shipments',
           bookingId: result.booking._id,
           proofHash: result.proof.recordHash
         },

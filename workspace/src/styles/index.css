@@ -1,0 +1,10 @@
+/* ═══════════════════════════════════════════════════════
+   iTruck Global Styles Aggregator
+   ═══════════════════════════════════════════════════════ */
+
+@import './tokens.css';
+@import './base.css';
+@import './layouts.css';
+@import './components.css';
+@import './animations.css';
+@import './landing.css';

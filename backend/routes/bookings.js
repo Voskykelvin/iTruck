@@ -372,7 +372,18 @@ router.get('/', listBookingsSchema, validate, async (req, res, next) => {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
       return res.json({
-        bookings: memoryBookings.filter((booking) => bookingVisibleTo(req.user, booking)),
+        bookings: memoryBookings.filter((booking) => {
+          if (req.user.role === 'admin') return true;
+          if (req.user.role === 'client') return String(booking.client) === String(req.user._id);
+          if (req.user.role === 'owner') {
+            return (
+              String(booking.owner) === String(req.user._id) ||
+              (booking.bids || []).some((bid) => String(bid.owner) === String(req.user._id))
+            );
+          }
+          if (req.user.role === 'driver') return String(booking.driver) === String(req.user._id);
+          return false;
+        }),
         mode: 'memory'
       });
     }
@@ -804,7 +815,7 @@ router.patch(
         {
           title: `${booking._id} delivered`,
           message: `${booking.pickup || 'Pickup'} to ${booking.destination || 'delivery'} was confirmed delivered.`,
-          link: '/app/tracking',
+          link: '/app/shipments',
           bookingId: booking._id
         },
         req.app.get('io')
@@ -955,7 +966,7 @@ router.patch(
         {
           title: `${booking._id} ${booking.status.replaceAll('_', ' ')}`,
           message: `${booking.pickup || 'Pickup'} to ${booking.destination || 'delivery'} status changed.`,
-          link: '/app/tracking',
+          link: '/app/shipments',
           bookingId: booking._id,
           status: booking.status
         },
@@ -1034,7 +1045,7 @@ async function appendTrackingUpdates(req, res, next, updates) {
           message: deviated
             ? `Vehicle is about ${routeUpdate.routeDeviation.distanceMeters} metres from the planned road route.`
             : 'Vehicle has returned within the planned route corridor.',
-          link: '/app/tracking',
+          link: '/app/shipments',
           priority: deviated ? 'high' : 'normal',
           bookingId: updatedBooking._id,
           distanceMeters: routeUpdate.routeDeviation.distanceMeters,

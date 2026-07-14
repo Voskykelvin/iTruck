@@ -73,3 +73,23 @@ export function useDriverAction(action) {
     }
   });
 }
+
+export function useUploadDeliveryProofPhotos() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ bookingId, files, metadata }) => api.uploadDeliveryProofPhotos(bookingId, files, metadata),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: operationsQueryKeys.all });
+    }
+  });
+}
+
+export function useFinalizeDeliveryProof() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ bookingId, data }) => api.finalizeDeliveryProof(bookingId, data),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: operationsQueryKeys.all });
+    }
+  });
+}

@@ -60,4 +60,22 @@ router.post(
   })
 );
 
+router.post(
+  '/vehicle',
+  upload.single('file'),
+  asyncHandler(async (req, res) => {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ message: 'No file uploaded. Use form-data field "file".' });
+    }
+
+    ensureAllowedFile(req.file, cargoTypes, 'Vehicle');
+    const url = await cloudinary.uploadBuffer(req.file.buffer, {
+      folder: 'itruck/vehicles',
+      localExtension: fileExtensions[req.file.mimetype],
+      ...(req.file.mimetype === 'application/pdf' ? { resource_type: 'raw' } : {})
+    });
+    res.json({ url, fileName: req.file.originalname });
+  })
+);
+
 module.exports = router;

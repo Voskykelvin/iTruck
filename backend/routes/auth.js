@@ -189,7 +189,7 @@ router.post(
       user.passwordResetExpires = new Date(Date.now() + PASSWORD_RESET_MS);
       await user.save({ validateBeforeSave: false });
 
-      const resetUrl = `${frontendBaseUrl(req)}/app/profile?reset=${resetToken}&email=${encodeURIComponent(user.email)}`;
+      const resetUrl = `${frontendBaseUrl(req)}/login?reset=${resetToken}&email=${encodeURIComponent(user.email)}`;
       try {
         await sendMail({
           to: user.email,

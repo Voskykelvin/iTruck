@@ -1,376 +1,166 @@
 import { useState, useRef } from 'react';
-import { Image, Truck, Plus, BarChart3, UserRound } from 'lucide-react';
-import { api, setSession } from '../api.js';
-import StatusBadge from '../components/StatusBadge.jsx';
-import Panel from '../components/Panel.jsx';
-import DocumentSlotButton from '../components/DocumentSlotButton.jsx';
-import Input from '../components/Input.jsx';
-import Select from '../components/Select.jsx';
-import AsyncState from '../components/AsyncState.jsx';
-import { useCurrentUserPolling } from '../hooks/usePolling.js';
-import { useCreateFleetTruck, useFleetTrucks } from '../queries/commercial.js';
-import { useDocumentAction } from '../queries/documents.js';
+import { useSessionBootstrap, useUploadProfileDocument } from '../queries/session';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import Badge from '../components/ui/Badge';
+import { ShieldCheck, UploadCloud, CheckCircle, FileText } from 'lucide-react';
+import { useToast } from '../components/ui/Toast';
 import {
-  roleForUser,
-  roleName,
-  normalizeProfileDocumentType,
-  profileDocumentsForRole,
   missingRequiredProfileDocuments,
-  documentStages,
+  profileDocumentsForRole,
   findProfileDocument,
-  documentUploadAccept,
-  imageUploadAccept,
-  documentUploadLimitText,
-  vehicleTypes,
-  navigate
-} from '../utils/helpers.js';
+  reviewReadyDocument
+} from '../utils/helpers';
+import { useNavigate } from 'react-router-dom';
 
-export default function OnboardingPage({ notify, user, setUser }) {
-  const role = roleForUser(user);
-  const [uploading, setUploading] = useState('');
-  const [truckDraft, setTruckDraft] = useState({
-    plateNumber: '',
-    type: 'Lorry',
-    capacityTonnes: 8,
-    routes: 'Nairobi-Kampala',
-    photos: []
-  });
-  const pendingDocRef = useRef('');
-  const profileDocInputRef = useRef(null);
-  const vehiclePhotoInputRef = useRef(null);
-  const fleetQuery = useFleetTrucks({
-    enabled: role === 'owner' && Boolean(user.email),
-    refetchInterval: role === 'owner' ? 30000 : false
-  });
-  const createTruck = useCreateFleetTruck();
-  const profileUpload = useDocumentAction(({ documentType, file }) => api.uploadProfileDocument(documentType, file));
-  const fleet = fleetQuery.data || [];
+export default function OnboardingPage() {
+  const { data: user, isLoading } = useSessionBootstrap();
+  const uploadDoc = useUploadProfileDocument();
+  const { addToast } = useToast();
+  const navigate = useNavigate();
+  const fileInputRef = useRef(null);
 
-  useCurrentUserPolling(Boolean(user.email), setUser, 30000);
+  const [activeDocType, setActiveDocType] = useState(null);
 
-  const profileDocs = profileDocumentsForRole(role);
+  if (isLoading || !user)
+    return (
+      <div className="page-header">
+        <h1 className="page-title">Loading...</h1>
+      </div>
+    );
+
+  const role = user.role;
+  const requiredDocs = profileDocumentsForRole(role);
   const missingDocs = missingRequiredProfileDocuments(user, role);
-  const hasProfileBasics = Boolean(user?.firstName && user?.lastName && user?.phone && user?.country);
-  const workspaceQueue =
-    role === 'owner'
-      ? [
-          {
-            label: 'Complete owner details',
-            detail: hasProfileBasics ? 'Ready' : 'Add name, phone, and country',
-            done: hasProfileBasics,
-            path: '/app/profile?complete=details'
-          },
-          {
-            label: 'Upload verification docs',
-            detail: missingDocs.length ? `${missingDocs.length} still needed` : 'Submitted for review',
-            done: !missingDocs.length,
-            path: missingDocs[0] ? `/app/profile?document=${encodeURIComponent(missingDocs[0])}` : '/app/onboarding'
-          },
-          {
-            label: 'Register a vehicle',
-            detail: fleet.length
-              ? `${fleet.length} vehicle record${fleet.length === 1 ? '' : 's'}`
-              : 'Add plate, capacity, routes, and photos',
-            done: fleet.length > 0,
-            path: '/app/vehicles'
-          }
-        ]
-      : [
-          {
-            label: 'Complete shipper details',
-            detail: hasProfileBasics ? 'Ready' : 'Add name, phone, and country',
-            done: hasProfileBasics,
-            path: '/app/profile?complete=details'
-          },
-          {
-            label: 'Upload shipper documents',
-            detail: missingDocs.length ? `${missingDocs.length} still needed` : 'Submitted for review',
-            done: !missingDocs.length,
-            path: missingDocs[0] ? `/app/profile?document=${encodeURIComponent(missingDocs[0])}` : '/app/onboarding'
-          },
-          {
-            label: 'Create first booking',
-            detail: 'Open the booking form when docs are ready',
-            done: false,
-            path: '/app/book'
-          }
-        ];
+  const isComplete = missingDocs.length === 0;
 
-  function openProfileDoc(documentType) {
-    pendingDocRef.current = normalizeProfileDocumentType(documentType, role);
-    profileDocInputRef.current?.click();
-  }
+  const triggerUpload = (docLabel) => {
+    setActiveDocType(docLabel);
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
 
-  async function uploadProfileDoc(event) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file || !pendingDocRef.current) return;
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeDocType) return;
 
-    setUploading(pendingDocRef.current);
     try {
-      const data = await profileUpload.mutateAsync({ documentType: pendingDocRef.current, file });
-      if (data.user) {
-        setSession({ user: data.user });
-        setUser(data.user);
-      }
-      notify('Document sent to admin review');
+      await uploadDoc.mutateAsync({ documentType: activeDocType, file });
+      addToast({ title: 'Document Uploaded', message: `${activeDocType} uploaded successfully.`, type: 'success' });
     } catch (err) {
-      notify(err.message);
+      addToast({ title: 'Upload Failed', message: err.message, type: 'error' });
     } finally {
-      setUploading('');
+      setActiveDocType(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  }
-
-  async function uploadVehiclePhoto(event) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-
-    setUploading('vehicle-photo');
-    try {
-      const data = await api.uploadCargo([file]);
-      const url = data.urls?.[0];
-      if (!url) throw new Error('Photo upload did not return a URL');
-      setTruckDraft((current) => ({ ...current, photos: [...(current.photos || []), url] }));
-      notify('Vehicle photo attached to this enrollment');
-    } catch (err) {
-      notify(err.message);
-    } finally {
-      setUploading('');
-    }
-  }
-
-  function updateTruckDraft(key, value) {
-    setTruckDraft((current) => ({ ...current, [key]: value }));
-  }
-
-  async function submitTruck(event) {
-    event.preventDefault();
-    if (role !== 'owner') return;
-
-    const payload = {
-      ...truckDraft,
-      capacityTonnes: Number(truckDraft.capacityTonnes || 0),
-      routes: String(truckDraft.routes || '')
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean)
-    };
-
-    try {
-      await createTruck.mutateAsync(payload);
-      notify('Vehicle sent to admin review');
-      setTruckDraft((current) => ({ ...current, plateNumber: '', photos: [] }));
-    } catch (err) {
-      notify(err.message);
-    }
-  }
-
-  function openBookingWorkspace() {
-    const missing = missingRequiredProfileDocuments(user, role);
-    if (missing.length) {
-      notify(`Please complete your profile: ${missing.map((item) => `${item} is required`).join(', ')}`);
-      return;
-    }
-
-    navigate('/app/book');
-  }
+  };
 
   return (
-    <section className="workspace-layout">
-      <input
-        ref={profileDocInputRef}
-        type="file"
-        accept={documentUploadAccept}
-        onChange={uploadProfileDoc}
-        style={{ display: 'none' }}
-      />
-      <input
-        ref={vehiclePhotoInputRef}
-        type="file"
-        accept={imageUploadAccept}
-        onChange={uploadVehiclePhoto}
-        style={{ display: 'none' }}
-      />
-      <div className="stack">
-        <section className="intro-band compact-intro">
-          <div>
-            <p className="eyebrow">{roleName(role)} Setup</p>
-            <h2>{role === 'owner' ? 'Get approved to bid on work.' : 'Get approved to ship.'}</h2>
-            <p>
-              {role === 'owner'
-                ? 'Owner documents and vehicles go to admin review before your fleet starts taking loads.'
-                : 'Shipper documents go to admin review, then your bookings and carrier bids stay in one workspace.'}
-            </p>
-          </div>
-          <div className="command-summary">
-            <StatusBadge tone={user.isVerified ? 'success' : 'warn'}>
-              {user.isVerified ? 'Verified' : 'Admin review'}
-            </StatusBadge>
-            <strong>{user.email || 'No active session'}</strong>
-            <span>{role === 'owner' ? `${fleet.length} vehicle records` : 'Shipping profile'}</span>
-          </div>
-        </section>
+    <div className="animate-fade-in stack-lg" style={{ maxWidth: 800, margin: '0 auto' }}>
+      <div
+        className="page-header"
+        style={{ flexDirection: 'column', alignItems: 'center', textAlign: 'center', paddingTop: 'var(--space-8)' }}
+      >
+        <div
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: '50%',
+            background: isComplete ? 'var(--success-soft)' : 'var(--brand-soft)',
+            color: isComplete ? 'var(--success)' : 'var(--brand)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: 'var(--space-4)'
+          }}
+        >
+          <ShieldCheck size={32} />
+        </div>
+        <h1 className="page-title">Identity Verification</h1>
+        <p className="text-secondary" style={{ maxWidth: 500 }}>
+          {isComplete
+            ? 'Your identity documents have been submitted and are under review by our team. You can proceed to the dashboard.'
+            : 'To ensure a safe and secure platform, please upload the required documents to verify your identity and business.'}
+        </p>
 
-        <Panel title="Documents for Admin Review" eyebrow="Verification">
-          <div className="process-list">
-            {(documentStages[role] || documentStages.client).map((item, index) => (
-              <span key={item}>
-                <strong>{index + 1}</strong>
-                {item}
-              </span>
-            ))}
-          </div>
-          <div className="doc-list">
-            {profileDocs.map((item) => {
-              const slug = normalizeProfileDocumentType(item, role);
-              const existingDoc = findProfileDocument(user.documents || [], item, role);
-              const docStatus = existingDoc ? existingDoc.status : 'missing';
-
-              return (
-                <DocumentSlotButton
-                  key={item}
-                  label={item}
-                  status={docStatus}
-                  busy={uploading === slug}
-                  labels={{
-                    approved: 'Verified',
-                    pending: 'Pending Review',
-                    rejected: 'Rejected',
-                    expired: 'Expired',
-                    missing: 'Not Uploaded'
-                  }}
-                  onClick={() => openProfileDoc(item)}
-                  style={{ margin: '4px 0' }}
-                />
-              );
-            })}
-          </div>
-          <p className="muted-note">
-            {documentUploadLimitText}. Rejected or expired documents can be replaced from this list.
-          </p>
-        </Panel>
-
-        {role === 'owner' ? (
-          <Panel title="Vehicle Registration" eyebrow="Owner Review">
-            {fleetQuery.isError ? (
-              <AsyncState
-                compact
-                title="Registered vehicles could not be loaded"
-                detail={fleetQuery.error?.message}
-                onRetry={() => fleetQuery.refetch()}
-              />
-            ) : null}
-            <form className="modal-form" onSubmit={submitTruck}>
-              <div className="form-grid">
-                <Input
-                  label="Plate number"
-                  value={truckDraft.plateNumber}
-                  onChange={(value) => updateTruckDraft('plateNumber', value)}
-                />
-                <Select
-                  label="Vehicle type"
-                  value={truckDraft.type}
-                  onChange={(value) => updateTruckDraft('type', value)}
-                  options={vehicleTypes}
-                />
-                <Input
-                  label="Capacity tonnes"
-                  type="number"
-                  value={truckDraft.capacityTonnes}
-                  onChange={(value) => updateTruckDraft('capacityTonnes', Number(value))}
-                />
-                <Input
-                  label="Preferred routes"
-                  value={truckDraft.routes}
-                  onChange={(value) => updateTruckDraft('routes', value)}
-                />
-              </div>
-              <div style={{ display: 'grid', gap: '10px', width: '100%', margin: '10px 0' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 800, color: 'var(--muted)' }}>
-                  Vehicle Photos
-                </label>
-                <div className="photo-preview-grid">
-                  {truckDraft.photos.length
-                    ? truckDraft.photos.map((photo, i) => (
-                        <div key={photo} className="photo-preview-card">
-                          <img src={photo} alt={`Vehicle photo ${i + 1}`} loading="lazy" />
-                          <button
-                            type="button"
-                            className="photo-remove-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setTruckDraft((current) => ({
-                                ...current,
-                                photos: current.photos.filter((p) => p !== photo)
-                              }));
-                            }}
-                          >
-                            &times;
-                          </button>
-                        </div>
-                      ))
-                    : null}
-                </div>
-                <button
-                  type="button"
-                  className="premium-upload-zone"
-                  disabled={uploading === 'vehicle-photo'}
-                  onClick={() => vehiclePhotoInputRef.current?.click()}
-                >
-                  <Image size={28} />
-                  <span>{uploading === 'vehicle-photo' ? 'Uploading photo...' : 'Click to Upload Vehicle Photo'}</span>
-                  <small>Supports JPEG, PNG, WEBP (Max 10MB)</small>
-                </button>
-              </div>
-              <button className="primary icon-label" type="submit" disabled={createTruck.isPending}>
-                <Truck size={18} />
-                <span>{createTruck.isPending ? 'Sending...' : 'Send Vehicle for Review'}</span>
-              </button>
-            </form>
-          </Panel>
-        ) : (
-          <Panel title="Shipping Workspace" eyebrow="Next Step">
-            <div className="button-row">
-              <button className="primary icon-label" type="button" onClick={openBookingWorkspace}>
-                <Plus size={18} />
-                <span>Book Shipment</span>
-              </button>
-              <button className="secondary icon-label" type="button" onClick={() => navigate('/app/bids')}>
-                <BarChart3 size={18} />
-                <span>Review Bids</span>
-              </button>
-            </div>
-          </Panel>
+        {isComplete && (
+          <Button
+            variant="primary"
+            style={{ marginTop: 'var(--space-4)' }}
+            onClick={() => navigate(role === 'owner' ? '/app/owner' : '/app/shipper')}
+          >
+            Go to Dashboard
+          </Button>
         )}
       </div>
 
-      <aside className="side-stack">
-        <Panel title={role === 'owner' ? 'Next Owner Steps' : 'Next Shipper Steps'} eyebrow="Workspace">
-          <div className="doc-list compact">
-            {workspaceQueue.map((item) => (
-              <button type="button" key={item.label} onClick={() => navigate(item.path)}>
-                <span className="queue-step-main">
-                  <span>{item.label}</span>
-                  <StatusBadge tone={item.done ? 'success' : 'warn'}>{item.done ? 'Done' : 'Next'}</StatusBadge>
-                </span>
-                <small>{item.detail}</small>
-              </button>
-            ))}
-          </div>
-        </Panel>
-        <Panel title={role === 'owner' ? 'Wanna Ship?' : 'Own Trucks?'} eyebrow="Optional">
-          <div className="verification-card">
-            <UserRound size={28} />
-            <strong>{role === 'owner' ? 'Create a shipper profile' : 'Create an owner profile'}</strong>
-            <span>Run each side separately so permissions, documents, and payments stay clean.</span>
-          </div>
-          <a className="secondary full icon-label" href="/#signup">
-            <UserRound size={18} />
-            <span>{role === 'owner' ? 'Start shipping' : 'Register fleet'}</span>
-          </a>
-        </Panel>
-      </aside>
-    </section>
+      <div className="stack">
+        <div className="row-between">
+          <h3 style={{ margin: 0 }}>Required Documents</h3>
+          <Badge variant={isComplete ? 'success' : 'warning'}>
+            {isComplete ? 'Verification Pending' : `${missingDocs.length} remaining`}
+          </Badge>
+        </div>
+
+        <div className="stack-sm">
+          {requiredDocs.map((docLabel) => {
+            const existingDoc = findProfileDocument(user.documents, docLabel, role);
+            const isReady = reviewReadyDocument(existingDoc);
+            const statusLabel = existingDoc?.status || 'missing';
+
+            return (
+              <Card key={docLabel} className="row-between hover-lift" style={{ padding: 'var(--space-4)' }}>
+                <div className="row">
+                  <div
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: 'var(--radius)',
+                      background: isReady ? 'var(--success-soft)' : 'var(--surface-2)',
+                      color: isReady ? 'var(--success)' : 'var(--text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    {isReady ? <CheckCircle size={24} /> : <FileText size={24} />}
+                  </div>
+                  <div style={{ marginLeft: 'var(--space-4)' }}>
+                    <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{docLabel}</div>
+                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                      {statusLabel === 'approved' && 'Verified by Admin'}
+                      {statusLabel === 'pending' && 'Under review...'}
+                      {statusLabel === 'rejected' && (
+                        <span style={{ color: 'var(--danger)' }}>Rejected - Please upload again</span>
+                      )}
+                      {statusLabel === 'missing' && 'Please upload a clear, legible copy.'}
+                    </div>
+                  </div>
+                </div>
+
+                {!isReady && (
+                  <Button
+                    variant="secondary"
+                    icon={UploadCloud}
+                    onClick={() => triggerUpload(docLabel)}
+                    loading={uploadDoc.isPending && activeDocType === docLabel}
+                  >
+                    Upload
+                  </Button>
+                )}
+                {isReady && <Badge variant="success">Submitted</Badge>}
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
+      <input
+        type="file"
+        accept="image/jpeg, image/png, image/webp, application/pdf"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        hidden
+      />
+    </div>
   );
 }

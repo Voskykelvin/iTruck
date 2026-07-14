@@ -1,1 +1,0 @@
-import{t as e}from"./jsx-runtime-CdvZGgm7.js";var t=e();function n({label:e,value:n,onChange:r,options:i,emptyLabel:a}){return(0,t.jsxs)(`label`,{className:`field`,children:[(0,t.jsx)(`span`,{children:e}),(0,t.jsx)(`select`,{value:n,onChange:e=>r(e.target.value),children:i.map(e=>(0,t.jsx)(`option`,{value:e,children:e||a||`All`},e||`empty`))})]})}export{n as t};

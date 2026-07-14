@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  base: '/app/',
+  base: '/',
   plugins: [react(), tailwindcss()],
   test: {
     environment: 'jsdom',
@@ -16,15 +16,15 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: '../frontend/app',
+    outDir: '../frontend',
     emptyOutDir: true
   },
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:5000',
+      '/api': 'http://127.0.0.1:5000',
       '/socket.io': {
-        target: 'http://localhost:5000',
+        target: 'http://127.0.0.1:5000',
         ws: true
       }
     }

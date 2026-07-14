@@ -147,7 +147,7 @@ async function notifyStaleTracking(now = new Date(), io) {
         {
           title: `${booking._id} tracking needs attention`,
           message: `No fresh location has been received for at least ${staleMinutes} minutes.`,
-          link: '/app/tracking',
+          link: '/app/shipments',
           priority: 'high',
           bookingId: booking._id,
           dedupeKey: `tracking-stale:${booking._id}:${dayKey(now)}`
@@ -396,7 +396,7 @@ async function closeResolvedCases(now = new Date(), io) {
             {
               title: `${record.caseNumber || record._id} closed`,
               message: 'This case was closed after the resolution period ended.',
-              link: '/app/tracking',
+              link: '/app/shipments',
               caseId: record._id,
               caseNumber: record.caseNumber,
               bookingId: record.booking,

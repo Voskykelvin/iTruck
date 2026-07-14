@@ -12,8 +12,7 @@ ENV NODE_ENV=production
 COPY backend/package*.json ./backend/
 RUN cd backend && npm install --omit=dev && npm cache clean --force
 COPY --chown=node:node backend ./backend
-COPY --chown=node:node frontend ./frontend
-COPY --from=app-build --chown=node:node /app/frontend/app ./frontend/app
+COPY --from=app-build --chown=node:node /app/frontend ./frontend
 WORKDIR /app/backend
 EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

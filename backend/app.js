@@ -17,9 +17,9 @@ const { auditMutations } = require('./middleware/audit');
 const metrics = require('./services/metrics');
 
 const app = express();
+// Serve the built workspace app output. The Vite build emits files to `frontend`.
 const frontendDir = path.join(__dirname, '../frontend');
-const reactAppIndex = path.join(frontendDir, 'app/index.html');
-const legacyIndex = path.join(frontendDir, 'index.html');
+const reactAppIndex = path.join(frontendDir, 'index.html');
 const localUploadsDir = path.join(__dirname, 'uploads');
 const localUploads = express.static(localUploadsDir, {
   fallthrough: false,
@@ -32,8 +32,8 @@ const legacyRouteMap = {
   '/pages/dashboard-client.html': '/app/shipper',
   '/pages/dashboard-owner.html': '/app/owner',
   '/pages/book-truck.html': '/app/book',
-  '/pages/tracking.html': '/app/tracking',
-  '/pages/driver-contact.html': '/app/tracking',
+  '/pages/tracking.html': '/app/shipments',
+  '/pages/driver-contact.html': '/app/shipments',
   '/pages/listings.html': '/app/marketplace',
   '/pages/truck-profile.html': '/app/marketplace',
   '/pages/profile.html': '/app/profile',
@@ -58,11 +58,6 @@ const contentSecurityPolicy = {
 
 function sendReactApp(req, res, next) {
   if (!fs.existsSync(reactAppIndex)) return next();
-  return res.sendFile(reactAppIndex);
-}
-
-function sendFrontendIndex(req, res) {
-  if (fs.existsSync(legacyIndex)) return res.sendFile(legacyIndex);
   return res.sendFile(reactAppIndex);
 }
 
@@ -164,11 +159,15 @@ app.get(Object.keys(legacyRouteMap), (req, res) => {
   res.redirect(308, legacyRouteMap[req.path]);
 });
 
+// Serve the built React frontend (SPA)
 app.use(express.static(frontendDir, { index: false }));
-app.get('/', sendFrontendIndex);
-app.get(['/app', '/app/*'], sendReactApp);
-app.get('*', (req, res) => {
-  sendFrontendIndex(req, res);
+
+// Root and app routes should serve the SPA index produced by the workspace build.
+app.get(['/', '/app', '/app/*'], sendReactApp);
+
+app.get('*', (req, res, next) => {
+  if (req.originalUrl.startsWith('/api')) return next(AppError.notFound(`Route ${req.originalUrl} not found.`));
+  sendReactApp(req, res, next);
 });
 
 app.use(errorHandler);
