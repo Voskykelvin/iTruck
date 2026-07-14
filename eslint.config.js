@@ -20,7 +20,7 @@ module.exports = [
       'node_modules/**',
       'backend/node_modules/**',
       'workspace/node_modules/**',
-      'frontend/app/**',
+      'frontend/**',
       'coverage/**',
       '**/*.min.js'
     ]

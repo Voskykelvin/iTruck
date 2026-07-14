@@ -203,6 +203,11 @@ async function uploadCargoFiles(files) {
   return request('/upload/cargo', { method: 'POST', body: filesBody('files', files) });
 }
 
+async function uploadVehicleFile(file, allowedTypes, label) {
+  assertUploadFile(file, allowedTypes, label);
+  return request('/upload/vehicle', { method: 'POST', body: filesBody('file', [file]) });
+}
+
 async function uploadDeliveryProofPhotos(bookingId, files, metadata) {
   const list = Array.from(files || []);
   if (!list.length) throw new Error('At least one delivery photo is required');
@@ -261,6 +266,9 @@ export const api = {
   listBookings: () => request('/bookings'),
   listOpenBookings: () => request('/bookings/open'),
   getBooking: (bookingId) => request(`/bookings/${encodeURIComponent(bookingId)}`),
+  getBookingDraft: () => request('/bookings/draft'),
+  saveBookingDraft: (payload) => request('/bookings/draft', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteBookingDraft: () => request('/bookings/draft', { method: 'DELETE' }),
   createBooking: (payload) => request('/bookings', { method: 'POST', body: JSON.stringify(payload) }),
   confirmDelivery: (bookingId, payload = {}) =>
     request(`/bookings/${encodeURIComponent(bookingId)}/confirm-delivery`, {
@@ -364,12 +372,13 @@ export const api = {
   uploadCargo: uploadCargoFiles,
   uploadProfileDocument: (documentType, file) =>
     uploadDocument(`/users/documents/${encodeURIComponent(documentType)}`, documentType, file),
-  uploadTruckDocument: (truckId, documentType, file) =>
-    uploadDocument(
-      `/trucks/${encodeURIComponent(truckId)}/documents/${encodeURIComponent(documentType)}`,
-      documentType,
-      file
-    ),
+  uploadTruckDocument: async (truckId, documentType, file) => {
+    const data = await uploadVehicleFile(file, documentUploadTypes, 'Vehicle document');
+    return request(`/trucks/${encodeURIComponent(truckId)}/documents/${encodeURIComponent(documentType)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ url: data.url, fileName: data.fileName || file.name, documentType })
+    });
+  },
   uploadBookingDocument: (bookingId, documentType, files) =>
     uploadDocuments(
       `/bookings/${encodeURIComponent(bookingId)}/documents/${encodeURIComponent(documentType)}`,
@@ -377,9 +386,8 @@ export const api = {
       Array.isArray(files) ? files : [files]
     ),
   uploadTruckPhoto: async (truckId, file) => {
-    assertUploadFile(file, imageUploadTypes, 'Vehicle photo');
-    const data = await uploadCargoFiles([file]);
-    const url = data.urls?.[0];
+    const data = await uploadVehicleFile(file, imageUploadTypes, 'Vehicle photo');
+    const url = data.url;
     if (!url) throw new Error('Photo upload did not return a URL');
     return request(`/trucks/${encodeURIComponent(truckId)}/photos`, {
       method: 'PATCH',

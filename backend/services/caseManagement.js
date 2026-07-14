@@ -366,7 +366,7 @@ async function createCase(input, options = {}) {
     {
       title: `${record.caseNumber} ${record.kind} opened`,
       message: record.message,
-      link: '/app/tracking',
+      link: '/app/shipments',
       priority: record.priority === 'urgent' ? 'high' : record.priority,
       caseId: record._id,
       caseNumber: record.caseNumber,
@@ -428,7 +428,7 @@ async function changeCaseStatus(record, nextStatus, actor, options = {}) {
     {
       title: `${record.caseNumber} ${nextStatus.replaceAll('_', ' ')}`,
       message: options.note || 'Your support case status changed.',
-      link: '/app/tracking',
+      link: '/app/shipments',
       priority: record.priority === 'urgent' ? 'high' : record.priority,
       caseId: record._id,
       caseNumber: record.caseNumber,
@@ -490,7 +490,7 @@ async function addComment(record, input, actor, options = {}) {
       bookingId: record.booking
     };
     if (isAdmin) {
-      await notifyUsers(record.participants, 'case.comment', { ...notification, link: '/app/tracking' }, options.io);
+      await notifyUsers(record.participants, 'case.comment', { ...notification, link: '/app/shipments' }, options.io);
     } else if (record.assignedTo) {
       await notifyUsers([record.assignedTo], 'case.comment', { ...notification, link: '/app/admin' }, options.io);
     } else {
@@ -637,7 +637,7 @@ async function reopenCase(record, actor, options = {}) {
   };
   await Promise.all([
     notifyUsers([record.assignedTo], 'case.reopened', { ...notification, link: '/app/admin' }, options.io),
-    notifyUsers(record.participants, 'case.reopened', { ...notification, link: '/app/tracking' }, options.io)
+    notifyUsers(record.participants, 'case.reopened', { ...notification, link: '/app/shipments' }, options.io)
   ]);
   return record;
 }
@@ -758,7 +758,7 @@ async function resolveCase(record, input, actor, options = {}) {
     {
       title: `${record.caseNumber} resolved`,
       message: input.summary,
-      link: '/app/tracking',
+      link: '/app/shipments',
       priority: 'normal',
       caseId: record._id,
       caseNumber: record.caseNumber,

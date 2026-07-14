@@ -1,1 +1,0 @@
-import{t as e}from"./jsx-runtime-CdvZGgm7.js";var t=e();function n({children:e,tone:n=`default`}){return(0,t.jsx)(`span`,{className:`badge ${n}`,children:e})}export{n as t};

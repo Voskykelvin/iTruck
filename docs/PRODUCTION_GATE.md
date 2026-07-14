@@ -20,7 +20,7 @@ Expected result:
 - Lint passes.
 - Prettier check passes.
 - Backend tests pass.
-- Workspace build writes `frontend/app`.
+- Workspace build writes the single-page application to `frontend/`.
 - Backend and workspace production dependency audits report no vulnerabilities.
 
 ## Staging Gate
@@ -56,9 +56,8 @@ Then verify:
 - `/api/health` returns `200`.
 - Unknown `/api/*` paths return JSON `404`.
 - `/app` loads the React workspace.
-- Nginx serves `/app` with SPA fallback, forwards `/api` and `/socket.io`, sends security headers, and does not cache `/sw.js`.
+- Nginx proxies the SPA, `/api`, and `/socket.io` to the application container and sends security headers.
 - The container image runs the backend as the non-root `node` user.
-- A staged frontend deployment shows the update prompt when a new service worker is waiting.
 - Register, login, refresh, logout, and session revocation work with secure cookies.
 - Browser mutations reject missing or mismatched CSRF tokens, while bearer-token integrations remain supported.
 - Driver invitations, truck assignments, booking assignments, GPS, documents, chat, cases, and delivery proof are

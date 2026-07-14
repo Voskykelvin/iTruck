@@ -32,9 +32,9 @@ export const roleNavigation = {
   client: [
     { path: '/app/shipper', label: 'Dashboard', icon: 'LayoutDashboard' },
     { path: '/app/book', label: 'Book', icon: 'Plus' },
-    { path: '/app/bids', label: 'Bids', icon: 'BarChart3' },
+
     { path: '/app/marketplace', label: 'Trucks', icon: 'Search' },
-    { path: '/app/tracking', label: 'Orders', icon: 'Map' },
+    { path: '/app/shipments', label: 'Orders', icon: 'Map' },
     { path: '/app/documents', label: 'Documents', icon: 'FileText' },
     { path: '/app/payments', label: 'Payments', icon: 'Wallet' },
     { path: '/app/messages', label: 'Messages', icon: 'MessageSquare' },
@@ -45,14 +45,14 @@ export const roleNavigation = {
     { path: '/app/onboarding', label: 'Verification', icon: 'ShieldCheck' },
     { path: '/app/vehicles', label: 'Vehicles', icon: 'Truck' },
     { path: '/app/bids', label: 'Find Work', icon: 'Search' },
-    { path: '/app/tracking', label: 'Jobs', icon: 'Map' },
+    { path: '/app/shipments', label: 'Jobs', icon: 'Map' },
     { path: '/app/documents', label: 'Documents', icon: 'FileText' },
     { path: '/app/payments', label: 'Payments', icon: 'Wallet' },
     { path: '/app/messages', label: 'Messages', icon: 'MessageSquare' },
     { path: '/app/profile', label: 'Settings', icon: 'UserRound' }
   ],
   driver: [
-    { path: '/app/tracking', label: 'Assigned Jobs', icon: 'Map' },
+    { path: '/app/shipments', label: 'Assigned Jobs', icon: 'Map' },
     { path: '/app/documents', label: 'Documents', icon: 'FileText' },
     { path: '/app/messages', label: 'Messages', icon: 'MessageSquare' },
     { path: '/app/profile', label: 'Settings', icon: 'UserRound' }
@@ -480,6 +480,19 @@ export function formatMessageTime(value = new Date().toISOString()) {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+export function timeFormat(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString([], {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
 export function defaultChatMessages(shipment) {
   return [
     {
@@ -686,7 +699,7 @@ export function notificationLinkForType(type, data = {}) {
   if (type?.startsWith('document')) return '/app/documents';
   if (type?.startsWith('profile')) return '/app/profile';
   if (type?.startsWith('truck')) return '/app/vehicles';
-  if (type?.startsWith('booking') || type?.startsWith('shipment')) return '/app/tracking';
+  if (type?.startsWith('booking') || type?.startsWith('shipment')) return '/app/shipments';
   return '/app/shipper';
 }
 

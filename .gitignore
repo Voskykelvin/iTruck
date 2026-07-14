@@ -13,3 +13,4 @@ workspace/playwright-report/
 .DS_Store
 Thumbs.db
 tempdir*/
+frontend/

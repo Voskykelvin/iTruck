@@ -19,7 +19,10 @@ export const commercialQueryKeys = {
   bookingDetail: (bookingId) => ['commercial', 'bookings', 'detail', String(bookingId || '')],
   openBookings: () => ['commercial', 'bookings', 'open'],
   fleet: () => ['commercial', 'fleet'],
-  estimate: (payload) => ['commercial', 'estimate', payload]
+  dispatch: (bookingId) => ['commercial', 'dispatch', String(bookingId || '')],
+  estimate: (payload) => ['commercial', 'estimate', payload],
+  draft: () => ['commercial', 'bookings', 'draft'],
+  drivers: () => ['commercial', 'drivers']
 };
 
 function bookingIdentity(booking) {
@@ -98,6 +101,56 @@ export function useRemoveFleetTruck() {
       queryClient.setQueryData(commercialQueryKeys.fleet(), (current = []) =>
         current.filter((item) => String(item.id) !== String(truckId))
       );
+    }
+  });
+}
+
+export function useDrivers(options = {}) {
+  return useQuery({
+    queryKey: commercialQueryKeys.drivers(),
+    queryFn: () => api.listDrivers(),
+    ...options
+  });
+}
+
+export function useInviteDriver() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload) => api.inviteDriver(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: commercialQueryKeys.drivers() });
+    }
+  });
+}
+
+export function useRevokeDriverInvitation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (invitationId) => api.revokeDriverInvitation(invitationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: commercialQueryKeys.drivers() });
+    }
+  });
+}
+
+export function useAssignDriverTruck() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ driverId, truckId }) => api.assignDriverTruck(driverId, truckId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: commercialQueryKeys.drivers() });
+      queryClient.invalidateQueries({ queryKey: commercialQueryKeys.fleet() });
+    }
+  });
+}
+
+export function useUnassignDriverTruck() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (driverId) => api.unassignDriverTruck(driverId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: commercialQueryKeys.drivers() });
+      queryClient.invalidateQueries({ queryKey: commercialQueryKeys.fleet() });
     }
   });
 }
@@ -183,6 +236,55 @@ export function useCreateBooking() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload) => api.createBooking(payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: commercialQueryKeys.bookings() })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: commercialQueryKeys.bookings() });
+      queryClient.setQueryData(commercialQueryKeys.draft(), null);
+    }
+  });
+}
+
+export function useBookingDraft(options = {}) {
+  return useQuery({
+    queryKey: commercialQueryKeys.draft(),
+    queryFn: async () => {
+      const data = await api.getBookingDraft();
+      return data.draft || null;
+    },
+    ...options
+  });
+}
+
+export function useSaveBookingDraft() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload) => api.saveBookingDraft(payload),
+    onSuccess: (data) => {
+      if (data?.draft) {
+        queryClient.setQueryData(commercialQueryKeys.draft(), data.draft);
+      }
+    }
+  });
+}
+
+export function useDeleteBookingDraft() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.deleteBookingDraft(),
+    onSuccess: () => {
+      queryClient.setQueryData(commercialQueryKeys.draft(), null);
+    }
+  });
+}
+
+export function useBookingDispatch(bookingId, options = {}) {
+  return useQuery({
+    queryKey: commercialQueryKeys.dispatch(bookingId),
+    queryFn: async () => {
+      if (!bookingId) return null;
+      const data = await api.bookingDispatch(bookingId);
+      return data.dispatchPlan || null;
+    },
+    enabled: Boolean(bookingId),
+    ...options
   });
 }

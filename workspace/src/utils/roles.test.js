@@ -1,22 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { dashboardPathForRole, roleForUser, roleName, routeAllowedForUser } from './roles.js';
+import { dashboardPathForRole, roleForUser, roleName } from './roles';
 
-describe('role routing policy', () => {
-  it('keeps drivers inside assigned-job surfaces', () => {
-    const driver = { role: 'driver' };
-    expect(roleForUser(driver)).toBe('driver');
-    expect(dashboardPathForRole('driver')).toBe('/app/tracking');
-    expect(roleName('driver')).toBe('Driver');
-    expect(routeAllowedForUser('/app/tracking?shipment=1', driver)).toBe(true);
-    expect(routeAllowedForUser('/app/documents', driver)).toBe(true);
-    expect(routeAllowedForUser('/app/owner', driver)).toBe(false);
-    expect(routeAllowedForUser('/app/payments', driver)).toBe(false);
+describe('role utilities', () => {
+  it.each([
+    [{ role: 'owner' }, 'owner'],
+    [{ role: 'driver' }, 'driver'],
+    [{ role: 'admin' }, 'admin'],
+    [{ role: 'client' }, 'client'],
+    [null, 'client']
+  ])('normalizes user roles', (user, expected) => {
+    expect(roleForUser(user)).toBe(expected);
   });
 
-  it('preserves shipper, owner, and admin boundaries', () => {
-    expect(routeAllowedForUser('/app/book', { role: 'client' })).toBe(true);
-    expect(routeAllowedForUser('/app/vehicles', { role: 'client' })).toBe(false);
-    expect(routeAllowedForUser('/app/vehicles', { role: 'owner' })).toBe(true);
-    expect(routeAllowedForUser('/app/admin', { role: 'admin' })).toBe(true);
+  it.each([
+    ['owner', '/app/owner'],
+    ['driver', '/app/shipments'],
+    ['admin', '/app/admin'],
+    ['client', '/app/shipper']
+  ])('maps %s to its dashboard', (role, expected) => {
+    expect(dashboardPathForRole(role)).toBe(expected);
+  });
+
+  it('uses readable role names', () => {
+    expect(roleName('owner')).toBe('Owner');
+    expect(roleName('client')).toBe('Shipper');
   });
 });

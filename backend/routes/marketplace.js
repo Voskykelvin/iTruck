@@ -209,7 +209,7 @@ router.post(
         {
           title: `${result.booking._id} assigned`,
           message: `${result.truck.plateNumber} was selected with a ${result.match.score}% verified-truck match.`,
-          link: '/app/tracking',
+          link: '/app/shipments',
           bookingId: result.booking._id,
           truckId: result.truck._id,
           matchScore: result.match.score

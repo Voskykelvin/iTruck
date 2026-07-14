@@ -8,6 +8,7 @@ function bookingVisibleTo(user, booking) {
   if (user.role === 'client') return sameId(booking.client, user._id);
   if (user.role === 'driver') return sameId(booking.driver, user._id);
   if (user.role === 'owner') {
+    if (['pending', 'bidding'].includes(booking.status) && !booking.owner) return true;
     return sameId(booking.owner, user._id) || (booking.bids || []).some((bid) => sameId(bid.owner, user._id));
   }
   return false;

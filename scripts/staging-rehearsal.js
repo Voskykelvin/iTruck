@@ -7,8 +7,8 @@ if (!baseUrl) {
 const checks = [
   { name: 'liveness', path: '/api/health/live', status: 200 },
   { name: 'readiness', path: '/api/health/ready', status: 200 },
-  { name: 'privacy', path: '/app/privacy', status: 200 },
-  { name: 'terms', path: '/app/terms', status: 200 }
+  { name: 'privacy', path: '/privacy', status: 200 },
+  { name: 'terms', path: '/terms', status: 200 }
 ];
 const results = [];
 

@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
-for (const route of ['/app/profile', '/app/privacy', '/app/terms']) {
+for (const route of ['/app/profile', '/privacy', '/terms']) {
   test(`${route} has no serious accessibility violations`, async ({ page }) => {
     await page.goto(route);
     await expect(page.locator('#root')).not.toBeEmpty();

@@ -101,14 +101,14 @@ test('deliver queues web push only when the user has enabled a subscription', as
       }
     }),
     'tracking.updated',
-    { title: 'Truck moved', message: 'Your delivery is approaching', link: '/app/tracking' }
+    { title: 'Truck moved', message: 'Your delivery is approaching', link: '/app/shipments' }
   );
 
   expect(NotificationDelivery.create).toHaveBeenCalledWith(
     expect.objectContaining({
       channel: 'push',
       recipient: 'https://push.example.com/subscription',
-      payload: expect.objectContaining({ title: 'Truck moved', link: '/app/tracking' })
+      payload: expect.objectContaining({ title: 'Truck moved', link: '/app/shipments' })
     })
   );
 });

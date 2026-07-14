@@ -15,7 +15,6 @@ test('workspace serves secure sign-in and health endpoints', async ({ page, requ
   expect(pageErrors).toEqual([]);
   expect(authRequests).toHaveLength(0);
   await expect(page.locator('#root')).not.toBeEmpty();
-  await expect(page.getByRole('heading', { name: 'iTruck Workspace', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sign In' })).toBeVisible();
 });

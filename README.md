@@ -1,673 +1,113 @@
 # iTruck
 
-iTruck is a logistics marketplace and operations platform for moving cargo across African routes. It connects shippers who need reliable transport with verified truck owners, while giving both sides tools for booking, bidding, tracking, document handling, wallet/payment records, notifications, and trust controls.
+iTruck is a full-stack logistics platform for shippers, fleet owners, drivers, and operations teams. The application covers booking, bidding, fleet and driver management, shipment workflows, documents, messaging, delivery proof, wallets, notifications, and administration.
 
-The project is currently a launch-prep MVP: it has a working Express/MongoDB backend, a static public frontend, a React operations workspace, production hardening for live mode, Docker/Render deployment assets, and a growing checklist for payments, notifications, and real-world logistics integrations.
+## Architecture
 
-## Product Vision
+- `workspace/` — React 18 single-page application built with Vite and TanStack Query.
+- `backend/` — Express API, Socket.IO, MongoDB/Mongoose models, and provider integrations.
+- `frontend/` — generated production build output; ignored by Git and recreated by `npm run build`.
+- `docs/` — active operational, production, provider, and legal documentation.
+- `scripts/` — deployment rehearsal, load, Docker, and launch checks.
+- `nginx/` — optional reverse proxy for the container stack.
 
-Logistics in many African corridors is fragmented. Shippers often manage transport through phone calls, informal brokers, manual paperwork, delayed proof of delivery, and limited visibility into vehicle or owner reliability. Truck owners face the opposite problem: inconsistent access to high-quality loads, slow document checks, poor payment certainty, and little tooling to present fleet readiness.
+The Vite application builds directly into `frontend/`. Express serves that directory and falls back to `frontend/index.html` for browser routes. API routes remain under `/api`.
 
-iTruck is designed to become a trusted digital operating layer for this market.
+## Requirements
 
-Core goals:
+- Node.js 20.19 or newer (Node 22 recommended)
+- npm 10
+- MongoDB for persistent/live operation
+- Redis for multi-instance rate limiting, Socket.IO fan-out, and coordinated background work
 
-- Help shippers create transport requests quickly and compare verified truck options.
-- Help truck owners discover available loads, submit bids, and manage fleet readiness.
-- Reduce operational friction around waybills, proof of delivery, insurance, cargo photos, and customs paperwork.
-- Improve trust with owner KYC, driver identity, vehicle logbooks, insurance status, route history, and admin risk controls.
-- Support escrow-style payment workflows so owners and shippers can transact with more confidence.
-- Provide a modern mobile-first workspace for teams that work in the field, at depots, and on the road.
-
-## Current Status
-
-This repository contains a functional MVP with both demo-friendly and live-mode behavior.
-
-Implemented:
-
-- Public landing page and React workspace served at `/app`.
-- Shipper dashboard, booking form, marketplace, tracking, owner workspace, admin workspace, and profile/verification views.
-- Express API for auth, users, trucks, bookings, payments, documents, notifications, uploads, admin metrics, marketplace helpers, workflow records, and Stripe webhooks.
-- MongoDB models with production indexes for core records.
-- JWT access tokens plus refresh-token cookie support.
-- Password hashing with bcrypt.
-- Protected API routes with role restrictions.
-- Request validation on important write routes.
-- Helmet, CORS, NoSQL sanitization, HTTP parameter pollution protection, and rate limiting.
-- Optional Redis-backed Socket.io adapter and Redis-backed rate limiter for horizontal scaling.
-- Authenticated Socket.io connections with booking-room authorization.
-- Cloudinary upload integration with live-mode enforcement.
-- Pino structured logging.
-- PDF document generation for waybill, POD, invoice, and customs documents.
-- Owner-scoped live tracking ingestion with single-point and batch GPS endpoints, Socket.io booking-room updates, offline driver telemetry queueing, and compressed sync.
-- PWA manifest, install icons, service worker caching, and offline fallback page.
-- User-controlled in-app, email, and SMS notification preferences with quiet hours.
-- MongoDB-backed notification delivery queue with atomic worker leases, retries, delivery history, and admin retry controls.
-- Scheduled document-expiry and stale-tracking alerts with cross-instance deduplication.
-- Shipment support and dispute cases with assignment, participant/internal comments, evidence, SLA deadlines,
-  escalation, auditable resolution outcomes, reopening, and automatic closure.
-- Dockerfile, docker-compose setup, Nginx config, Render config, and GitHub Actions checks.
-- Jest/Supertest backend tests, including security and authorization regressions.
-
-Still in progress before full business launch:
-
-- Production certification, live-account validation, refund/dispute handling, and owner payout execution for Stripe, M-Pesa, and MTN MoMo.
-- Web push delivery and provider delivery-receipt callbacks.
-- Production routing/geocoding integration for custom live markers, road polylines, route deviation, and ETA.
-- Receiver e-signature or OTP proof, richer evidence metadata, and a full chain-of-custody trail.
-- Counteroffers, bid expiry/withdrawal/rejection reasons, automated matching, and full LTL dispatch allocation.
-- A dedicated driver role and driver-to-vehicle/job assignment workflow.
-- Production monitoring, analytics, alerting, backup/restore validation, and incident response.
-- Browser end-to-end tests, MongoDB/Redis integration tests, and higher backend branch coverage.
-- Business-hours SLA calendars and live payment-provider refund execution for cases resolved as refund required.
-
-The latest engineering audit, including an explanation of why `62.44%` is a test-coverage figure rather than a
-product-completion score, is in `docs/ENGINEERING_AUDIT_2026-06-21.md`.
-
-## Tech Stack
-
-### Frontend
-
-- Static landing/PWA assets in `frontend/`.
-- React 18 workspace in `workspace/`.
-- Vite 8 for workspace development and builds.
-- Lucide React icons.
-- CSS custom properties for theme tokens.
-- Progressive Web App assets through `manifest.json`, icons, and `sw.js`.
-
-### Backend
-
-- Node.js and Express.
-- MongoDB with Mongoose.
-- Socket.io for realtime transport events.
-- Redis support for multi-instance Socket.io and shared rate limits.
-- JWT authentication with refresh-token session records.
-- bcryptjs for password hashing.
-- multer and Cloudinary for file uploads.
-- PDFKit for generated logistics documents.
-- Stripe webhook route with raw body parsing and signature verification.
-- Pino and pino-http for structured logging.
-- Jest and Supertest for backend tests.
-
-### Infrastructure
-
-- Dockerfile for containerized deployment.
-- docker-compose for local container orchestration.
-- Nginx reverse proxy config.
-- Render deployment blueprint.
-- GitHub Actions for CI checks.
-
-## Repository Structure
-
-```text
-.
-+-- backend/                 # Express API, models, routes, services, sockets, tests
-+-- docs/                    # Deployment and go-live notes
-+-- frontend/                # Static public site, PWA files, built React app
-|   +-- app/                 # Production build output from workspace/
-|   +-- css/                 # Landing/offline styles
-|   +-- js/                  # Landing/PWA scripts
-+-- nginx/                   # Reverse proxy config
-+-- workspace/               # React/Vite source app
-+-- Dockerfile               # Production container
-+-- docker-compose.yml       # Local compose setup
-+-- render.yaml              # Render deployment blueprint
-+-- package.json             # Root convenience scripts
-```
-
-## Application Surfaces
-
-### Public Website
-
-The public website lives in `frontend/index.html` and related CSS/JS files. It introduces iTruck and routes users into the React app.
-
-### React Workspace
-
-The main logged-in workspace lives in `workspace/` and builds into `frontend/app/`.
-
-Express serves it at:
-
-```text
-http://localhost:5000/app
-```
-
-Workspace routes include:
-
-- `/app/shipper`
-- `/app/book`
-- `/app/marketplace`
-- `/app/tracking`
-- `/app/owner`
-- `/app/admin`
-- `/app/profile`
-
-### Backend API
-
-The API is served from the same Express process under `/api`.
-
-Important route groups:
-
-```text
-GET    /api/health
-POST   /api/auth/register/owner
-POST   /api/auth/register/client
-POST   /api/auth/login
-POST   /api/auth/refresh
-POST   /api/auth/logout
-GET    /api/auth/me
-
-GET    /api/trucks
-POST   /api/trucks
-GET    /api/trucks/fleet
-
-GET    /api/bookings
-GET    /api/bookings/open
-POST   /api/bookings
-POST   /api/bookings/:id/bids
-PATCH  /api/bookings/:id/status
-PATCH  /api/bookings/:id/confirm-delivery
-POST   /api/bookings/:id/tracking
-POST   /api/bookings/:id/tracking/batch
-
-GET    /api/payments/wallet
-POST   /api/payments/wallet/debit
-POST   /api/payments/wallet/credit
-
-GET    /api/documents/waybill/:bookingId
-GET    /api/documents/pod/:bookingId
-GET    /api/documents/invoice/:bookingId
-GET    /api/documents/customs/:bookingId
-
-GET    /api/notifications
-GET    /api/notifications/count
-GET    /api/notifications/preferences
-PATCH  /api/notifications/preferences
-PATCH  /api/notifications/read-all
-PATCH  /api/notifications/:id/read
-
-GET    /api/cases
-POST   /api/cases
-GET    /api/cases/:id
-POST   /api/cases/:id/comments
-POST   /api/cases/:id/reopen
-
-POST   /api/upload/avatar
-POST   /api/upload/cargo
-
-GET    /api/admin/stats
-GET    /api/admin/users
-GET    /api/admin/trucks
-GET    /api/admin/bookings
-GET    /api/admin/payments
-GET    /api/admin/cases
-PATCH  /api/admin/cases/:id/assign
-PATCH  /api/admin/cases/:id/status
-POST   /api/admin/cases/:id/comments
-POST   /api/admin/cases/:id/resolve
-POST   /api/admin/cases/:id/reopen
-POST   /api/admin/notify
-
-GET    /api/marketplace/trust
-GET    /api/marketplace/localization
-POST   /api/marketplace/estimate
-GET    /api/marketplace/clusters
-
-GET    /api/workflow
-POST   /api/workflow/requests
-POST   /api/workflow/bids
-POST   /api/workflow/messages
-POST   /api/workflow/reports
-
-POST   /api/webhooks/stripe
-POST   /api/payments/webhooks/mpesa/stk
-POST   /api/payments/webhooks/mtn/request-to-pay/:referenceId?
-```
-
-## Local Development
-
-### Prerequisites
-
-- Node.js 18 or newer.
-- npm.
-- MongoDB for database-backed development.
-- Optional Redis if testing shared sockets or shared rate limits.
-- Optional Cloudinary account if testing real uploads.
-
-### Install Dependencies
-
-From the repository root:
+## Install
 
 ```bash
 npm install
-npm --prefix backend install
-npm --prefix workspace install --include=dev
+npm install --prefix backend
+npm install --include=dev --include=optional --prefix workspace
 ```
 
-### Environment Setup
+Copy `.env.example` to `.env` and replace every production placeholder. Never commit environment files or credentials.
 
-Copy the example file:
+## Development
+
+Run the API:
 
 ```bash
-cp .env.example .env
+npm run dev
 ```
 
-On Windows PowerShell:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-For quick local UI work without a database, keep demo mode enabled or omit `MONGODB_URI`. For database-backed local work, set:
-
-```text
-MONGODB_URI=mongodb://localhost:27017/itruck
-JWT_SECRET=replace-with-at-least-32-random-characters
-DEMO_MODE=false
-```
-
-### Run The Full App
-
-Start Express, the API, static frontend, and built React workspace:
-
-```bash
-npm start
-```
-
-Open:
-
-```text
-http://localhost:5000
-http://localhost:5000/app
-```
-
-### Run The React Workspace In Vite
+Run Vite in another terminal:
 
 ```bash
 npm run app:dev
 ```
 
-Vite will print the local workspace URL. This is useful for rapid React UI work.
+Vite proxies `/api` and `/socket.io` to `http://127.0.0.1:5000`.
 
-### Build The React Workspace
-
-```bash
-npm run app:build
-```
-
-This builds `workspace/` into `frontend/app/`, which is what Express serves at `/app`.
-
-### Seed Local Data
-
-Use the destructive seed only for local development databases:
+To run the production-shaped application locally:
 
 ```bash
-npm run seed
+npm run build
+npm start
 ```
 
-Use the safe upsert installer when you do not want to wipe existing records:
+Then open `http://127.0.0.1:5000`.
+
+## Quality Checks
 
 ```bash
-npm --prefix backend run install:users
-```
-
-Local seed admin:
-
-```text
-admin@itruck.africa
-ChangeMeAdmin123!
-```
-
-Local seed owners and clients use:
-
-```text
-ChangeMeUser123!
-```
-
-## Scripts
-
-Root scripts:
-
-```text
-npm start          # Start backend server
-npm run dev        # Start backend with nodemon
-npm run app:dev    # Start React workspace with Vite
-npm run app:build  # Build React workspace into frontend/app
-npm run build      # Alias for workspace build
-npm run seed       # Seed local data
-npm test           # Run backend tests
-npm run live:check # Validate required live environment variables
-npm run docker:up  # Start docker-compose services
-```
-
-Backend scripts:
-
-```text
-npm --prefix backend start
-npm --prefix backend run dev
-npm --prefix backend test
-npm --prefix backend run seed
-npm --prefix backend run install:users
-npm --prefix backend run live:check
-```
-
-Workspace scripts:
-
-```text
-npm --prefix workspace run dev
-npm --prefix workspace run build
-npm --prefix workspace run preview
-```
-
-## Testing
-
-Run backend tests:
-
-```bash
+npm run lint
+npm run format:check
 npm test
+npm run test:frontend
+npm run app:build
 ```
 
-The current Jest/Supertest suite covers important API behavior around:
-
-- Authentication.
-- Bookings.
-- Payments.
-- Notifications.
-
-Before a live deploy, also run:
+Run the complete CI gate with:
 
 ```bash
-npm run app:build
-npm run live:check
+npm run ci:check
 ```
 
-## Demo Mode vs Live Mode
+Browser tests build the frontend and start the backend automatically:
 
-iTruck supports a local demo-friendly mode and a stricter live mode.
-
-### Demo Mode
-
-Demo mode is useful for UI development, product walkthroughs, and local testing without a database.
-
-In demo/local mode:
-
-- The backend can start without MongoDB.
-- Some routes can use limited in-memory fallback data.
-- Upload services may return mock local URLs if Cloudinary is not configured.
-- The React workspace can fall back to local demo records.
-
-### Live Mode
-
-Live mode is intended for staging and production.
-
-Enable it with:
-
-```text
-NODE_ENV=production
-LIVE_MODE=true
-DEMO_MODE=false
+```bash
+npm run test:e2e
 ```
 
-In live mode:
+Additional release checks include `npm run docker:verify`, `npm run staging:rehearse`, `npm run launch:audit`, and `npm run live:check`.
 
-- `MONGODB_URI` is required.
-- `JWT_SECRET` is required.
-- `FRONTEND_URL` or `ALLOWED_ORIGINS` is required.
-- Cloudinary credentials are required.
-- The server exits if MongoDB is not available at startup.
-- Protected routes return service errors instead of silently using memory fallback data.
-- Upload routes fail if Cloudinary is not configured.
+## Main Routes
 
-## Environment Variables
+Public routes:
 
-Core live variables:
+- `/` — product site
+- `/login` and `/register` — authentication
+- `/privacy` and `/terms` — legal notices
 
-```text
-NODE_ENV=production
-LIVE_MODE=true
-DEMO_MODE=false
-PORT=5000
-MONGODB_URI=mongodb+srv://USER:PASSWORD@HOST/itruck
-JWT_SECRET=replace-with-at-least-32-random-characters
-JWT_ACCESS_EXPIRES=15m
-JWT_REFRESH_EXPIRES=7d
-FRONTEND_URL=https://your-domain.example
-APP_URL=https://your-domain.example
-ALLOWED_ORIGINS=https://your-domain.example
-REFRESH_COOKIE_SAMESITE=none
-LOG_LEVEL=info
-CLOUDINARY_CLOUD_NAME=
-CLOUDINARY_API_KEY=
-CLOUDINARY_API_SECRET=
-```
+Authenticated routes are under `/app` and protected by role:
 
-Optional integrations:
+- Shippers: dashboard, booking, marketplace, shipments, documents, wallet, messages, and settings
+- Owners: dashboard, load board, fleet, drivers, shipments, documents, wallet, messages, and verification
+- Drivers: assigned shipments, documents, messages, and settings
+- Admins: operations console and authorized cross-role workflows
 
-```text
-REDIS_URL=
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
-MPESA_CONSUMER_KEY=
-MPESA_CONSUMER_SECRET=
-MPESA_SHORTCODE=
-MPESA_PASSKEY=
-MPESA_CALLBACK_URL=https://your-domain.example/api/payments/webhooks/mpesa/stk
-MPESA_WEBHOOK_SECRET=
-MTN_MOMO_SUBSCRIPTION_KEY=
-MTN_MOMO_API_USER=
-MTN_MOMO_API_KEY=
-MTN_MOMO_CALLBACK_URL=https://your-domain.example/api/payments/webhooks/mtn/request-to-pay
-MTN_MOMO_WEBHOOK_SECRET=
-AFRICASTALKING_USERNAME=
-AFRICASTALKING_API_KEY=
-EMAIL_PROVIDER=
-EMAIL_FROM=iTruck <no-reply@your-domain.example>
-RESEND_API_KEY=
-SENDGRID_API_KEY=
-SMTP_URL=
-SMTP_HOST=
-SMTP_PORT=
-SMTP_USER=
-SMTP_PASS=
-SMTP_SECURE=false
-```
+## Runtime Modes
 
-Email delivery auto-selects Resend, SendGrid, or SMTP from the configured credentials. Set `EMAIL_PROVIDER`
-to `resend`, `sendgrid`, or `smtp` to choose explicitly. `EMAIL_PROVIDER_MODULE` remains available for a custom
-provider that exports `send(message)`.
+Demo/development mode can use in-memory fallbacks where supported. Live mode (`LIVE_MODE=true`, `DEMO_MODE=false`) requires persistent infrastructure and configured providers. Run `npm run live:check` before starting a production release.
 
-The API process also runs the notification delivery worker and operational reminder scans. Tune them with
-`NOTIFICATION_WORKER_INTERVAL_MS`, `NOTIFICATION_WORKER_BATCH_SIZE`, `OPERATIONS_SCAN_INTERVAL_MS`, and
-`TRACKING_STALE_MINUTES`. Set `DISABLE_BACKGROUND_JOBS=true` only when another process owns those jobs.
-
-Case first-response and resolution targets are configurable per priority with
-`CASE_SLA_FIRST_RESPONSE_MINUTES_*` and `CASE_SLA_RESOLUTION_MINUTES_*`. `CASE_REOPEN_DAYS` controls the solved-case
-reopen window, and `CASE_AUTO_CLOSE_DAYS` controls automatic closure. These targets currently count elapsed time.
-
-Frontend workspace variables:
-
-```text
-VITE_DEMO_MODE=false
-VITE_API_BASE=https://your-domain.example/api
-```
-
-## Security And Production Readiness
-
-The backend includes several protections that are important before exposing the app publicly:
-
-- Helmet security headers.
-- CORS configuration with credential-safe origin handling.
-- Express JSON body limits.
-- NoSQL injection sanitization through `express-mongo-sanitize`.
-- HTTP parameter pollution protection through `hpp`.
-- Rate limiting for API and auth routes.
-- Redis-backed rate limit option for multi-instance deployments.
-- Protected routes with JWT authentication.
-- Role restrictions for owner and admin operations.
-- Refresh token persistence and logout revocation support.
-- Refresh-session revocation after password changes.
-- Production error masking.
-- Atomic wallet debit logic to avoid double-spend race conditions.
-- Mongoose indexes on high-traffic query fields.
-- Cloudinary-only uploads in live mode.
-- Upload file-signature validation and evidence requirements before document approval.
-- Public truck response redaction for owner identity, registration, chassis, and document records.
-- Stripe webhook signature verification using raw request bodies.
-- Fail-closed M-Pesa/MTN callback authentication in live mode with token redaction in application and bundled Nginx logs.
-- Atomic M-Pesa pending-to-final reconciliation with merchant reference, receipt, and amount checks.
-- Pino structured logging.
-
-Security work still recommended before public scale:
-
-- Full audit logs for all high-risk admin actions.
-- Provider sandbox/live certification, callback delivery monitoring, refund/dispute reconciliation, and payout execution.
-- More request schemas across every write route.
-- Broader fine-grained authorization coverage across remaining workflow transitions.
-- Secret rotation and environment-specific deployment credentials.
+At minimum, live deployments require secure MongoDB, JWT and delivery-OTP secrets, allowed origins, Cloudinary, and the integrations used by the selected payment, messaging, email, and maps flows. See `.env.example` for the current configuration contract.
 
 ## Deployment
 
-See the detailed guides:
+`render.yaml` defines the hosted service. `Dockerfile` builds the React application in a separate stage and copies its generated output into the non-root backend image. `docker-compose.yml` provides the application, MongoDB, Redis, and optional Nginx reverse proxy.
 
-- [Go-Live Checklist](docs/GO_LIVE.md)
-- [Backend Deployment Guide](docs/DEPLOY_BACKEND.md)
+Before deployment, follow [Production Gate](docs/PRODUCTION_GATE.md), [Operations Runbook](docs/OPERATIONS_RUNBOOK.md), and [Rollback Runbook](docs/ROLLBACK_RUNBOOK.md).
 
-Typical managed-host flow:
+Provider onboarding and backup procedures are documented in [Provider Certification](docs/PROVIDER_CERTIFICATION.md) and [Backup/Restore Runbook](docs/BACKUP_RESTORE_RUNBOOK.md).
 
-1. Provision MongoDB Atlas.
-2. Provision Cloudinary.
-3. Provision Redis if running multiple instances.
-4. Set the live environment variables in the host dashboard.
-5. Build the React workspace.
-6. Run backend tests.
-7. Run the live environment check.
-8. Deploy the Node/Express service.
-9. Verify `/api/health`.
-10. Verify login, booking, marketplace, owner, admin, upload, and document flows.
+## Legal Status
 
-Render-compatible settings:
-
-```text
-Build Command: npm ci && npm ci --prefix backend && npm ci --include=dev --prefix workspace && npm run app:build
-Start Command: npm start
-Health Check Path: /api/health
-```
-
-## Docker
-
-Build the image:
-
-```bash
-npm run docker:build
-```
-
-Run with compose:
-
-```bash
-npm run docker:up
-```
-
-View logs:
-
-```bash
-npm run docker:logs
-```
-
-Stop:
-
-```bash
-npm run docker:down
-```
-
-## PWA Behavior
-
-The frontend includes installability and offline support:
-
-- `frontend/manifest.json` defines the app name, colors, display mode, and icons.
-- `frontend/assets/icon-192.png` and `frontend/assets/icon-512.png` support home-screen installation.
-- `frontend/sw.js` precaches important assets and serves `frontend/offline.html` for offline navigation fallback.
-
-## What Sets Us Apart
-
-iTruck is not intended to be only a load board where shippers post jobs and truck owners bid. The product direction is to become an SME-first freight operating layer for African routes, with the controls needed to manage trust, documents, payments, and delivery proof after a truck is matched.
-
-Current MVP foundation:
-
-- Role-specific workspaces for shippers, fleet owners, and admins.
-- Booking, bidding, marketplace, tracking, documents, payments, notifications, and admin review flows.
-- Verification records for owners, shippers, trucks, and shipment documents.
-- Generated waybills, proof-of-delivery documents, invoices, customs documents, and receiver confirmations.
-- Live shipment tracking with driver GPS capture, offline queueing, batch sync, booking-room realtime events, and smoother current-position display.
-- Wallet, escrow-style payment records, and provider shells for card and mobile money workflows.
-- PWA support for lighter field use and offline-friendly access.
-
-Current production safeguards:
-
-- Owner bidding requires an approved owner profile plus an approved, available truck with required documents.
-- Delivery completion requires uploaded proof of delivery or receiver confirmation.
-- Delivery completion and POD generation enforce a destination geofence when destination coordinates are available.
-- Owner payment release requires a delivered booking, collected escrow funds, and approved delivery proof.
-- Admin payment release actions are recorded in the audit log.
-- Live tracking updates are restricted to the assigned owner or admin and accepted only for confirmed or in-transit bookings.
-- Driver tracking filters noisy GPS points, queues updates offline, compresses queued routes, and syncs batches when connectivity returns.
-- The shipper tracking page listens for booking-room events so live location and status changes appear without a refresh.
-- LTL bookings can store cargo weight, reserved capacity, consolidation eligibility, and route keys.
-- LTL estimates use shared-capacity pricing and can recommend route clustering.
-- Protected marketplace clustering can surface lane-level LTL consolidation opportunities.
-
-Stage 1: launch discipline and trust controls:
-
-- Prioritize SME shippers and shorter payment cycles before taking on large corporate credit exposure.
-- Require clear quote acknowledgement, receiver details, cargo photos, and shipment document responsibility before dispatch.
-- Expand bid award, counteroffer, withdrawal, expiry, rejection reason, and carrier acknowledgement workflows.
-- Extend admin audit logs into every high-risk operational change and external provider reconciliation.
-
-Stage 2: local payment and delivery proof:
-
-- Complete real M-Pesa and MTN MoMo reconciliation, webhook verification, and owner payout workflows.
-- Release owner funds only after collected funds, verified escrow, or approved financing is available.
-- Expand proof of delivery with receiver e-signature, richer cargo photo review, and dispute evidence trails.
-- Add WhatsApp/SMS-assisted workflows so drivers can receive jobs, submit updates, and upload PODs without relying on a heavy dashboard.
-
-Stage 3: stronger differentiation beyond direct matching:
-
-- Expand LTL from booking/estimate support into full dispatch, bid award, and capacity allocation workflows.
-- Improve route clustering with pickup windows, truck capacity remaining, cargo compatibility, and multi-stop sequencing.
-- Add route, depot, and facility intelligence such as wait times, delay history, document requirements, and risk notes.
-- Introduce third-party financing or factoring only after payment reconciliation and delivery-proof workflows are stable.
-- Expand corridor by corridor rather than claiming broad pan-African coverage before operational density exists.
-
-## Business Model Direction
-
-iTruck can support several revenue paths as the platform matures:
-
-- Commission on completed shipments.
-- Subscription plans for fleet owners who want more load access or advanced tools.
-- Premium verification for trucks, owners, and drivers.
-- Escrow/payment handling fees.
-- Document automation fees for waybills, customs packs, invoices, and PODs.
-- Route intelligence, fleet performance reports, and enterprise shipper dashboards.
-
-The MVP is built around the workflows needed to support these models: booking, bidding, trust checks, documents, tracking, payments, notifications, and admin review.
-
-## Project Origin
-
-This reconstruction was built from the original project reference material and then hardened into a runnable MVP aligned with the current product goals.
-
-## Recommended Next Steps
-
-Highest-value next engineering tasks:
-
-1. Certify payment-provider collections, callbacks, refunds, disputes, and owner payouts.
-2. Add web push and provider delivery-receipt callbacks.
-3. Complete bid award, counteroffer, withdrawal, expiry, and rejection workflows.
-4. Split the React application into route-level features and add frontend tests.
-5. Add production maps with live vehicle positions.
-6. Expand audit logging across every high-risk admin transition.
-7. Add transactional protection around remaining multi-record financial workflows.
-
-Highest-value go-to-market tasks:
-
-1. Launch a controlled pilot with a small set of verified owners and shippers.
-2. Focus on one or two high-value corridors before expanding.
-3. Track fill rate, bid response time, completed delivery rate, dispute rate, and payment release time.
-4. Use early shipment data to improve pricing, route risk, and owner trust scoring.
+The included [Privacy Notice](docs/PRIVACY.md) and [Terms of Service](docs/TERMS.md) are implementation drafts. They require qualified local legal review and jurisdiction-specific details before launch.
