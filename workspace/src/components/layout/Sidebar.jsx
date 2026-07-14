@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { useSessionBootstrap } from '../../queries/session';
 import { roleForUser } from '../../utils/roles';
+import BrandHomeLink from '../ui/BrandHomeLink';
 import {
   LayoutDashboard,
   Truck,
@@ -69,11 +70,7 @@ export default function Sidebar({ isOpen }) {
   return (
     <aside className="sidebar-wrapper">
       <div className="sidebar-header">
-        <NavLink to="/app" style={{ textDecoration: 'none' }}>
-          <h2 className="gradient-text" style={{ fontSize: 'var(--text-xl)', margin: 0 }}>
-            iTruck
-          </h2>
-        </NavLink>
+        <BrandHomeLink compact />
       </div>
 
       <nav className="sidebar-nav">

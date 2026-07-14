@@ -5,7 +5,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
-import { User, Shield, LogOut, Laptop, Smartphone, AlertTriangle } from 'lucide-react';
+import { User, Shield, LogOut, Laptop, Smartphone } from 'lucide-react';
 import { useToast } from '../components/ui/Toast';
 
 export default function SettingsPage() {
@@ -85,7 +85,7 @@ export default function SettingsPage() {
 
             <form onSubmit={handleUpdate} className="stack">
               <h3 style={{ fontSize: 'var(--text-md)', margin: 0 }}>Personal Information</h3>
-              <div className="grid-2">
+              <div className="settings-form-grid">
                 <Input
                   label="First Name"
                   value={formData.firstName}
@@ -187,20 +187,15 @@ export default function SettingsPage() {
             )}
           </Card>
 
-          <Card className="stack" style={{ borderColor: 'var(--danger-border)' }}>
-            <div className="row" style={{ color: 'var(--danger)' }}>
-              <AlertTriangle size={20} style={{ marginRight: 'var(--space-2)' }} />
-              <h3 style={{ fontSize: 'var(--text-md)', margin: 0 }}>Danger Zone</h3>
+          <Card className="stack account-access-card">
+            <div className="row" style={{ color: 'var(--ink)' }}>
+              <LogOut size={20} style={{ marginRight: 'var(--space-2)' }} />
+              <h3 style={{ fontSize: 'var(--text-md)', margin: 0 }}>Account access</h3>
             </div>
             <p className="text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
               Signing out will end your current session on this device.
             </p>
-            <Button
-              variant="secondary"
-              icon={LogOut}
-              style={{ color: 'var(--danger)', borderColor: 'var(--danger-border)', background: 'var(--danger-soft)' }}
-              onClick={() => logout.mutate()}
-            >
+            <Button variant="ghost" icon={LogOut} className="sign-out-button" onClick={() => logout.mutate()}>
               Sign Out
             </Button>
           </Card>

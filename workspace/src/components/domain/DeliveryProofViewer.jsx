@@ -48,18 +48,9 @@ export default function DeliveryProofViewer({ shipmentId }) {
         </div>
       </div>
 
-      <div className="grid-2">
+      <div className="proof-gallery" aria-label="Delivery photos">
         {assets?.map((asset) => (
-          <div
-            key={asset.id}
-            style={{
-              position: 'relative',
-              aspectRatio: '1',
-              borderRadius: 'var(--radius-sm)',
-              overflow: 'hidden',
-              border: '1px solid var(--border)'
-            }}
-          >
+          <div key={asset.id} className="proof-gallery-item">
             <img src={asset.url} alt="Delivery Proof" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             {Number.isFinite(asset.location?.lat) && Number.isFinite(asset.location?.lng) && (
               <div

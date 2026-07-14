@@ -5,6 +5,7 @@ import NotificationPanel from '../domain/NotificationPanel';
 import SearchPalette from '../domain/SearchPalette';
 import { useSessionBootstrap } from '../../queries/session';
 import { roleForUser } from '../../utils/roles';
+import BrandHomeLink from '../ui/BrandHomeLink';
 
 export default function TopBar({ onToggleSidebar }) {
   const { data: user } = useSessionBootstrap();
@@ -51,10 +52,12 @@ export default function TopBar({ onToggleSidebar }) {
             <Menu size={20} />
           </button>
 
+          <BrandHomeLink compact className="topbar-mobile-brand" />
+
           {/* Command Palette Trigger */}
           <button
             onClick={() => setIsSearchOpen(true)}
-            className="row"
+            className="row topbar-search"
             style={{
               background: 'var(--surface)',
               border: '1px solid var(--border)',
@@ -74,7 +77,7 @@ export default function TopBar({ onToggleSidebar }) {
           </button>
         </div>
 
-        <div className="row">
+        <div className="row topbar-actions">
           <button
             onClick={toggleTheme}
             className="btn btn-ghost"
@@ -109,12 +112,12 @@ export default function TopBar({ onToggleSidebar }) {
             <NotificationPanel isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} />
           </div>
 
-          <div className="divider" style={{ width: 1, height: 24, margin: '0 var(--space-2)' }} />
+          <div className="divider topbar-divider" style={{ width: 1, height: 24, margin: '0 var(--space-2)' }} />
 
           {role !== 'driver' && (
             <button
               onClick={() => navigate(role === 'owner' ? '/app/bids' : '/app/book')}
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-sm topbar-primary-action"
             >
               {role === 'owner' ? 'Find Work' : 'New Booking'}
             </button>

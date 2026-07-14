@@ -4,9 +4,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, setSession } from '../api';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
-import { Truck } from 'lucide-react';
 import { useToast } from '../components/ui/Toast';
 import { registrationCountries } from '../utils/helpers';
+import BrandHomeLink from '../components/ui/BrandHomeLink';
 
 export default function AuthPage() {
   const initialParams = new URLSearchParams(window.location.search);
@@ -80,17 +80,7 @@ export default function AuthPage() {
     <div className="auth-layout animate-fade-in">
       <div className="auth-visual">
         <div style={{ maxWidth: 480 }}>
-          <div
-            style={{
-              display: 'inline-flex',
-              padding: 16,
-              background: 'var(--brand-dark)',
-              borderRadius: 'var(--radius-lg)',
-              marginBottom: 'var(--space-6)'
-            }}
-          >
-            <Truck size={48} color="var(--mustard)" />
-          </div>
+          <BrandHomeLink iconOnly className="auth-home-mark" />
           <h1 style={{ fontSize: 'var(--text-4xl)', color: 'white', marginBottom: 'var(--space-4)' }}>
             Logistics that actually works.
           </h1>
@@ -102,6 +92,7 @@ export default function AuthPage() {
 
       <div className="auth-form-container">
         <div style={{ width: '100%', maxWidth: 400 }}>
+          <BrandHomeLink compact className="auth-mobile-brand" />
           <div style={{ marginBottom: 'var(--space-8)' }}>
             <h2 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-2)' }}>{heading}</h2>
             <p className="text-secondary">

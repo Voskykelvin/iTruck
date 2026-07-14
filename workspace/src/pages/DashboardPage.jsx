@@ -55,7 +55,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid-3">
+      <div className="grid-3 metrics-grid" aria-label="Shipment summary">
         {role === 'owner' ? (
           <>
             <MetricCard title="Available Loads" value={activeLoads} icon={Search} subtitle="Matching your fleet" />
