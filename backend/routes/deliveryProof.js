@@ -8,6 +8,8 @@ const validate = require('../middleware/validate');
 const cloudinary = require('../services/cloudinary');
 const deliveryProof = require('../services/deliveryProof');
 const notifications = require('../services/notifications');
+const matching = require('../services/matching');
+const { deliveryProofPolicy, strictDeliveryProof } = require('../config/deliveryProofPolicy');
 const { ensureAllowedFile, fileExtensions, imageUploadTypes } = require('../utils/uploadValidation');
 const {
   finalizeDeliveryProofSchema,
@@ -23,6 +25,10 @@ const upload = multer({
 });
 
 router.use(protect);
+
+router.get('/delivery-proof/policy', (req, res) => {
+  res.json(deliveryProofPolicy());
+});
 
 function requireProofDatabase(req, res) {
   if (requireDatabase(req, res)) return true;
@@ -161,12 +167,20 @@ router.post(
         req
       });
 
+      if (result.booking.status === 'delivered') {
+        await matching.releaseAssignment(result.booking, 'delivered').catch((err) => {
+          req.log?.error({ err, bookingId: result.booking._id }, 'Dispatch capacity release failed after delivery');
+        });
+      }
+
       await notifications.notifyBookingParties(
         result.booking,
         'shipment.delivery_proof',
         {
-          title: `${result.booking._id} receiver proof verified`,
-          message: 'Receiver OTP, electronic signature, GPS, and delivery photos were verified.',
+          title: `${result.booking._id} ${result.booking.status === 'delivered' ? 'delivered' : 'receiver proof verified'}`,
+          message: strictDeliveryProof()
+            ? 'Receiver OTP, electronic signature, GPS, and delivery photos were verified.'
+            : 'Delivery photo verified. The shipment is now marked as delivered.',
           link: '/app/shipments',
           bookingId: result.booking._id,
           proofHash: result.proof.recordHash

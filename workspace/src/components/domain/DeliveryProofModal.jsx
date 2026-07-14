@@ -1,106 +1,127 @@
-import { useState, useRef } from 'react';
+import { useRef, useState } from 'react';
+import { Camera, CheckCircle } from 'lucide-react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
-import { Camera, CheckCircle } from 'lucide-react';
-import { useUploadDeliveryProofPhotos, useFinalizeDeliveryProof } from '../../queries/operations';
+import {
+  useDeliveryProofPolicy,
+  useFinalizeDeliveryProof,
+  useUploadDeliveryProofPhotos
+} from '../../queries/operations';
 import { api } from '../../api';
 import { useToast } from '../ui/Toast';
+
+function currentLocation() {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) =>
+        resolve({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        }),
+      reject,
+      { enableHighAccuracy: true }
+    );
+  });
+}
 
 export default function DeliveryProofModal({ isOpen, onClose, shipmentId }) {
   const [step, setStep] = useState(1);
   const [otp, setOtp] = useState('');
+  const [signerName, setSignerName] = useState('');
+  const [consent, setConsent] = useState(false);
   const [photos, setPhotos] = useState([]);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isRequestingOtp, setIsRequestingOtp] = useState(false);
+  const [assetIds, setAssetIds] = useState([]);
+  const [location, setLocation] = useState(null);
   const fileInputRef = useRef(null);
   const { addToast } = useToast();
 
-  const uploadPhotosMutation = useUploadDeliveryProofPhotos();
+  const policy = useDeliveryProofPolicy({ enabled: isOpen });
+  const uploadPhotos = useUploadDeliveryProofPhotos();
   const finalize = useFinalizeDeliveryProof();
+  const strict = policy.data?.mode === 'strict';
+  const busy = uploadPhotos.isPending || finalize.isPending;
 
-  const handleFileChange = (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
-    setPhotos(files);
-  };
-
-  const requestLocationAndUpload = () => {
+  const handleUpload = async () => {
     if (!photos.length) {
-      addToast({ title: 'Missing Photo', message: 'Please select a photo first.', type: 'warning' });
+      addToast({ title: 'Missing Photo', message: 'Please select at least one delivery photo.', type: 'warning' });
+      return;
+    }
+    if (policy.isError) {
+      addToast({ title: 'Unable to Confirm', message: 'Delivery policy could not be loaded.', type: 'error' });
       return;
     }
 
-    setIsUploading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        uploadPhotosMutation.mutate(
-          {
-            bookingId: shipmentId,
-            files: photos,
-            metadata: {
-              capturedAt: new Date().toISOString(),
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-              accuracy: pos.coords.accuracy
-            }
-          },
-          {
-            onSuccess: () => {
-              handleNextStep();
-            },
-            onError: (err) => {
-              addToast({ title: 'Upload Failed', message: err.message, type: 'error' });
-              setIsUploading(false);
-            }
-          }
-        );
-      },
-      () => {
-        setIsUploading(false);
-        addToast({
-          title: 'Location Required',
-          message: 'Please allow location access to prove delivery location.',
-          type: 'error'
-        });
-      },
-      { enableHighAccuracy: true }
-    );
-  };
-
-  const handleNextStep = async () => {
-    setIsUploading(false);
-    setStep(2);
     try {
-      setIsRequestingOtp(true);
+      const capturedAt = new Date().toISOString();
+      const gps = strict ? await currentLocation() : null;
+      const uploaded = await uploadPhotos.mutateAsync({
+        bookingId: shipmentId,
+        files: photos,
+        metadata: strict ? { capturedAt, ...gps } : { capturedAt }
+      });
+      const ids = (uploaded.assets || []).map((asset) => asset.id);
+      if (!ids.length) throw new Error('Photo upload did not return a proof record');
+      setAssetIds(ids);
+
+      if (!strict) {
+        await finalize.mutateAsync({ bookingId: shipmentId, data: { assetIds: ids } });
+        setStep(3);
+        return;
+      }
+
+      const recordedAt = new Date().toISOString();
+      setLocation({ ...gps, recordedAt });
       await api.requestDeliveryOtp(shipmentId);
       addToast({ title: 'OTP Sent', message: 'The receiver has been sent an OTP.', type: 'info' });
+      setStep(2);
     } catch (err) {
-      addToast({ title: 'Failed to send OTP', message: err.message, type: 'error' });
-    } finally {
-      setIsRequestingOtp(false);
+      const locationDenied = strict && err?.code === 1;
+      addToast({
+        title: locationDenied ? 'Location Required' : 'Delivery Confirmation Failed',
+        message: locationDenied ? 'Please allow location access to use strict delivery verification.' : err.message,
+        type: 'error'
+      });
     }
   };
 
-  const handleSubmit = () => {
-    if (!otp) {
-      addToast({ title: 'Missing OTP', message: 'Please enter the OTP.', type: 'warning' });
+  const handleStrictSubmit = async () => {
+    if (!/^\d{6}$/.test(otp) || !signerName.trim() || !consent) {
+      addToast({
+        title: 'Verification Incomplete',
+        message: 'Enter the 6-digit OTP, receiver name, and signature consent.',
+        type: 'warning'
+      });
       return;
     }
-    finalize.mutate(
-      {
+    const now = new Date().toISOString();
+    try {
+      await finalize.mutateAsync({
         bookingId: shipmentId,
-        data: { otp, verificationMethod: 'sms_otp', signatureType: 'typed', signatureData: 'Receiver OTP' }
-      },
-      {
-        onSuccess: () => {
-          setStep(3);
-        },
-        onError: (err) => {
-          addToast({ title: 'Verification Failed', message: err.message, type: 'error' });
+        data: {
+          otp,
+          assetIds,
+          signerName: signerName.trim(),
+          signerRole: 'Receiver',
+          signatureType: 'typed',
+          signatureValue: signerName.trim(),
+          consent: true,
+          signedAt: now,
+          clientTimestamp: now,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          location
         }
-      }
-    );
+      });
+      setStep(3);
+    } catch (err) {
+      addToast({ title: 'Verification Failed', message: err.message, type: 'error' });
+    }
+  };
+
+  const finish = () => {
+    onClose();
+    window.location.reload();
   };
 
   return (
@@ -110,25 +131,15 @@ export default function DeliveryProofModal({ isOpen, onClose, shipmentId }) {
       title={step === 3 ? 'Delivery Confirmed' : 'Confirm Delivery'}
       footer={
         step === 1 ? (
-          <Button
-            variant="primary"
-            loading={isUploading || uploadPhotosMutation.isPending}
-            onClick={requestLocationAndUpload}
-          >
-            Continue to Verification
+          <Button variant="primary" loading={busy || policy.isLoading} onClick={handleUpload}>
+            {strict ? 'Continue to Verification' : 'Confirm Delivery'}
           </Button>
         ) : step === 2 ? (
-          <Button variant="primary" loading={isRequestingOtp || finalize.isPending} onClick={handleSubmit}>
+          <Button variant="primary" loading={finalize.isPending} onClick={handleStrictSubmit}>
             Submit OTP & Confirm
           </Button>
         ) : (
-          <Button
-            variant="primary"
-            onClick={() => {
-              onClose();
-              window.location.reload();
-            }}
-          >
+          <Button variant="primary" onClick={finish}>
             Done
           </Button>
         )
@@ -137,9 +148,10 @@ export default function DeliveryProofModal({ isOpen, onClose, shipmentId }) {
       {step === 1 && (
         <div className="stack">
           <p className="text-secondary">
-            Please upload photos of the unloaded cargo in good condition before requesting the receiver&apos;s OTP.
+            {strict
+              ? 'Upload photos of the unloaded cargo. GPS, receiver OTP, and signature are required in strict mode.'
+              : 'Upload at least one photo of the delivered cargo. OTP, signature, and GPS are temporarily disabled.'}
           </p>
-
           <div
             onClick={() => fileInputRef.current?.click()}
             style={{
@@ -157,11 +169,9 @@ export default function DeliveryProofModal({ isOpen, onClose, shipmentId }) {
               <Camera size={32} color="var(--text-muted)" style={{ margin: '0 auto var(--space-2)' }} />
             )}
             <div style={{ fontWeight: 600, color: 'var(--ink)' }}>
-              {photos.length ? `${photos.length} Photo(s) selected` : 'Tap to upload cargo photos'}
+              {photos.length ? `${photos.length} photo(s) selected` : 'Tap to upload cargo photos'}
             </div>
-            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-              Required: Cargo condition at arrival
-            </div>
+            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>Cargo condition at arrival</div>
           </div>
           <input
             type="file"
@@ -169,7 +179,7 @@ export default function DeliveryProofModal({ isOpen, onClose, shipmentId }) {
             capture="environment"
             multiple
             ref={fileInputRef}
-            onChange={handleFileChange}
+            onChange={(event) => setPhotos(Array.from(event.target.files || []))}
             style={{ display: 'none' }}
           />
         </div>
@@ -177,26 +187,28 @@ export default function DeliveryProofModal({ isOpen, onClose, shipmentId }) {
 
       {step === 2 && (
         <div className="stack">
-          <p className="text-secondary">
-            An OTP has been sent to the receiver. Enter it below to cryptographically sign the proof of delivery.
-          </p>
-
+          <p className="text-secondary">Enter the receiver OTP and typed signature to complete strict verification.</p>
+          <Input label="Receiver name" value={signerName} onChange={(event) => setSignerName(event.target.value)} />
           <Input
             label="Receiver OTP"
             placeholder="e.g. 123456"
             value={otp}
-            onChange={(e) => setOtp(e.target.value)}
+            onChange={(event) => setOtp(event.target.value)}
             maxLength={6}
             style={{ fontSize: 'var(--text-xl)', letterSpacing: '0.2em', textAlign: 'center' }}
           />
+          <label className="row" style={{ alignItems: 'flex-start', gap: 'var(--space-2)' }}>
+            <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
+            <span className="text-secondary">The receiver confirms receipt and accepts this typed signature.</span>
+          </label>
         </div>
       )}
 
       {step === 3 && (
         <div className="stack" style={{ alignItems: 'center', textAlign: 'center', padding: 'var(--space-6) 0' }}>
           <CheckCircle size={64} color="var(--success)" style={{ marginBottom: 'var(--space-4)' }} />
-          <h3 style={{ fontSize: 'var(--text-xl)', color: 'var(--ink)' }}>Delivery Verified</h3>
-          <p className="text-secondary">The shipment is marked as delivered and payment is ready for release.</p>
+          <h3 style={{ fontSize: 'var(--text-xl)', color: 'var(--ink)' }}>Delivery Completed</h3>
+          <p className="text-secondary">The shipment is marked as delivered and its proof photo is recorded.</p>
         </div>
       )}
     </Modal>

@@ -7,6 +7,7 @@ const DeliveryProofAsset = require('../models/DeliveryProofAsset');
 const { recordGeneratedDocument } = require('./documentRecords');
 const { normalizePhoneNumber, sendSMS } = require('./sms');
 const { assertDeliveryGeofence, geoDistanceMeters } = require('./operationsPolicy');
+const { deliveryProofPolicy, strictDeliveryProof } = require('../config/deliveryProofPolicy');
 
 const OTP_CONSENT_TEXT =
   'I confirm that I received the shipment described in this booking and that this electronic signature is accurate.';
@@ -233,6 +234,11 @@ function assertProofCaptureStatus(booking) {
 }
 
 async function requestReceiverOtp({ booking, actor }) {
+  if (!strictDeliveryProof()) {
+    throw new AppError('Receiver OTP is disabled while simple delivery proof mode is active', 409, {
+      policy: deliveryProofPolicy()
+    });
+  }
   assertProofCaptureStatus(booking);
   if (await DeliveryProof.exists({ booking: booking._id })) {
     throw new AppError('Receiver proof has already been finalized for this booking', 409);
@@ -320,7 +326,7 @@ async function createProofAsset({ booking, actor, file, uploadUrl, capturedAt, l
   }
 
   const capturedLocation = validCoordinates(location);
-  if (!capturedLocation) throw new AppError('Photo GPS coordinates are required', 422);
+  if (strictDeliveryProof() && !capturedLocation) throw new AppError('Photo GPS coordinates are required', 422);
   const captured = assertRecentTimestamp(capturedAt, 'Photo capture');
   const uploadedAt = new Date();
   const contentHash = sha256(file.buffer);
@@ -334,7 +340,7 @@ async function createProofAsset({ booking, actor, file, uploadUrl, capturedAt, l
     contentHash,
     capturedAt: captured,
     uploadedAt,
-    location: capturedLocation
+    ...(capturedLocation ? { location: capturedLocation } : {})
   };
   record.recordHash = sha256(canonicalJson(record));
   const asset = await DeliveryProofAsset.create(record);
@@ -349,7 +355,7 @@ async function createProofAsset({ booking, actor, file, uploadUrl, capturedAt, l
       contentHash,
       recordHash: asset.recordHash,
       capturedAt: captured,
-      location: capturedLocation
+      ...(capturedLocation ? { location: capturedLocation } : {})
     }
   });
 
@@ -406,7 +412,10 @@ function upsertReceiverConfirmation(booking, proof) {
   const patch = {
     type: 'receiver-confirmation',
     status: 'approved',
-    notes: `Receiver verified by SMS OTP. Proof hash ${proof.recordHash}.`,
+    notes:
+      proof.verification.method === 'sms_otp'
+        ? `Receiver verified by SMS OTP. Proof hash ${proof.recordHash}.`
+        : `Delivery verified by photo in simple mode. Proof hash ${proof.recordHash}.`,
     generatedAt: proof.createdAt || new Date(),
     reviewedAt: proof.verification.verifiedAt,
     contentHash: proof.recordHash,
@@ -422,12 +431,13 @@ async function finalizeDeliveryProof({ booking, actor, payload, req }) {
     throw new AppError('Receiver proof has already been finalized for this booking', 409);
   }
 
+  const strict = strictDeliveryProof();
   const location = validCoordinates(payload.location);
-  if (!location) throw new AppError('Delivery GPS coordinates are required', 422);
-  if (payload.consent !== true) throw new AppError('Receiver signature consent is required', 422);
-  assertDeliveryGeofence(booking, location);
+  if (strict && !location) throw new AppError('Delivery GPS coordinates are required', 422);
+  if (strict && payload.consent !== true) throw new AppError('Receiver signature consent is required', 422);
+  if (strict) assertDeliveryGeofence(booking, location);
 
-  const challenge = await verifyChallenge(booking._id, payload.otp);
+  const challenge = strict ? await verifyChallenge(booking._id, payload.otp) : null;
   const uniqueAssetIds = [...new Set(payload.assetIds.map(String))];
   const assets = await DeliveryProofAsset.find({
     _id: { $in: uniqueAssetIds },
@@ -438,49 +448,61 @@ async function finalizeDeliveryProof({ booking, actor, payload, req }) {
   }
 
   const now = new Date();
-  const recordedAt = assertRecentTimestamp(payload.location.recordedAt || payload.clientTimestamp, 'Delivery GPS');
-  const signedAt = assertRecentTimestamp(payload.signedAt || payload.clientTimestamp, 'Receiver signature');
+  const recordedAt = strict
+    ? assertRecentTimestamp(payload.location.recordedAt || payload.clientTimestamp, 'Delivery GPS')
+    : null;
+  const signedAt = strict
+    ? assertRecentTimestamp(payload.signedAt || payload.clientTimestamp, 'Receiver signature')
+    : null;
   const destination = validCoordinates(booking.destinationCoordinates);
   const previous = await lastCustodyEvent(booking._id);
-  const receiverPhone = normalizePhoneNumber(challenge.receiverPhone || booking.receiverPhone);
+  const receiverPhone = strict ? normalizePhoneNumber(challenge.receiverPhone || booking.receiverPhone) : '';
   const signatureValue = String(payload.signatureValue || payload.signerName).trim();
   const photos = assets.map(assetSnapshot);
   const proofData = {
     booking: booking._id,
     submittedBy: actor._id,
     receiver: {
-      name: payload.signerName,
-      role: payload.signerRole,
-      phoneHash: sha256(receiverPhone),
-      phoneLast4: phoneLast4(receiverPhone)
-    },
-    verification: {
-      method: 'sms_otp',
-      challenge: challenge._id,
-      verifiedAt: now,
-      provider: challenge.provider
-    },
-    signature: {
-      type: payload.signatureType,
-      signerName: payload.signerName,
-      signerRole: payload.signerRole,
-      consentText: OTP_CONSENT_TEXT,
-      signedAt,
-      valueHash: sha256(signatureValue)
-    },
-    location: {
-      ...location,
-      recordedAt,
-      ingestedAt: now,
-      ...(destination
+      name: strict ? payload.signerName : booking.receiverName || 'Delivery receiver',
+      ...(strict
         ? {
-            distanceToDestinationMeters: geoDistanceMeters(location, destination),
-            geofenceMeters: Number(booking.deliveryGeofenceMeters || 100),
-            destinationLat: destination.lat,
-            destinationLng: destination.lng
+            role: payload.signerRole,
+            phoneHash: sha256(receiverPhone),
+            phoneLast4: phoneLast4(receiverPhone)
           }
         : {})
     },
+    verification: {
+      method: strict ? 'sms_otp' : 'photo',
+      ...(challenge ? { challenge: challenge._id } : {}),
+      verifiedAt: now,
+      provider: strict ? challenge.provider : 'itruck-simple'
+    },
+    ...(strict
+      ? {
+          signature: {
+            type: payload.signatureType,
+            signerName: payload.signerName,
+            signerRole: payload.signerRole,
+            consentText: OTP_CONSENT_TEXT,
+            signedAt,
+            valueHash: sha256(signatureValue)
+          },
+          location: {
+            ...location,
+            recordedAt,
+            ingestedAt: now,
+            ...(destination
+              ? {
+                  distanceToDestinationMeters: geoDistanceMeters(location, destination),
+                  geofenceMeters: Number(booking.deliveryGeofenceMeters || 100),
+                  destinationLat: destination.lat,
+                  destinationLng: destination.lng
+                }
+              : {})
+          }
+        }
+      : {}),
     photos,
     clientMetadata: {
       timestamp: payload.clientTimestamp ? asDate(payload.clientTimestamp) : now,
@@ -502,20 +524,22 @@ async function finalizeDeliveryProof({ booking, actor, payload, req }) {
       proofId: proof._id,
       proofHash: proof.recordHash,
       receiverPhoneHash: proof.receiver.phoneHash,
-      signatureHash: proof.signature.valueHash,
+      signatureHash: proof.signature?.valueHash,
       photoHashes: photos.map((photo) => photo.contentHash),
       location: proof.location
     }
   });
 
-  challenge.status = 'consumed';
-  challenge.consumedAt = now;
-  await challenge.save();
+  if (challenge) {
+    challenge.status = 'consumed';
+    challenge.consumedAt = now;
+    await challenge.save();
+  }
 
   booking.deliveryProof = {
     proof: proof._id,
     recordHash: proof.recordHash,
-    verificationMethod: 'sms_otp',
+    verificationMethod: strict ? 'sms_otp' : 'photo',
     verifiedAt: now,
     receiverName: proof.receiver.name,
     receiverPhoneLast4: proof.receiver.phoneLast4,
@@ -524,8 +548,19 @@ async function finalizeDeliveryProof({ booking, actor, payload, req }) {
   };
   booking.documents = booking.documents || [];
   upsertReceiverConfirmation(booking, proof);
-  if (booking.status === 'in_transit') booking.transitionTo('delivery_pending');
+  if (strict && booking.status === 'in_transit') booking.transitionTo('delivery_pending');
+  if (!strict) {
+    booking.transitionTo('delivered');
+    booking.deliveredAt = now;
+  }
   await booking.save();
+
+  let chainHeadHash = finalEvent.eventHash;
+  if (!strict) {
+    const confirmationEvent = await recordDeliveryConfirmation({ booking, actor });
+    chainHeadHash = confirmationEvent?.eventHash || chainHeadHash;
+    await booking.save();
+  }
 
   await recordGeneratedDocument({
     targetType: 'booking',
@@ -536,18 +571,20 @@ async function finalizeDeliveryProof({ booking, actor, payload, req }) {
     bookingId: booking._id,
     patch: {
       status: 'approved',
-      notes: `Receiver OTP and e-signature verified. Proof hash ${proof.recordHash}.`,
+      notes: strict
+        ? `Receiver OTP and e-signature verified. Proof hash ${proof.recordHash}.`
+        : `Delivery photo verified in simple mode. Proof hash ${proof.recordHash}.`,
       generatedAt: now
     },
     metadata: {
       proofId: proof._id,
       proofHash: proof.recordHash,
-      chainHeadHash: finalEvent.eventHash,
+      chainHeadHash,
       photoHashes: photos.map((photo) => photo.contentHash)
     }
   });
 
-  return { proof, booking, chainHeadHash: finalEvent.eventHash };
+  return { proof, booking, chainHeadHash, policy: deliveryProofPolicy() };
 }
 
 async function verifyCustodyChain(bookingId) {
@@ -577,14 +614,22 @@ async function verifyCustodyChain(bookingId) {
 }
 
 async function deliveryProofBundle(bookingId) {
-  const [proof, events, verification] = await Promise.all([
+  const [proof, assets, events, verification] = await Promise.all([
     DeliveryProof.findOne({ booking: bookingId }),
+    DeliveryProofAsset.find({ booking: bookingId }).sort({ createdAt: 1 }),
     DeliveryCustodyEvent.find({ booking: bookingId }).sort({ sequence: 1 }),
     verifyCustodyChain(bookingId)
   ]);
   const proofValid = Boolean(proof && proof.recordHash === proofRecordHash(proof));
   return {
     proof,
+    assets: assets.map((asset) => ({
+      id: asset._id,
+      url: asset.url,
+      fileName: asset.fileName,
+      capturedAt: asset.capturedAt,
+      location: asset.location
+    })),
     events,
     chain: {
       ...verification,

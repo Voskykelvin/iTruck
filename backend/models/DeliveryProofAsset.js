@@ -3,8 +3,8 @@ const { makeImmutable } = require('../utils/immutableRecord');
 
 const locationSchema = new mongoose.Schema(
   {
-    lat: { type: Number, min: -90, max: 90, required: true },
-    lng: { type: Number, min: -180, max: 180, required: true },
+    lat: { type: Number, min: -90, max: 90 },
+    lng: { type: Number, min: -180, max: 180 },
     accuracy: { type: Number, min: 0, max: 10000 }
   },
   { _id: false }
@@ -34,7 +34,7 @@ const deliveryProofAssetSchema = new mongoose.Schema(
     recordHash: { type: String, required: true, unique: true, match: /^[a-f0-9]{64}$/ },
     capturedAt: { type: Date, required: true },
     uploadedAt: { type: Date, default: Date.now, required: true },
-    location: { type: locationSchema, required: true }
+    location: locationSchema
   },
   { timestamps: true }
 );

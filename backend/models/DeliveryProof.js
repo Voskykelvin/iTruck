@@ -35,33 +35,35 @@ const deliveryProofSchema = new mongoose.Schema(
     receiver: {
       name: { type: String, required: true, trim: true, maxlength: 120 },
       role: { type: String, trim: true, maxlength: 120 },
-      phoneHash: { type: String, required: true, match: /^[a-f0-9]{64}$/ },
-      phoneLast4: { type: String, required: true, minlength: 2, maxlength: 4 }
+      phoneHash: { type: String, match: /^[a-f0-9]{64}$/ },
+      phoneLast4: { type: String, minlength: 2, maxlength: 4 }
     },
     verification: {
-      method: { type: String, enum: ['sms_otp'], required: true },
+      method: { type: String, enum: ['sms_otp', 'photo'], required: true },
       challenge: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'DeliveryOtpChallenge',
-        required: true
+        required() {
+          return this.verification?.method === 'sms_otp';
+        }
       },
       verifiedAt: { type: Date, required: true },
       provider: String
     },
     signature: {
-      type: { type: String, enum: ['typed', 'drawn'], required: true },
-      signerName: { type: String, required: true, trim: true, maxlength: 120 },
+      type: { type: String, enum: ['typed', 'drawn'] },
+      signerName: { type: String, trim: true, maxlength: 120 },
       signerRole: { type: String, trim: true, maxlength: 120 },
-      consentText: { type: String, required: true, maxlength: 500 },
-      signedAt: { type: Date, required: true },
-      valueHash: { type: String, required: true, match: /^[a-f0-9]{64}$/ }
+      consentText: { type: String, maxlength: 500 },
+      signedAt: Date,
+      valueHash: { type: String, match: /^[a-f0-9]{64}$/ }
     },
     location: {
-      lat: { type: Number, min: -90, max: 90, required: true },
-      lng: { type: Number, min: -180, max: 180, required: true },
+      lat: { type: Number, min: -90, max: 90 },
+      lng: { type: Number, min: -180, max: 180 },
       accuracy: { type: Number, min: 0, max: 10000 },
-      recordedAt: { type: Date, required: true },
-      ingestedAt: { type: Date, required: true },
+      recordedAt: Date,
+      ingestedAt: Date,
       distanceToDestinationMeters: { type: Number, min: 0 },
       geofenceMeters: { type: Number, min: 25, max: 5000 },
       destinationLat: { type: Number, min: -90, max: 90 },

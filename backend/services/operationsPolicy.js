@@ -1,4 +1,5 @@
 const AppError = require('../utils/AppError');
+const { strictDeliveryProof } = require('../config/deliveryProofPolicy');
 const {
   normalizeBookingDocumentType,
   normalizeProfileDocumentType,
@@ -135,7 +136,9 @@ function hasReceiverGradeDeliveryProof(booking = {}) {
     proof.proof &&
     proof.recordHash &&
     /^[a-f0-9]{64}$/.test(String(proof.recordHash)) &&
-    proof.verificationMethod === 'sms_otp' &&
+    (strictDeliveryProof()
+      ? proof.verificationMethod === 'sms_otp'
+      : ['photo', 'sms_otp'].includes(proof.verificationMethod)) &&
     proof.verifiedAt &&
     Number(proof.photoCount) >= 1
   );
@@ -150,12 +153,22 @@ function assertDeliveryProofForDelivery(booking = {}) {
 
 function assertReceiverGradeDeliveryProof(booking = {}) {
   if (hasReceiverGradeDeliveryProof(booking)) return;
-  throw new AppError('Complete receiver OTP, e-signature, GPS, and delivery photos before confirming delivery', 409, {
-    requiredProof: ['receiver-otp', 'electronic-signature', 'gps-time-metadata', 'hashed-delivery-photos']
-  });
+  const strict = strictDeliveryProof();
+  throw new AppError(
+    strict
+      ? 'Complete receiver OTP, e-signature, GPS, and delivery photos before confirming delivery'
+      : 'Add a delivery photo before confirming delivery',
+    409,
+    {
+      requiredProof: strict
+        ? ['receiver-otp', 'electronic-signature', 'gps-time-metadata', 'hashed-delivery-photos']
+        : ['hashed-delivery-photo']
+    }
+  );
 }
 
 function assertDeliveryGeofence(booking = {}, currentLocation = null, options = {}) {
+  if (!strictDeliveryProof()) return;
   const destination = validCoordinates(booking.destinationCoordinates);
   if (!destination) return;
 
@@ -183,9 +196,18 @@ function assertDeliveryGeofence(booking = {}, currentLocation = null, options = 
 
 function assertDeliveryProofForPaymentRelease(booking = {}) {
   if (hasReceiverGradeDeliveryProof(booking)) return;
-  throw new AppError('Receiver-grade delivery proof is required before releasing payment', 409, {
-    requiredProof: ['receiver-otp', 'electronic-signature', 'gps-time-metadata', 'hashed-delivery-photos']
-  });
+  const strict = strictDeliveryProof();
+  throw new AppError(
+    strict
+      ? 'Receiver-grade delivery proof is required before releasing payment'
+      : 'A delivery photo is required before releasing payment',
+    409,
+    {
+      requiredProof: strict
+        ? ['receiver-otp', 'electronic-signature', 'gps-time-metadata', 'hashed-delivery-photos']
+        : ['hashed-delivery-photo']
+    }
+  );
 }
 
 module.exports = {

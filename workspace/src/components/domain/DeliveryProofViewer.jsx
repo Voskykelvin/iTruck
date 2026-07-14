@@ -44,7 +44,7 @@ export default function DeliveryProofViewer({ shipmentId }) {
         </div>
         <div className="row" style={{ gap: 'var(--space-2)' }}>
           <strong>Verified At:</strong>
-          <span>{timeFormat(proof.finalizedAt)}</span>
+          <span>{timeFormat(proof.verification?.verifiedAt || proof.createdAt)}</span>
         </div>
       </div>
 
@@ -61,7 +61,7 @@ export default function DeliveryProofViewer({ shipmentId }) {
             }}
           >
             <img src={asset.url} alt="Delivery Proof" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            {asset.location && (
+            {Number.isFinite(asset.location?.lat) && Number.isFinite(asset.location?.lng) && (
               <div
                 style={{
                   position: 'absolute',

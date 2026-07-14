@@ -20,6 +20,14 @@ const {
   visibleCase
 } = require('../services/caseManagement');
 
+beforeAll(() => {
+  process.env.DELIVERY_PROOF_MODE = 'strict';
+});
+
+afterAll(() => {
+  delete process.env.DELIVERY_PROOF_MODE;
+});
+
 function oid() {
   return new mongoose.Types.ObjectId();
 }
