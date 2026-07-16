@@ -14,3 +14,11 @@ workspace/playwright-report/
 Thumbs.db
 tempdir*/
 frontend/
+android/.gradle/
+android/app/build/
+android/build/
+android/*.apk
+android/*.aab
+android/release-key.keystore
+android/*.jks
+workspace/vite-pwa.*.log

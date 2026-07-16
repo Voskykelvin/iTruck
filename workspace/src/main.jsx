@@ -15,6 +15,14 @@ const queryClient = new QueryClient({
   }
 });
 
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/push-service-worker.js').catch((error) => {
+      console.warn('iTruck service worker registration failed', error);
+    });
+  });
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

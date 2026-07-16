@@ -1,0 +1,52 @@
+{
+  "id": "/",
+  "name": "iTruck Africa",
+  "short_name": "iTruck",
+  "description": "Book verified trucks, manage freight operations, and track shipments across Africa.",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#f8f5e8",
+  "theme_color": "#06402b",
+  "orientation": "any",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["business", "navigation", "productivity"],
+  "icons": [
+    {
+      "src": "/assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Book a truck",
+      "short_name": "Book",
+      "description": "Start a new freight booking",
+      "url": "/app/book",
+      "icons": [{ "src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "My shipments",
+      "short_name": "Shipments",
+      "description": "View and track current shipments",
+      "url": "/app/shipments",
+      "icons": [{ "src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

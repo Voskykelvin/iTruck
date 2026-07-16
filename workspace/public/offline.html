@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#06402b" />
+    <title>iTruck is offline</title>
+    <style>
+      :root {
+        color: #07251a;
+        background: #f8f5e8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+
+      body {
+        display: grid;
+        min-height: 100vh;
+        min-height: 100dvh;
+        margin: 0;
+        place-items: center;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+
+      main {
+        width: min(100%, 420px);
+        text-align: center;
+      }
+
+      .mark {
+        display: grid;
+        width: 72px;
+        height: 72px;
+        margin: 0 auto 24px;
+        place-items: center;
+        border-radius: 18px;
+        background: #06402b;
+        color: white;
+        font:
+          800 30px Manrope,
+          Inter,
+          system-ui,
+          sans-serif;
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: 32px;
+      }
+
+      p {
+        margin: 0 0 24px;
+        color: #5f7168;
+        line-height: 1.6;
+      }
+
+      button {
+        min-height: 48px;
+        padding: 0 24px;
+        border: 0;
+        border-radius: 10px;
+        background: #06402b;
+        color: white;
+        font:
+          700 16px Inter,
+          system-ui,
+          sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mark" aria-hidden="true">iT</div>
+      <h1>You're offline</h1>
+      <p>Reconnect to continue booking trucks, tracking shipments, and syncing freight updates.</p>
+      <button type="button" onclick="window.location.reload()">Try again</button>
+    </main>
+  </body>
+</html>
