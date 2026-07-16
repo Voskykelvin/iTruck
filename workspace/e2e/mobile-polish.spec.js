@@ -70,6 +70,37 @@ test('signed-in mobile navigation stays available across workspace pages', async
   await mobileNav.getByRole('link', { name: 'Shipments' }).click();
   await expect(page).toHaveURL(/\/app\/shipments$/);
 
+  const shipmentCard = page.locator('.data-table-mobile .data-table-card').first();
+  await expect(shipmentCard).toBeVisible();
+  await expect(shipmentCard.getByText('ID', { exact: true })).toBeVisible();
+  await expect(shipmentCard.getByText('Status', { exact: true })).toBeVisible();
+  await expect(shipmentCard.getByText('Route', { exact: true })).toBeVisible();
+  expect(
+    await shipmentCard
+      .locator('.data-table-card-value')
+      .first()
+      .evaluate((element) => element.getBoundingClientRect().height < 40)
+  ).toBe(true);
+
+  await page.route('**/api/documents*', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        documents: [
+          {
+            id: 'phone-document-1',
+            fileName: 'proof-of-delivery.pdf',
+            documentType: 'proof_of_delivery',
+            status: 'verified',
+            createdAt: '2026-07-16T08:00:00.000Z',
+            bookingId: 'phone-booking-1'
+          }
+        ]
+      })
+    });
+  });
+
   await page.getByRole('button', { name: 'Open navigation menu' }).click();
   const workspaceNav = page.getByRole('complementary', { name: 'Workspace navigation' });
   await expect(workspaceNav).toBeVisible();
@@ -77,6 +108,12 @@ test('signed-in mobile navigation stays available across workspace pages', async
   await expect(page).toHaveURL(/\/app\/documents$/);
   await expect(workspaceNav).toHaveCount(0);
   await expect(mobileNav).toBeVisible();
+
+  const documentCard = page.locator('.data-table-mobile .data-table-card').first();
+  await expect(documentCard).toBeVisible();
+  await expect(documentCard.getByText('Document Name', { exact: true })).toBeVisible();
+  await expect(documentCard.getByText('Date Added', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
 test('settings uses calm account-access language on mobile', async ({ page }) => {
