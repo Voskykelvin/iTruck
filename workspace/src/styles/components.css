@@ -15,6 +15,144 @@
   overflow-wrap: anywhere;
 }
 
+/* Responsive data tables */
+.data-table-shell {
+  overflow: hidden;
+}
+
+.data-table-desktop {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.data-table-clickable-row {
+  cursor: pointer;
+  transition: background var(--duration-fast);
+}
+
+.data-table-clickable-row:hover {
+  background: var(--surface-glass-hover);
+}
+
+.data-table-mobile {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .data-table-shell {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  .data-table-desktop {
+    display: none;
+  }
+
+  .data-table-mobile {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .data-table-card {
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-xs);
+  }
+
+  .data-table-card-clickable {
+    cursor: pointer;
+  }
+
+  .data-table-card-clickable:focus-visible {
+    outline: 3px solid var(--brand-soft);
+    outline-offset: 2px;
+  }
+
+  .data-table-card-row {
+    display: grid;
+    grid-template-columns: minmax(84px, 0.38fr) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .data-table-card-row:last-child {
+    border-bottom: 0;
+  }
+
+  .data-table-card-label {
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .data-table-card-value {
+    min-width: 0;
+    color: var(--ink);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+  }
+
+  .data-table-card-value > .row {
+    min-width: 0;
+    justify-content: flex-end;
+  }
+
+  .data-table-card-value > .row > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .data-table-card-value .truncate {
+    max-width: 100% !important;
+  }
+
+  .data-table-card-skeleton {
+    width: min(100%, 120px);
+    margin: 0 0 0 auto;
+  }
+}
+
 .glass-panel:hover {
   background: var(--surface-glass-hover);
   border-color: var(--border-strong);
