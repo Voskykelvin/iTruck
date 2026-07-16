@@ -1,0 +1,62 @@
+{
+  "packageId": "com.itruck.africa",
+  "host": "itruck.onrender.com",
+  "name": "iTruck Africa",
+  "launcherName": "iTruck",
+  "display": "standalone",
+  "displayOverride": ["window-controls-overlay", "standalone"],
+  "themeColor": "#06402b",
+  "themeColorDark": "#03140e",
+  "navigationColor": "#f8f5e8",
+  "navigationColorDark": "#03140e",
+  "navigationDividerColor": "#ede8d0",
+  "navigationDividerColorDark": "#082016",
+  "backgroundColor": "#f8f5e8",
+  "enableNotifications": true,
+  "startUrl": "/app",
+  "iconUrl": "https://itruck.onrender.com/assets/icon-512.png",
+  "maskableIconUrl": "https://itruck.onrender.com/assets/icon-maskable-512.png",
+  "monochromeIconUrl": "https://itruck.onrender.com/assets/badge-96.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./release-key.keystore",
+    "alias": "itruck"
+  },
+  "appVersion": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [
+    {
+      "name": "Book a truck",
+      "shortName": "Book",
+      "url": "/app/book",
+      "chosenIconUrl": "https://itruck.onrender.com/assets/icon-192.png",
+      "chosenMaskableIconUrl": "https://itruck.onrender.com/assets/icon-maskable-512.png"
+    },
+    {
+      "name": "My shipments",
+      "shortName": "Shipments",
+      "url": "/app/shipments",
+      "chosenIconUrl": "https://itruck.onrender.com/assets/icon-192.png",
+      "chosenMaskableIconUrl": "https://itruck.onrender.com/assets/icon-maskable-512.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://itruck.onrender.com/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://itruck.onrender.com/",
+  "minSdkVersion": 23,
+  "orientation": "any",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "protocolHandlers": [],
+  "fileHandlers": [],
+  "launchHandlerClientMode": "navigate-existing"
+}

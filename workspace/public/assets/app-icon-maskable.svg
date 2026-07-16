@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">iTruck maskable app icon</title>
+  <desc id="description">White iT monogram centered in a safe area on a deep green background.</desc>
+  <rect width="1024" height="1024" fill="#06402b"/>
+  <circle cx="512" cy="512" r="360" fill="#0b5a3f"/>
+  <text
+    x="512"
+    y="626"
+    fill="#ffffff"
+    font-family="Manrope, Inter, Arial, sans-serif"
+    font-size="390"
+    font-weight="800"
+    letter-spacing="-34"
+    text-anchor="middle"
+  >iT</text>
+</svg>

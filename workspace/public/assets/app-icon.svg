@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">iTruck app icon</title>
+  <desc id="description">White iT monogram on a deep green rounded square.</desc>
+  <rect width="1024" height="1024" fill="#f8f5e8"/>
+  <rect x="64" y="64" width="896" height="896" rx="184" fill="#06402b"/>
+  <rect x="88" y="88" width="848" height="848" rx="160" fill="none" stroke="#0b5a3f" stroke-width="32"/>
+  <text
+    x="512"
+    y="633"
+    fill="#ffffff"
+    font-family="Manrope, Inter, Arial, sans-serif"
+    font-size="430"
+    font-weight="800"
+    letter-spacing="-36"
+    text-anchor="middle"
+  >iT</text>
+</svg>
