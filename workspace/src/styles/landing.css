@@ -180,6 +180,8 @@ html[data-theme='dark'] .landing-container .navbar {
 .landing-container .hamburger {
   display: none;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 4px;
 }
 
@@ -189,6 +191,22 @@ html[data-theme='dark'] .landing-container .navbar {
   height: 2px;
   border-radius: 999px;
   background: currentColor;
+  transform-origin: center;
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.landing-container .navbar.open .hamburger span:first-child {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.landing-container .navbar.open .hamburger span:nth-child(2) {
+  opacity: 0;
+}
+
+.landing-container .navbar.open .hamburger span:last-child {
+  transform: translateY(-6px) rotate(-45deg);
 }
 
 /* Hero Section */
@@ -202,7 +220,8 @@ html[data-theme='dark'] .landing-container .navbar {
   padding: clamp(90px, 12vh, 140px) clamp(18px, 6vw, 86px) clamp(48px, 8vh, 86px);
   background:
     linear-gradient(90deg, rgba(6, 64, 43, 0.95) 0%, rgba(6, 64, 43, 0.75) 45%, rgba(6, 64, 43, 0.15) 100%),
-    url('https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&q=80&w=2200') center/cover no-repeat;
+    url('https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&q=80&w=2200') center/cover
+      no-repeat;
   color: #ffffff;
   text-align: left;
 }
@@ -408,7 +427,6 @@ html[data-theme='dark'] .landing-container .navbar {
   color: rgba(255, 255, 255, 0.25);
 }
 
-
 /* Responsive Rules */
 @media (max-width: 900px) {
   .landing-container .nav-links,
@@ -437,7 +455,7 @@ html[data-theme='dark'] .landing-container .navbar {
   }
 
   .landing-container .hamburger {
-    display: grid;
+    display: flex;
   }
 }
 
@@ -550,7 +568,9 @@ html[data-theme='dark'] .landing-container .navbar {
 /* ── Fleet cards ── */
 .landing-container .fleet-card {
   padding: 24px;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
   cursor: default;
   display: flex;
   flex-direction: column;
@@ -756,7 +776,9 @@ html[data-theme='dark'] .landing-container .navbar {
 }
 
 .landing-container .hover-row {
-  transition: background 0.2s, transform 0.2s;
+  transition:
+    background 0.2s,
+    transform 0.2s;
   cursor: pointer;
   padding: 12px 16px;
   border-radius: var(--radius);
@@ -818,7 +840,9 @@ html[data-theme='dark'] .landing-container .navbar {
 .landing-container .footer-links-col nav span {
   color: #a4bea9;
   text-decoration: none;
-  transition: color 0.2s ease, transform 0.2s ease;
+  transition:
+    color 0.2s ease,
+    transform 0.2s ease;
   cursor: pointer;
   display: inline-block;
 }

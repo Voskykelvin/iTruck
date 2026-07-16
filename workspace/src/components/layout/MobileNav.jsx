@@ -1,7 +1,16 @@
 import { NavLink } from 'react-router-dom';
 import { useSessionBootstrap } from '../../queries/session';
 import { roleForUser } from '../../utils/roles';
-import { LayoutDashboard, Truck, PackageSearch, Briefcase, FileCheck } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Truck,
+  PackageSearch,
+  Briefcase,
+  FileCheck,
+  FileText,
+  MessageSquare,
+  UserRound
+} from 'lucide-react';
 
 export default function MobileNav() {
   const { data: user } = useSessionBootstrap();
@@ -21,20 +30,21 @@ export default function MobileNav() {
             { label: 'Bookings', path: '/app/shipments', icon: Briefcase },
             { label: 'Market', path: '/app/marketplace', icon: PackageSearch }
           ]
-        : [
-            { label: 'Home', path: '/app/shipper', icon: LayoutDashboard },
-            { label: 'Book', path: '/app/book', icon: Truck },
-            { label: 'Shipments', path: '/app/shipments', icon: Briefcase }
-          ];
+        : role === 'driver'
+          ? [
+              { label: 'Jobs', path: '/app/shipments', icon: Briefcase },
+              { label: 'Documents', path: '/app/documents', icon: FileText },
+              { label: 'Messages', path: '/app/messages', icon: MessageSquare },
+              { label: 'Profile', path: '/app/profile', icon: UserRound }
+            ]
+          : [
+              { label: 'Home', path: '/app/shipper', icon: LayoutDashboard },
+              { label: 'Book', path: '/app/book', icon: Truck },
+              { label: 'Shipments', path: '/app/shipments', icon: Briefcase }
+            ];
 
   return (
-    <nav
-      style={{
-        display:
-          'none' /* Hidden on desktop, toggled via media query in layouts.css if we wanted, but we'll inline a class or style block */
-      }}
-      className="mobile-nav"
-    >
+    <nav className="mobile-nav" aria-label="Primary mobile navigation">
       <style>{`
         .mobile-nav {
           position: fixed;

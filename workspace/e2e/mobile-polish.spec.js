@@ -43,6 +43,42 @@ test('mobile auth and workspace stay within the viewport and expose homepage bra
   expect(await metrics.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
 });
 
+test('homepage menu opens on mobile and exposes working destinations', async ({ page }) => {
+  await page.setViewportSize(mobileViewport);
+  await page.goto('/');
+
+  const menuButton = page.getByRole('button', { name: 'Open menu' });
+  await expect(menuButton).toBeVisible();
+  await menuButton.click();
+
+  await expect(page.getByRole('link', { name: 'How It Works' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Log In' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Close menu' })).toHaveAttribute('aria-expanded', 'true');
+
+  await page.getByRole('link', { name: 'Fleet', exact: true }).click();
+  await expect(page.locator('#fleet')).toBeInViewport();
+  await expect(page.getByRole('button', { name: 'Open menu' })).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('signed-in mobile navigation stays available across workspace pages', async ({ page }) => {
+  await page.setViewportSize(mobileViewport);
+  await loginAsShipper(page);
+  await page.goto('/app/book');
+
+  const mobileNav = page.getByRole('navigation', { name: 'Primary mobile navigation' });
+  await expect(mobileNav).toBeVisible();
+  await mobileNav.getByRole('link', { name: 'Shipments' }).click();
+  await expect(page).toHaveURL(/\/app\/shipments$/);
+
+  await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  const workspaceNav = page.getByRole('complementary', { name: 'Workspace navigation' });
+  await expect(workspaceNav).toBeVisible();
+  await workspaceNav.getByRole('link', { name: 'Documents' }).click();
+  await expect(page).toHaveURL(/\/app\/documents$/);
+  await expect(workspaceNav).toHaveCount(0);
+  await expect(mobileNav).toBeVisible();
+});
+
 test('settings uses calm account-access language on mobile', async ({ page }) => {
   await page.setViewportSize(mobileViewport);
   await loginAsShipper(page);

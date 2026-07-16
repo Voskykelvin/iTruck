@@ -15,7 +15,8 @@ import {
   ShieldCheck,
   UserRound,
   Search,
-  Map
+  Map,
+  X
 } from 'lucide-react';
 
 const icons = {
@@ -34,7 +35,7 @@ const icons = {
   Map
 };
 
-export default function Sidebar({ isOpen }) {
+export default function Sidebar({ isOpen, onClose }) {
   const { data: user } = useSessionBootstrap();
   const role = roleForUser(user);
 
@@ -49,28 +50,35 @@ export default function Sidebar({ isOpen }) {
           { label: 'Jobs', path: '/app/shipments', icon: 'Map' }
         ]
       : role === 'admin'
-        ? [
-            { label: 'Operations', path: '/app/admin', icon: 'LayoutDashboard' },
-            { label: 'All Users', path: '/app/admin/users', icon: 'Users' }
-          ]
-        : [
-            { label: 'Dashboard', path: '/app/shipper', icon: 'LayoutDashboard' },
-            { label: 'Book Truck', path: '/app/book', icon: 'Truck' },
-            { label: 'My Shipments', path: '/app/shipments', icon: 'Briefcase' }
-          ];
+        ? [{ label: 'Operations', path: '/app/admin', icon: 'LayoutDashboard' }]
+        : role === 'driver'
+          ? [{ label: 'My Jobs', path: '/app/shipments', icon: 'Map' }]
+          : [
+              { label: 'Dashboard', path: '/app/shipper', icon: 'LayoutDashboard' },
+              { label: 'Book Truck', path: '/app/book', icon: 'Truck' },
+              { label: 'My Shipments', path: '/app/shipments', icon: 'Briefcase' }
+            ];
 
   const sharedItems = [
     { label: 'Documents', path: '/app/documents', icon: 'FileText' },
-    { label: 'Payments', path: '/app/payments', icon: 'Wallet' },
+    ...(role === 'driver' ? [] : [{ label: 'Payments', path: '/app/payments', icon: 'Wallet' }]),
     { label: 'Messages', path: '/app/messages', icon: 'MessageSquare' }
   ];
 
   if (!isOpen) return null;
 
   return (
-    <aside className="sidebar-wrapper">
+    <aside className="sidebar-wrapper" id="app-sidebar" aria-label="Workspace navigation">
       <div className="sidebar-header">
         <BrandHomeLink compact />
+        <button
+          className="btn btn-ghost sidebar-close"
+          type="button"
+          onClick={onClose}
+          aria-label="Close navigation menu"
+        >
+          <X size={20} />
+        </button>
       </div>
 
       <nav className="sidebar-nav">
@@ -92,6 +100,7 @@ export default function Sidebar({ isOpen }) {
                 background: isActive ? 'var(--brand-soft)' : 'transparent',
                 fontWeight: isActive ? 600 : 500
               })}
+              onClick={onClose}
             >
               <Icon size={18} />
               <span>{item.label}</span>
@@ -117,6 +126,7 @@ export default function Sidebar({ isOpen }) {
                 background: isActive ? 'var(--brand-soft)' : 'transparent',
                 fontWeight: isActive ? 600 : 500
               })}
+              onClick={onClose}
             >
               <Icon size={18} />
               <span>{item.label}</span>
@@ -135,6 +145,7 @@ export default function Sidebar({ isOpen }) {
             background: 'var(--surface)',
             border: '1px solid var(--border)'
           }}
+          onClick={onClose}
         >
           <div className="avatar avatar-sm">{user?.firstName?.[0] || 'U'}</div>
           <div style={{ minWidth: 0, flex: 1 }}>

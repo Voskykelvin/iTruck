@@ -164,11 +164,11 @@ export default function LandingPage() {
 
   return (
     <div className="landing-container">
-      <nav className="navbar" id="navbar">
+      <nav className={`navbar ${isMenuOpen ? 'open' : ''}`} id="navbar">
         <Link to="/" className="brand">
           <span className="brand-mark">iT</span> iTruck
         </Link>
-        <div className={`nav-links ${isMenuOpen ? 'open' : ''}`}>
+        <div className={`nav-links ${isMenuOpen ? 'open' : ''}`} id="landing-navigation">
           <a
             href="#how"
             onClick={(e) => {
@@ -200,7 +200,7 @@ export default function LandingPage() {
             Browse Trucks
           </Link>
         </div>
-        <div className={`nav-actions ${isMenuOpen ? 'open' : ''}`}>
+        <div className={`nav-actions ${isMenuOpen ? 'open' : ''}`} id="landing-actions">
           {user ? (
             <button className="primary-btn" onClick={() => navigate('/app')}>
               Go to Dashboard
@@ -216,7 +216,14 @@ export default function LandingPage() {
             </>
           )}
         </div>
-        <button className="icon-btn hamburger" aria-label="Toggle menu" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+        <button
+          className="icon-btn hamburger"
+          type="button"
+          aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={isMenuOpen}
+          aria-controls="landing-navigation landing-actions"
+          onClick={() => setIsMenuOpen((open) => !open)}
+        >
           <span></span>
           <span></span>
           <span></span>
