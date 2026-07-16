@@ -8,7 +8,7 @@ import { roleForUser } from '../../utils/roles';
 import BrandHomeLink from '../ui/BrandHomeLink';
 import NetworkStatus from '../ui/NetworkStatus';
 
-export default function TopBar({ onToggleSidebar }) {
+export default function TopBar({ onToggleSidebar, isSidebarOpen }) {
   const { data: user } = useSessionBootstrap();
   const role = roleForUser(user);
   const navigate = useNavigate();
@@ -46,9 +46,11 @@ export default function TopBar({ onToggleSidebar }) {
         <div className="row">
           <button
             onClick={onToggleSidebar}
-            className="btn btn-ghost"
+            className="btn btn-ghost topbar-menu-button"
             style={{ padding: '0 var(--space-2)' }}
-            aria-label="Toggle menu"
+            aria-label={isSidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={isSidebarOpen}
+            aria-controls="app-sidebar"
           >
             <Menu size={20} />
           </button>
