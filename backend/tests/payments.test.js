@@ -39,11 +39,13 @@ const Booking = require('../models/Booking');
 const Idempotency = require('../models/Idempotency');
 const {
   checkIdempotency,
+  CardPaymentService,
   generateIdempotencyKey,
   MpesaService,
   MobileMoneyPaymentService,
   PaymentReconciliationService,
   runWithIdempotency,
+  StripeService,
   WalletService
 } = require('../services/payment');
 
@@ -81,7 +83,7 @@ test('wallet credit increments wallet balance and creates a transaction', async 
     { user: 'user-1' },
     {
       $inc: { balance: 120, version: 1 },
-      $setOnInsert: { user: 'user-1', currency: 'USD' }
+      $setOnInsert: { user: 'user-1', currency: 'KES' }
     },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
@@ -89,6 +91,62 @@ test('wallet credit increments wallet balance and creates a transaction', async 
     expect.objectContaining({ type: 'credit', amount: 120, status: 'completed' })
   );
   expect(Wallet.updateOne).toHaveBeenCalledWith({ _id: 'wallet-1' }, { lastTransaction: 'tx-test' });
+});
+
+test('stripe hosted checkout uses KES and keeps card details off iTruck', async () => {
+  process.env.FRONTEND_URL = 'https://itruck.example';
+  const create = jest.fn().mockResolvedValue({ id: 'cs_test_1', url: 'https://checkout.stripe.com/test' });
+  const stripe = new StripeService({ client: { checkout: { sessions: { create } } } });
+
+  const session = await stripe.createCheckoutSession({
+    amount: 1486.25,
+    currency: 'KES',
+    bookingId: 'booking-1',
+    userId: 'user-1',
+    transactionId: 'transaction-1',
+    idempotencyKey: 'checkout-test-1'
+  });
+
+  expect(session.url).toContain('checkout.stripe.com');
+  expect(create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [
+        expect.objectContaining({
+          price_data: expect.objectContaining({ currency: 'kes', unit_amount: 148625 })
+        })
+      ],
+      metadata: expect.objectContaining({ bookingId: 'booking-1', transactionId: 'transaction-1' })
+    }),
+    { idempotencyKey: 'checkout-test-1' }
+  );
+  delete process.env.FRONTEND_URL;
+});
+
+test('card checkout can resume an existing pending hosted session', async () => {
+  const booking = {
+    _id: 'booking-1',
+    client: 'client-1',
+    owner: 'owner-1',
+    status: 'confirmed',
+    paymentStatus: 'pending',
+    paymentMethod: 'stripe'
+  };
+  const transaction = {
+    _id: 'transaction-1',
+    metadata: { checkoutSessionId: 'cs_test_resume', checkoutUrl: 'https://checkout.stripe.com/resume' }
+  };
+  Booking.findById.mockResolvedValue(booking);
+  Transaction.findOne.mockReturnValue({ sort: jest.fn().mockResolvedValue(transaction) });
+  const stripe = { createCheckoutSession: jest.fn() };
+
+  const result = await new CardPaymentService({ stripe }).createBookingPayment('booking-1', 'client-1');
+
+  expect(result).toEqual(
+    expect.objectContaining({ checkoutUrl: 'https://checkout.stripe.com/resume', alreadyPending: true })
+  );
+  expect(stripe.createCheckoutSession).not.toHaveBeenCalled();
 });
 
 test('wallet debit rejects insufficient balance', async () => {
@@ -299,7 +357,7 @@ test('wallet payment release credits owner after approved delivery proof', async
     { user: 'owner-1' },
     {
       $inc: { balance: 1260, version: 1 },
-      $setOnInsert: { user: 'owner-1', currency: 'USD' }
+      $setOnInsert: { user: 'owner-1', currency: 'KES' }
     },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );

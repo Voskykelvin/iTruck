@@ -14,7 +14,7 @@ const { memoryBookings } = require('../data/demo-bookings');
 const {
   amountSchema,
   executePayoutSchema,
-  fundEscrowSchema,
+  initiateCardCheckoutSchema,
   initiateMobileMoneyBodySchema,
   initiateMobileMoneySchema,
   refundSchema,
@@ -74,7 +74,7 @@ function demoTransactions(req) {
   return [
     demoTransaction(req, 'payment', {
       amount: 1260,
-      method: 'wallet',
+      method: 'mpesa',
       description: 'Escrow funded for ITK-2044',
       status: 'completed'
     }),
@@ -123,11 +123,11 @@ function demoMobileMoneyPayment(req, bookingId) {
   };
 }
 
-function transactionMetadataValue(transaction, key) {
-  const metadata = transaction?.metadata;
-  if (!metadata) return undefined;
-  if (typeof metadata.get === 'function') return metadata.get(key);
-  return metadata[key];
+function rejectInactiveMtn(req, res) {
+  const method = String(req.body.method || req.body.provider || '').toLowerCase();
+  if (!['mtn', 'momo', 'mtn-momo'].includes(method)) return false;
+  res.status(503).json({ message: 'MTN MoMo is not currently available' });
+  return true;
 }
 
 async function notifyEscrowIfCompleted(req, result, providerLabel) {
@@ -219,6 +219,44 @@ router.post(
 
 router.use(protect);
 
+router.get('/methods', (_req, res) => {
+  const demo = !mongoReady();
+  const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET);
+  const mpesaConfigured = Boolean(
+    process.env.MPESA_CONSUMER_KEY &&
+    process.env.MPESA_CONSUMER_SECRET &&
+    process.env.MPESA_SHORTCODE &&
+    process.env.MPESA_PASSKEY &&
+    process.env.MPESA_CALLBACK_URL
+  );
+  res.json({
+    currency: String(process.env.DEFAULT_CURRENCY || 'KES').toUpperCase(),
+    methods: [
+      {
+        id: 'card',
+        label: 'Bank card',
+        enabled: demo || stripeConfigured,
+        description: 'Visa or Mastercard through secure hosted checkout',
+        unavailableReason: demo || stripeConfigured ? '' : 'Card checkout is awaiting provider configuration'
+      },
+      {
+        id: 'mpesa',
+        label: 'M-Pesa',
+        enabled: demo || mpesaConfigured,
+        description: 'Pay from a Kenyan M-Pesa number',
+        unavailableReason: demo || mpesaConfigured ? '' : 'M-Pesa is awaiting provider configuration'
+      },
+      {
+        id: 'mtn',
+        label: 'MTN MoMo',
+        enabled: false,
+        description: 'Mobile money for supported MTN markets',
+        unavailableReason: 'Coming later — provider credentials are not configured'
+      }
+    ]
+  });
+});
+
 router.get(
   '/wallet',
   asyncHandler(async (req, res) => {
@@ -309,6 +347,7 @@ router.post(
   validate,
   asyncHandler(async (req, res) => {
     if (requireDatabase(req, res)) return;
+    if (rejectInactiveMtn(req, res)) return;
     if (!mongoReady()) return res.status(202).json(demoMobileMoneyPayment(req, req.body.bookingId));
 
     const result = await payment.mobileMoney.initiateBookingPayment(req.body.bookingId, req.user._id, {
@@ -328,6 +367,7 @@ router.post(
   validate,
   asyncHandler(async (req, res) => {
     if (requireDatabase(req, res)) return;
+    if (rejectInactiveMtn(req, res)) return;
     if (!mongoReady()) return res.status(202).json(demoMobileMoneyPayment(req, req.params.bookingId));
 
     const result = await payment.mobileMoney.initiateBookingPayment(req.params.bookingId, req.user._id, {
@@ -360,9 +400,9 @@ router.post(
 );
 
 router.post(
-  '/bookings/:bookingId/escrow',
+  '/bookings/:bookingId/card-checkout',
   restrictTo('client'),
-  fundEscrowSchema,
+  initiateCardCheckoutSchema,
   validate,
   asyncHandler(async (req, res) => {
     if (requireDatabase(req, res)) return;
@@ -373,54 +413,33 @@ router.post(
       const amount = Number(booking.paymentBreakdown?.shipperTotal || booking.paymentAmount || req.body.amount || 0);
       const transaction = demoTransaction(req, 'payment', {
         amount,
-        method: 'wallet',
-        description: `Escrow funded for booking ${req.params.bookingId}`,
+        method: 'stripe',
+        description: `Bank card escrow funded for booking ${req.params.bookingId}`,
         status: 'completed'
       });
+      transaction.provider = 'stripe';
+      transaction.currency = 'KES';
       booking.paymentStatus = 'escrowed';
+      booking.paymentMethod = 'stripe';
       booking.paymentReference = transaction.reference;
       booking.paymentAmount = amount;
       booking.paidAt = new Date().toISOString();
       return res.status(201).json({
+        success: true,
+        provider: 'stripe',
+        checkoutUrl: null,
         booking,
         transaction,
-        balance: Number(req.user.walletBalance || 0),
         alreadyFunded: false,
         mode: 'memory'
       });
     }
 
-    const result = await payment.wallet.fundBookingEscrow(req.params.bookingId, req.user._id, {
+    const result = await payment.cards.initiateBookingPayment(req.params.bookingId, req.user._id, {
       amount: req.body.amount,
       idempotencyKey: idempotencyKey(req)
     });
-
-    if (!result.alreadyFunded) {
-      const amount = result.transaction?.amount || result.booking?.paymentAmount || req.body.amount;
-      try {
-        await notifications.notifyBookingParties(
-          result.booking,
-          'payment.escrowed',
-          {
-            title: `${result.booking._id} escrow funded`,
-            message: `Wallet escrow of ${amount} is now held for this shipment.`,
-            link: '/app/payments',
-            bookingId: result.booking._id,
-            amount
-          },
-          req.app.get('io')
-        );
-      } catch (_err) {
-        // Payment completion should not fail because a notification could not be recorded.
-      }
-
-      const io = req.app.get('io');
-      if (io?.emitToBooking) io.emitToBooking(result.booking._id, 'payment-escrowed', result.booking);
-    }
-
-    const balance =
-      transactionMetadataValue(result.transaction, 'walletBalance') ?? (await payment.wallet.getBalance(req.user._id));
-    res.status(result.alreadyFunded ? 200 : 201).json({ ...result, balance });
+    res.status(result.alreadyFunded ? 200 : 201).json(result);
   })
 );
 

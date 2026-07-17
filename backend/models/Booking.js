@@ -215,7 +215,7 @@ const bookingSchema = new mongoose.Schema(
       providerFee: Number,
       shipperTotal: Number,
       carrierPayout: Number,
-      currency: { type: String, default: 'USD' },
+      currency: { type: String, default: 'KES' },
       calculatedAt: Date
     },
     paidAt: Date,

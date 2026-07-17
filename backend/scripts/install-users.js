@@ -146,7 +146,7 @@ async function run() {
     const result = await upsertUser(userData);
     await Wallet.findOneAndUpdate(
       { user: result.user._id },
-      { user: result.user._id, balance: walletBalance, currency: 'USD' },
+      { user: result.user._id, balance: walletBalance, currency: 'KES' },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
     installed.push(`${result.action}: ${result.user.email} (${result.user.role})`);

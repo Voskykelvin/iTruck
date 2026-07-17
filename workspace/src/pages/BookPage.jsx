@@ -171,7 +171,7 @@ export default function BookPage() {
                     onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
                   />
                   <Input
-                    label="Declared Value (USD)"
+                    label="Declared Value (KES)"
                     type="number"
                     placeholder="For insurance purposes"
                     value={formData.cargoValue}

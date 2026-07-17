@@ -11,7 +11,7 @@ const transactionSchema = new mongoose.Schema(
     },
     method: { type: String, enum: ['wallet', 'stripe', 'mpesa', 'mtn', 'cash', 'bank'], default: 'wallet' },
     amount: { type: Number, required: true },
-    currency: { type: String, default: 'USD' },
+    currency: { type: String, default: 'KES' },
     status: { type: String, enum: ['pending', 'completed', 'failed', 'refunded'], default: 'pending' },
     reference: String,
     provider: String,

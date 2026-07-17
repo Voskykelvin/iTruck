@@ -8,7 +8,7 @@ const providerOperationSchema = new mongoose.Schema(
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     booking: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking' },
     amount: { type: Number, required: true, min: 0.01 },
-    currency: { type: String, default: 'USD' },
+    currency: { type: String, default: 'KES' },
     status: {
       type: String,
       enum: ['processing', 'pending', 'completed', 'failed', 'cancelled'],

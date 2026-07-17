@@ -8,7 +8,7 @@ import Modal from '../components/ui/Modal';
 import DataTable from '../components/ui/DataTable';
 import Skeleton from '../components/ui/Skeleton';
 import Badge from '../components/ui/Badge';
-import { Wallet, ArrowUpRight, ArrowDownRight, CreditCard } from 'lucide-react';
+import { Wallet, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { money } from '../utils/helpers';
 import { useToast } from '../components/ui/Toast';
 import { useSessionBootstrap } from '../queries/session';
@@ -20,32 +20,10 @@ export default function WalletPage() {
   const role = roleForUser(user);
   const { addToast } = useToast();
 
-  const [isTopupOpen, setIsTopupOpen] = useState(false);
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
-  const [amount, setAmount] = useState('');
   const [withdrawal, setWithdrawal] = useState({ amount: '', method: 'mpesa', destination: '' });
 
-  const topupAction = usePaymentAction((payload) => api.creditWallet(payload));
   const withdrawAction = usePaymentAction((payload) => api.withdraw(payload));
-
-  const handleTopup = (e) => {
-    e.preventDefault();
-    if (!amount || isNaN(amount) || Number(amount) <= 0) return;
-
-    topupAction.mutate(
-      { amount: Number(amount), method: 'card' },
-      {
-        onSuccess: () => {
-          addToast({ title: 'Top-up Successful', message: `Added ${money(amount)} to your wallet.`, type: 'success' });
-          setIsTopupOpen(false);
-          setAmount('');
-        },
-        onError: (err) => {
-          addToast({ title: 'Top-up Failed', message: err.message, type: 'error' });
-        }
-      }
-    );
-  };
 
   const handleWithdraw = (e) => {
     e.preventDefault();
@@ -122,14 +100,14 @@ export default function WalletPage() {
     <div className="animate-fade-in stack-lg">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Wallet</h1>
-          <p className="text-secondary">Manage your payments, escrow, and transactions.</p>
+          <h1 className="page-title">Payments</h1>
+          <p className="text-secondary">Review shipment payments, carrier earnings, and payout records.</p>
         </div>
       </div>
 
-      {isLoading ? (
+      {isLoading && role !== 'client' ? (
         <Skeleton style={{ height: 200 }} />
-      ) : (
+      ) : role !== 'client' ? (
         <Card
           className="row-between"
           style={{
@@ -142,75 +120,32 @@ export default function WalletPage() {
           <div>
             <div className="row" style={{ color: 'rgba(255,255,255,0.8)', marginBottom: 'var(--space-2)' }}>
               <Wallet size={20} style={{ marginRight: 'var(--space-2)' }} />
-              <span>Available Balance</span>
+              <span>Carrier Earnings Balance</span>
             </div>
             <div style={{ fontSize: 'var(--text-4xl)', fontWeight: 700, letterSpacing: '-0.02em' }}>
               {money(wallet?.balance || 0)}
             </div>
           </div>
 
-          {(role === 'admin' || role === 'owner') && (
+          {role === 'owner' && (
             <div className="stack" style={{ alignItems: 'flex-end' }}>
-              {role === 'admin' && (
-                <Button variant="secondary" onClick={() => setIsTopupOpen(true)} style={{ color: 'var(--ink)' }}>
-                  Add Funds
-                </Button>
-              )}
-              {role === 'owner' && (
-                <Button variant="ghost" style={{ color: 'white' }} onClick={() => setIsWithdrawOpen(true)}>
-                  Withdraw
-                </Button>
-              )}
+              <Button variant="ghost" style={{ color: 'white' }} onClick={() => setIsWithdrawOpen(true)}>
+                Request Payout
+              </Button>
             </div>
           )}
         </Card>
-      )}
+      ) : null}
 
       <div className="stack">
         <h2 style={{ fontSize: 'var(--text-lg)' }}>Recent Transactions</h2>
         <DataTable columns={columns} data={wallet?.transactions || []} loading={isLoading} />
       </div>
 
-      <Modal isOpen={isTopupOpen} onClose={() => setIsTopupOpen(false)} title="Add Funds">
-        <form onSubmit={handleTopup} className="stack">
-          <Input
-            label="Amount (USD)"
-            type="number"
-            required
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="e.g. 1000"
-            style={{ fontSize: 'var(--text-2xl)' }}
-          />
-
-          <div
-            className="glass-panel"
-            style={{ padding: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}
-          >
-            <CreditCard size={24} color="var(--brand)" />
-            <div>
-              <div style={{ fontWeight: 600 }}>Credit Card</div>
-              <div className="text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
-                Instant transfer (Fee: 2.9%)
-              </div>
-            </div>
-          </div>
-
-          <div className="row" style={{ justifyContent: 'flex-end', marginTop: 'var(--space-4)' }}>
-            <Button type="button" variant="ghost" onClick={() => setIsTopupOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" loading={topupAction.isPending}>
-              Add Funds
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
       <Modal isOpen={isWithdrawOpen} onClose={() => setIsWithdrawOpen(false)} title="Withdraw Funds">
         <form onSubmit={handleWithdraw} className="stack">
           <Input
-            label="Amount (USD)"
+            label="Amount (KES)"
             type="number"
             min="0.01"
             step="0.01"
@@ -226,8 +161,6 @@ export default function WalletPage() {
               onChange={(e) => setWithdrawal({ ...withdrawal, method: e.target.value })}
             >
               <option value="mpesa">M-Pesa</option>
-              <option value="mtn">MTN MoMo</option>
-              <option value="bank">Bank transfer</option>
             </select>
           </label>
           <Input

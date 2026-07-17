@@ -139,7 +139,7 @@ export const defaultBooking = {
   receiverName: '',
   receiverPhone: '',
   communicationPreference: 'WhatsApp + SMS updates',
-  paymentMethod: 'Wallet',
+  paymentMethod: 'M-Pesa',
   optionalServices: []
 };
 
@@ -259,8 +259,8 @@ export function activateOnEnter(event, action) {
   action();
 }
 
-export function money(value, currency = 'USD') {
-  return `${currency} ${Number(value || 0).toLocaleString()}`;
+export function money(value, currency = 'KES') {
+  return `${currency} ${Number(value || 0).toLocaleString('en-KE', { maximumFractionDigits: 2 })}`;
 }
 
 export function saveLocal(type, data) {
@@ -780,7 +780,7 @@ export function normalizeBookingShipment(booking) {
     providerFee: 0,
     shipperTotal: carrierAmount + platformFee,
     carrierPayout: carrierAmount,
-    currency: 'USD'
+    currency: 'KES'
   };
 
   return {
@@ -816,6 +816,7 @@ export function normalizeBookingShipment(booking) {
     amount,
     price: amount,
     paymentReference: booking.paymentReference || '',
+    paymentMethod: booking.paymentMethod || '',
     paymentBreakdown,
     documents: booking.estimate?.requiredDocuments || demoDocuments.slice(0, 3),
     bookingDocuments,
@@ -958,7 +959,7 @@ export function fallbackEstimate(payload) {
   ];
 
   return {
-    currency: 'USD',
+    currency: 'KES',
     lineItems,
     total: lineItems.reduce((sum, item) => sum + item.amount, 0),
     routeRisk: payload.border === 'Cross-border' ? 'medium' : 'low',

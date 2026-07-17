@@ -130,7 +130,7 @@ async function prepareConfirmedBooking() {
       cargoValue: 18000,
       receiverName: 'QA Receiver',
       receiverPhone: '+256700123456',
-      paymentMethod: 'Wallet'
+      paymentMethod: 'Card'
     }
   });
   const bookingId = created.booking._id;
@@ -153,7 +153,7 @@ async function prepareConfirmedBooking() {
     `/api/bookings/${encodeURIComponent(bookingId)}/bids/${encodeURIComponent(bidId)}/accept`,
     { method: 'PATCH' }
   );
-  await apiJson(shipper, `/api/payments/bookings/${encodeURIComponent(bookingId)}/escrow`, {
+  await apiJson(shipper, `/api/payments/bookings/${encodeURIComponent(bookingId)}/card-checkout`, {
     method: 'POST',
     body: { amount: accepted.booking.paymentBreakdown?.shipperTotal || 1486.25 }
   });
@@ -276,7 +276,7 @@ async function recordDeliveryJourney({ bookingId, ownerStorage }) {
     `Continue confirmed booking ${bookingId} through owner dispatch, shipper tracking, receipt confirmation, and the final delivered view.`
   );
   await pause(page, 2_500);
-  pass('Confirmed handoff', `${bookingId} starts this recording in Confirmed with the accepted USD 1,450 offer.`);
+  pass('Confirmed handoff', `${bookingId} starts this recording in Confirmed with the accepted KES 1,450 offer.`);
   await qaNote(page, 'Owner sees the confirmed job, accepted carrier offer, and funded escrow before dispatch.');
 
   const dispatchResponsePromise = page.waitForResponse(
@@ -313,7 +313,7 @@ async function recordDeliveryJourney({ bookingId, ownerStorage }) {
     'Shipper in-transit visibility',
     `The shipper sees ${bookingId} In Transit and receives the confirmation action.`
   );
-  await qaNote(page, 'Both sides align: the shipper sees In Transit, the accepted USD 1,450 offer, and funded escrow.');
+  await qaNote(page, 'Both sides align: the shipper sees In Transit, the accepted KES 1,450 offer, and funded escrow.');
   await page.screenshot({ path: path.join(outputDir, 'dispatch-qa-02-shipper-in-transit.png'), fullPage: true });
 
   const deliveryResponsePromise = page.waitForResponse((response) =>
@@ -328,7 +328,7 @@ async function recordDeliveryJourney({ bookingId, ownerStorage }) {
   await page.getByText('Delivered', { exact: true }).waitFor();
   await page.getByText('Shipment completed').waitFor();
   pass('Shipper confirms delivery', `${bookingId} changed from In Transit to Delivered through Confirm Receipt.`);
-  pass('Commercial continuity after delivery', 'Accepted offer and USD 1,450 remain visible on the delivered booking.');
+  pass('Commercial continuity after delivery', 'Accepted offer and KES 1,450 remain visible on the delivered booking.');
   await qaNote(page, 'Delivery complete: status, progress, accepted offer, and commercial amount remain aligned.');
   await page.screenshot({ path: path.join(outputDir, 'dispatch-qa-03-shipper-delivered.png'), fullPage: true });
 

@@ -13,7 +13,6 @@ const { bookingVisibleTo } = require('../services/bookingAccess');
 const router = express.Router();
 
 const paymentMethods = [
-  { id: 'wallet', label: 'iTruck Wallet', countries: ['all'], settlement: 'instant' },
   { id: 'mpesa', label: 'M-Pesa', countries: ['Kenya', 'Tanzania'], settlement: 'instant' },
   { id: 'mtn-momo', label: 'MTN MoMo', countries: ['Ghana', 'Uganda', 'Rwanda', 'Cameroon'], settlement: 'instant' },
   {

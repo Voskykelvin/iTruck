@@ -832,7 +832,7 @@ test('booking ratings are tied to delivered jobs for both parties', async () => 
   expect(accepted.status).toBe(200);
 
   const funded = await request(app)
-    .post(`/api/payments/bookings/${bookingId}/escrow`)
+    .post(`/api/payments/bookings/${bookingId}/card-checkout`)
     .set('Authorization', authHeader(client))
     .send({ amount: accepted.body.booking.paymentBreakdown.shipperTotal });
   expect(funded.status).toBe(201);
@@ -863,6 +863,34 @@ test('booking ratings are tied to delivered jobs for both parties', async () => 
 
   expect(ownerRating.status).toBe(200);
   expect(ownerRating.body.booking.rating.ownerToClient.score).toBe(4);
+});
+
+test('payment methods expose KES card and M-Pesa while MTN and iTruck wallet funding stay unavailable', async () => {
+  const client = { id: 'demo-client-payment-methods', role: 'client' };
+  const methods = await request(app).get('/api/payments/methods').set('Authorization', authHeader(client));
+
+  expect(methods.status).toBe(200);
+  expect(methods.body.currency).toBe('KES');
+  expect(methods.body.methods).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: 'card', enabled: true }),
+      expect.objectContaining({ id: 'mpesa', enabled: true }),
+      expect.objectContaining({ id: 'mtn', enabled: false })
+    ])
+  );
+  expect(methods.body.methods).not.toContainEqual(expect.objectContaining({ id: 'wallet' }));
+
+  const mtn = await request(app)
+    .post('/api/payments/bookings/ITK-2031/mobile-money')
+    .set('Authorization', authHeader(client))
+    .send({ method: 'mtn', phone: '+256770000000', amount: 100 });
+  expect(mtn.status).toBe(503);
+
+  const removedWalletFunding = await request(app)
+    .post('/api/payments/bookings/ITK-2031/escrow')
+    .set('Authorization', authHeader(client))
+    .send({ amount: 100 });
+  expect(removedWalletFunding.status).toBe(404);
 });
 
 test('avatar uploads reject unsupported file types before storage', async () => {

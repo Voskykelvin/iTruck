@@ -376,6 +376,11 @@ function stripeAmount(value, currency = 'usd') {
   return zeroDecimal.has(String(currency || '').toLowerCase()) ? amount : amount / 100;
 }
 
+function stripeSmallestUnit(value, currency = 'kes') {
+  const amount = parsePositiveAmount(value);
+  return stripeAmount(1, currency) === 1 ? Math.round(amount) : Math.round(amount * 100);
+}
+
 function validObjectId(value) {
   return mongoose.Types.ObjectId.isValid(value);
 }
@@ -794,6 +799,38 @@ class StripeService {
     this.client = options.client || new Stripe(requireEnv('Stripe secret key', 'STRIPE_SECRET_KEY'));
   }
 
+  async createCheckoutSession({ amount, currency, bookingId, userId, transactionId, idempotencyKey }) {
+    const frontendUrl = trimTrailingSlash(requireEnv('Frontend URL', 'FRONTEND_URL'));
+    const shipmentUrl = `${frontendUrl}/app/shipments/${encodeURIComponent(bookingId)}`;
+    const metadata = {
+      bookingId: String(bookingId),
+      userId: String(userId),
+      transactionId: String(transactionId)
+    };
+    return this.client.checkout.sessions.create(
+      {
+        mode: 'payment',
+        payment_method_types: ['card'],
+        client_reference_id: String(bookingId),
+        success_url: `${shipmentUrl}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${shipmentUrl}?payment=cancelled`,
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: String(currency || 'KES').toLowerCase(),
+              unit_amount: stripeSmallestUnit(amount, currency),
+              product_data: { name: `iTruck shipment ${bookingId}` }
+            }
+          }
+        ],
+        metadata,
+        payment_intent_data: { metadata }
+      },
+      { idempotencyKey }
+    );
+  }
+
   async refund({ paymentIntent, charge, amount, currency, reason, idempotencyKey, metadata }) {
     const zeroDecimal = stripeAmount(1, currency) === 1;
     const smallestUnit = zeroDecimal ? Math.round(amount) : Math.round(amount * 100);
@@ -854,7 +891,7 @@ class WalletService {
         $setOnInsert: {
           user: userId,
           balance: startingBalance,
-          currency: 'USD'
+          currency: process.env.DEFAULT_CURRENCY || 'KES'
         }
       },
       sessionOptions(session, { new: true, upsert: true, setDefaultsOnInsert: true })
@@ -887,7 +924,7 @@ class WalletService {
         { user: userId },
         {
           $inc: { balance: amountNum, version: 1 },
-          $setOnInsert: { user: userId, currency: 'USD' }
+          $setOnInsert: { user: userId, currency: process.env.DEFAULT_CURRENCY || 'KES' }
         },
         sessionOptions(session, { new: true, upsert: true, setDefaultsOnInsert: true })
       );
@@ -1201,7 +1238,7 @@ class WalletService {
               type: 'platform_fee',
               method: payment?.method || 'wallet',
               amount: platformFee,
-              currency: terms.currency || payment?.currency || 'USD',
+              currency: terms.currency || payment?.currency || process.env.DEFAULT_CURRENCY || 'KES',
               description: `iTruck platform fee for booking ${reserved._id}`,
               reference: `platform-fee:${reserved._id}`,
               status: 'completed',
@@ -1237,6 +1274,9 @@ class MobileMoneyPaymentService {
 
   async initiateBookingPayment(bookingId, payerId, options = {}) {
     const method = normalizeMobileMoneyMethod(options.method || options.provider);
+    if (method === 'mtn' && String(process.env.ENABLE_MTN_MOMO || '').toLowerCase() !== 'true') {
+      throw appError('MTN MoMo is not currently available', 503);
+    }
     const phone = options.phone || options.destination;
     const requestPayload = {
       bookingId,
@@ -1414,12 +1454,158 @@ class MobileMoneyPaymentService {
   }
 }
 
+class CardPaymentService {
+  constructor(options = {}) {
+    this.stripe = options.stripe;
+    this.options = options;
+  }
+
+  stripeService() {
+    if (!this.stripe) this.stripe = new StripeService(this.options);
+    return this.stripe;
+  }
+
+  async initiateBookingPayment(bookingId, payerId, options = {}) {
+    return runWithIdempotency(
+      options.idempotencyKey,
+      { bookingId, payerId, amount: options.amount, method: 'stripe' },
+      () => this.createBookingPayment(bookingId, payerId, options),
+      { scope: 'booking.payment.stripe' }
+    );
+  }
+
+  async createBookingPayment(bookingId, payerId, options = {}) {
+    const booking = await Booking.findById(bookingId);
+    if (!booking) throw appError('Booking not found', 404);
+    if (!sameId(booking.client, payerId)) throw appError('Only the booking shipper can fund escrow', 403);
+    if (!booking.owner) throw appError('Accept a carrier bid before funding escrow', 409);
+    if (!['confirmed', 'in_transit', 'delivered'].includes(booking.status)) {
+      throw appError('Booking must be confirmed before funding escrow', 409);
+    }
+    if (['escrowed', 'release_pending', 'released'].includes(booking.paymentStatus)) {
+      const transaction = await Transaction.findOne({ booking: booking._id, type: 'payment', status: 'completed' });
+      return { booking, transaction, alreadyFunded: true };
+    }
+    if (booking.paymentStatus === 'pending' && booking.paymentMethod === 'stripe') {
+      const transaction = await Transaction.findOne({
+        booking: booking._id,
+        type: 'payment',
+        method: 'stripe',
+        status: 'pending'
+      }).sort('-createdAt');
+      const checkoutUrl = metadataObject(transaction?.metadata).checkoutUrl;
+      if (transaction && checkoutUrl) {
+        return {
+          success: true,
+          provider: 'stripe',
+          checkoutUrl,
+          providerReference: metadataObject(transaction.metadata).checkoutSessionId,
+          booking,
+          transaction,
+          alreadyFunded: false,
+          alreadyPending: true
+        };
+      }
+    }
+    if (booking.paymentStatus === 'pending') throw appError('Booking payment is already pending', 409);
+    if (!['unpaid', 'failed', undefined, null].includes(booking.paymentStatus)) {
+      throw appError('Booking payment cannot be funded from its current state', 409);
+    }
+
+    const terms = termsForBooking(booking);
+    const amount = parsePositiveAmount(bookingEscrowAmount(booking, options.amount));
+    const currency = String(terms.currency || process.env.DEFAULT_CURRENCY || 'KES').toUpperCase();
+    const pendingReference = `stripe:pending:${booking._id}:${Date.now()}`;
+    const reserved = await Booking.findOneAndUpdate(
+      {
+        _id: booking._id,
+        $or: [{ paymentStatus: { $in: ['unpaid', 'failed'] } }, { paymentStatus: { $exists: false } }]
+      },
+      {
+        $set: {
+          paymentStatus: 'pending',
+          paymentMethod: 'stripe',
+          paymentAmount: amount,
+          paymentReference: pendingReference
+        }
+      },
+      { new: true }
+    );
+    if (!reserved) throw appError('Booking payment is already being funded', 409);
+
+    const transaction = await Transaction.create({
+      user: payerId,
+      booking: reserved._id,
+      type: 'payment',
+      method: 'stripe',
+      amount,
+      currency,
+      reference: pendingReference,
+      provider: 'stripe',
+      description: `Bank card escrow payment for booking ${reserved._id}`,
+      status: 'pending',
+      metadata: { channel: 'hosted_card', initiatedAt: new Date().toISOString(), owner: reserved.owner }
+    });
+
+    try {
+      const session = await this.stripeService().createCheckoutSession({
+        amount,
+        currency,
+        bookingId: reserved._id,
+        userId: payerId,
+        transactionId: transaction._id,
+        idempotencyKey: options.idempotencyKey || `checkout-${transaction._id}`
+      });
+      const reference = `stripe:${session.id}`;
+      const metadata = {
+        ...metadataObject(transaction.metadata),
+        checkoutSessionId: session.id,
+        checkoutUrl: session.url,
+        paymentIntent: session.payment_intent,
+        initiatedAt: new Date().toISOString()
+      };
+      const updatedTransaction = await Transaction.findOneAndUpdate(
+        { _id: transaction._id },
+        { $set: { reference, providerEventId: session.id, metadata } },
+        { new: true }
+      );
+      const updatedBooking = await Booking.findOneAndUpdate(
+        { _id: reserved._id, paymentStatus: 'pending', paymentReference: pendingReference },
+        { $set: { paymentReference: reference, paymentMethod: 'stripe', paymentAmount: amount } },
+        { new: true }
+      );
+      return {
+        success: true,
+        provider: 'stripe',
+        checkoutUrl: session.url,
+        providerReference: session.id,
+        booking: updatedBooking || reserved,
+        transaction: updatedTransaction || transaction,
+        alreadyFunded: false
+      };
+    } catch (err) {
+      await Transaction.findOneAndUpdate(
+        { _id: transaction._id },
+        {
+          $set: { status: 'failed', metadata: { ...metadataObject(transaction.metadata), failureMessage: err.message } }
+        }
+      );
+      await Booking.updateOne(
+        { _id: reserved._id, paymentStatus: 'pending', paymentReference: pendingReference },
+        { $set: { paymentStatus: 'failed' }, $unset: { paymentReference: 1 } }
+      );
+      throw err;
+    }
+  }
+}
+
 class PaymentReconciliationService {
   async reconcileStripeEvent(event) {
     const object = stripeObject(event);
     const metadata = stripeMetadata(object);
     const bookingId = metadata.bookingId || metadata.booking || object.client_reference_id;
     const userId = metadata.userId || metadata.clientId || metadata.user;
+    const transactionId = metadata.transactionId;
     const currency = String(object.currency || 'usd').toUpperCase();
     const rawAmount = object.amount_received || object.amount_total || object.amount || 0;
     const amount = stripeAmount(rawAmount, currency);
@@ -1428,7 +1614,7 @@ class PaymentReconciliationService {
     const bookingPayment = bookingPaymentStatus(status);
 
     const transaction = await Transaction.findOneAndUpdate(
-      { provider: 'stripe', providerEventId: event.id },
+      validObjectId(transactionId) ? { _id: transactionId } : { provider: 'stripe', providerEventId: event.id },
       {
         $setOnInsert: {
           user: validObjectId(userId) ? userId : undefined,
@@ -1444,6 +1630,8 @@ class PaymentReconciliationService {
         },
         $set: {
           status,
+          reference,
+          providerEventId: event.id,
           metadata: {
             stripeType: event.type,
             stripeObjectId: object.id,
@@ -1995,6 +2183,7 @@ module.exports = {
   payments: new PaymentReconciliationService(),
   providerOperations: new ProviderOperationsService(),
   mobileMoney: new MobileMoneyPaymentService(),
+  cards: new CardPaymentService(),
   wallet: new WalletService(),
   checkIdempotency,
   generateIdempotencyKey,
@@ -2006,6 +2195,7 @@ module.exports = {
   MpesaService,
   MTNMoMoService,
   MobileMoneyPaymentService,
+  CardPaymentService,
   PaymentReconciliationService,
   ProviderOperationsService,
   WalletService

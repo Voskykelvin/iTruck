@@ -406,7 +406,7 @@ export default function LandingPage() {
               {
                 icon: <CreditCard className="w-10 h-10" />,
                 title: 'Clear payment steps',
-                desc: 'Wallet, card, M-Pesa, or MTN MoMo — with a clear record of each payment stage and escrow-style release.'
+                desc: 'Bank card or M-Pesa, with MTN MoMo clearly marked unavailable until its provider integration is active.'
               },
               {
                 icon: <Navigation className="w-10 h-10" />,

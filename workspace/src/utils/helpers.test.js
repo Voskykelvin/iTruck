@@ -3,7 +3,7 @@ import { money, normalizeBookingShipment, normalizeOpenLoad, paymentStatusLabel,
 
 describe('display helpers', () => {
   it('formats monetary values consistently', () => {
-    expect(money(1250, 'USD')).toMatch(/1,250/);
+    expect(money(1250, 'KES')).toMatch(/KES\s1,250/);
   });
 
   it('handles absent and invalid timestamps safely', () => {

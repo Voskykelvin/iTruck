@@ -304,6 +304,7 @@ export const api = {
   rateBooking: (bookingId, payload) =>
     request(`/bookings/${encodeURIComponent(bookingId)}/ratings`, { method: 'POST', body: JSON.stringify(payload) }),
   wallet: () => request('/payments/wallet'),
+  paymentMethods: () => request('/payments/methods'),
   creditWallet: (payload) =>
     request('/payments/wallet/credit', {
       method: 'POST',
@@ -315,16 +316,16 @@ export const api = {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey('release') }
     }),
-  fundEscrow: (bookingId, payload = {}) =>
-    request(`/payments/bookings/${encodeURIComponent(bookingId)}/escrow`, {
-      method: 'POST',
-      headers: { 'Idempotency-Key': idempotencyKey('escrow') },
-      body: JSON.stringify(payload)
-    }),
   initiateMobileMoneyEscrow: (bookingId, payload = {}) =>
     request(`/payments/bookings/${encodeURIComponent(bookingId)}/mobile-money`, {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey('mobile-escrow') },
+      body: JSON.stringify(payload)
+    }),
+  initiateCardCheckout: (bookingId, payload = {}) =>
+    request(`/payments/bookings/${encodeURIComponent(bookingId)}/card-checkout`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('card-checkout') },
       body: JSON.stringify(payload)
     }),
   withdraw: (payload) =>

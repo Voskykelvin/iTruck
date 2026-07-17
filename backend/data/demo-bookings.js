@@ -21,7 +21,7 @@ const memoryBookings = [
       providerFee: 0,
       shipperTotal: 1291.5,
       carrierPayout: 1260,
-      currency: 'USD'
+      currency: 'KES'
     },
     status: 'in_transit',
     bids: [],

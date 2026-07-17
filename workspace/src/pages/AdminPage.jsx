@@ -271,7 +271,7 @@ export default function AdminPage() {
         <div>
           <div style={{ fontWeight: 700 }}>{row.reference || row.id.slice(0, 10)}</div>
           <div className="text-secondary" style={{ fontSize: 'var(--text-xs)' }}>
-            {row.provider || row.method || 'Wallet'} · {row.type}
+            {row.provider || row.method || 'Internal ledger'} · {row.type}
           </div>
         </div>
       )

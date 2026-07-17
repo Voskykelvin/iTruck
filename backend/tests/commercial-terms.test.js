@@ -8,7 +8,7 @@ test('payment breakdown adds the iTruck fee without reducing carrier payout', ()
     providerFee: 0,
     shipperTotal: 1486.25,
     carrierPayout: 1450,
-    currency: 'USD',
+    currency: 'KES',
     calculatedAt: '2026-07-17T00:00:00.000Z'
   });
 });
