@@ -4,7 +4,11 @@ const transactionSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     booking: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking' },
-    type: { type: String, enum: ['credit', 'debit', 'payment', 'refund', 'withdrawal'], required: true },
+    type: {
+      type: String,
+      enum: ['credit', 'debit', 'payment', 'platform_fee', 'refund', 'withdrawal'],
+      required: true
+    },
     method: { type: String, enum: ['wallet', 'stripe', 'mpesa', 'mtn', 'cash', 'bank'], default: 'wallet' },
     amount: { type: Number, required: true },
     currency: { type: String, default: 'USD' },

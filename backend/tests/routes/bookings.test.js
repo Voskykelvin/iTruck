@@ -371,7 +371,13 @@ describe('Bookings Integration Tests', () => {
 
       expect(acceptRes.body.booking.status).toBe('confirmed');
       expect(acceptRes.body.booking.bids[0].status).toBe('accepted');
-      expect(acceptRes.body.booking.paymentAmount).toBe(1700);
+      expect(acceptRes.body.booking.paymentAmount).toBe(1742.5);
+      expect(acceptRes.body.booking.paymentBreakdown).toMatchObject({
+        carrierAmount: 1700,
+        platformFee: 42.5,
+        shipperTotal: 1742.5,
+        carrierPayout: 1700
+      });
       expect(acceptRes.body.booking.paymentStatus).toBe('unpaid');
     });
 
@@ -621,6 +627,7 @@ describe('Bookings Integration Tests', () => {
       const { token: ownerToken, truck, owner } = await createOwnerWithTruck();
       const booking = await createBookingInDB(client._id, {
         status: 'confirmed',
+        paymentStatus: 'escrowed',
         owner: owner._id,
         truck: truck._id
       });
@@ -639,6 +646,7 @@ describe('Bookings Integration Tests', () => {
       const { token: ownerToken, truck, owner } = await createOwnerWithTruck();
       const booking = await createBookingInDB(client._id, {
         status: 'confirmed',
+        paymentStatus: 'escrowed',
         owner: owner._id,
         truck: truck._id
       });
@@ -687,6 +695,7 @@ describe('Bookings Integration Tests', () => {
       const { token: ownerToken, truck, owner } = await createOwnerWithTruck();
       const booking = await createBookingInDB(client._id, {
         status: 'confirmed',
+        paymentStatus: 'escrowed',
         owner: owner._id,
         truck: truck._id
       });
@@ -702,6 +711,25 @@ describe('Bookings Integration Tests', () => {
 
       expect(res.body.booking.status).toBe('in_transit');
       expect(res.body.booking.lastKnownLocation.lat).toBeCloseTo(-1.3, 1);
+    });
+
+    test('blocks dispatch until escrow is funded', async () => {
+      const { user: client } = await createUser({ role: 'client' });
+      const { token: ownerToken, truck, owner } = await createOwnerWithTruck();
+      const booking = await createBookingInDB(client._id, {
+        status: 'confirmed',
+        paymentStatus: 'unpaid',
+        owner: owner._id,
+        truck: truck._id
+      });
+
+      const response = await request(app)
+        .patch(`/api/bookings/${booking._id}/status`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ status: 'in_transit' })
+        .expect(409);
+
+      expect(response.body.message).toMatch(/fund escrow/i);
     });
   });
 
@@ -807,6 +835,28 @@ describe('Bookings Integration Tests', () => {
         .expect(200);
 
       expect(res.body.booking.rating.ownerToClient.score).toBe(4);
+    });
+
+    test('client rates the assigned driver separately', async () => {
+      const { user: client, token: clientToken } = await createUser({ role: 'client' });
+      const { user: driver } = await createUser({ role: 'driver' });
+      const { owner, truck } = await createOwnerWithTruck();
+      const booking = await createBookingInDB(client._id, {
+        status: 'delivered',
+        owner: owner._id,
+        truck: truck._id,
+        driver: driver._id,
+        deliveredAt: new Date()
+      });
+
+      const response = await request(app)
+        .post(`/api/bookings/${booking._id}/ratings`)
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({ target: 'driver', score: 5, comment: 'Careful handoff' })
+        .expect(200);
+
+      expect(response.body.booking.rating.clientToDriver.score).toBe(5);
+      expect(response.body.user._id).toBe(String(driver._id));
     });
 
     test('returns 409 when rating before delivery', async () => {

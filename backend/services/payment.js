@@ -11,6 +11,7 @@ const logger = require('../config/logger');
 const { assertDeliveryProofForPaymentRelease } = require('./operationsPolicy');
 const { assertDeliveryProofIntegrity } = require('./deliveryProof');
 const { createOne, runInTransaction, sessionOptions } = require('./transactions');
+const { termsForBooking } = require('./commercialTerms');
 
 const IDEMPOTENCY_TTL_MINUTES = 60;
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_.:-]+$/;
@@ -398,6 +399,8 @@ function firstPositiveAmount(values = []) {
 }
 
 function bookingEscrowAmount(booking, requestedAmount) {
+  const contractedTotal = Number(booking?.paymentBreakdown?.shipperTotal || booking?.paymentAmount || 0);
+  if (Number.isFinite(contractedTotal) && contractedTotal > 0) return contractedTotal;
   const requested = Number(requestedAmount || 0);
   if (Number.isFinite(requested) && requested > 0) return requested;
 
@@ -1158,10 +1161,14 @@ class WalletService {
       type: 'payment',
       status: 'completed'
     }).sort('-createdAt');
-    const amount = payment?.amount || booking.paymentAmount;
-    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+    const terms = termsForBooking(booking);
+    const fundedAmount = Number(payment?.amount || booking.paymentAmount);
+    const carrierPayout = Number(terms.carrierPayout);
+    const platformFee = Number(terms.platformFee || 0);
+    if (!Number.isFinite(fundedAmount) || fundedAmount <= 0 || !Number.isFinite(carrierPayout) || carrierPayout <= 0) {
       throw appError('No completed payment is available to release', 409);
     }
+    if (fundedAmount < Number(terms.shipperTotal)) throw appError('Escrow does not cover the contracted total', 409);
 
     const reserved = await Booking.findOneAndUpdate(
       { _id: booking._id, paymentStatus: 'escrowed' },
@@ -1175,7 +1182,7 @@ class WalletService {
     try {
       const transaction = await this.credit(
         reserved.owner,
-        amount,
+        carrierPayout,
         `Payment release for booking ${reserved._id}`,
         `release:${reserved._id}`
       );
@@ -1187,10 +1194,31 @@ class WalletService {
       };
       await transaction.save?.();
 
+      const revenueTransaction =
+        platformFee > 0
+          ? await Transaction.create({
+              booking: reserved._id,
+              type: 'platform_fee',
+              method: payment?.method || 'wallet',
+              amount: platformFee,
+              currency: terms.currency || payment?.currency || 'USD',
+              description: `iTruck platform fee for booking ${reserved._id}`,
+              reference: `platform-fee:${reserved._id}`,
+              status: 'completed',
+              metadata: {
+                rate: terms.platformFeeRate,
+                fundedAmount,
+                carrierPayout,
+                paymentTransaction: payment?._id,
+                recognizedAt: new Date().toISOString()
+              }
+            })
+          : null;
+
       reserved.paymentStatus = 'released';
       reserved.releasedAt = new Date();
       await reserved.save();
-      return { booking: reserved, transaction, alreadyReleased: false };
+      return { booking: reserved, transaction, revenueTransaction, alreadyReleased: false };
     } catch (err) {
       await Booking.updateOne(
         { _id: reserved._id, paymentStatus: 'release_pending' },

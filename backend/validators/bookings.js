@@ -229,8 +229,8 @@ const bookingRatingSchema = [
   body('score').isFloat({ min: 1, max: 5 }).withMessage('Rating score must be between 1 and 5').toFloat(),
   body('target')
     .optional({ checkFalsy: true })
-    .isIn(['owner', 'client'])
-    .withMessage('Rating target must be owner or client'),
+    .isIn(['owner', 'driver', 'client'])
+    .withMessage('Rating target must be owner, driver, or client'),
   optionalString('comment', 1000)
 ];
 

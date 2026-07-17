@@ -14,6 +14,7 @@ const {
   assertOwnerCanBid
 } = require('../services/operationsPolicy');
 const { recordDeliveryConfirmation } = require('../services/deliveryProof');
+const { paymentBreakdown } = require('../services/commercialTerms');
 const { isLiveMode, mongoReady, requireDatabase } = require('../config/runtime');
 const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
@@ -45,53 +46,10 @@ const {
 } = require('../services/bookingAccess');
 const { recordAudit } = require('../services/audit');
 const { demoTrucks } = require('../data/demo-users');
+const { memoryBookings } = require('../data/demo-bookings');
 
 const router = express.Router();
 router.use(protect);
-
-const memoryBookings = [
-  {
-    _id: 'ITK-2044',
-    client: 'demo-client-primary',
-    owner: 'demo-owner-primary',
-    truck: 'demo-truck-isuzu',
-    pickup: 'Nairobi',
-    destination: 'Kampala',
-    pickupDate: new Date().toISOString(),
-    vehicleType: 'Lorry',
-    cargo: 'Retail stock',
-    weight: '8 tonnes',
-    budget: 1260,
-    paymentMethod: 'M-Pesa',
-    status: 'in_transit',
-    bids: [],
-    tracking: [{ lat: -0.3031, lng: 36.08, speed: 72, heading: 291, timestamp: new Date().toISOString() }],
-    createdAt: new Date().toISOString()
-  },
-  {
-    _id: 'ITK-2031',
-    client: 'demo-client-secondary',
-    pickup: 'Mombasa',
-    destination: 'Dar es Salaam',
-    vehicleType: 'Trailer',
-    cargo: 'Machine parts',
-    weight: '18 tonnes',
-    budget: 2860,
-    paymentMethod: 'Card escrow',
-    status: 'bidding',
-    bids: [
-      {
-        owner: 'demo-owner-secondary',
-        amount: 3040,
-        message: 'Fleet is available for the requested pickup window.',
-        status: 'pending',
-        createdAt: new Date().toISOString()
-      }
-    ],
-    tracking: [],
-    createdAt: new Date().toISOString()
-  }
-];
 
 function bookingOpenForBids(booking) {
   return ['pending', 'bidding'].includes(booking.status) && !booking.owner;
@@ -117,7 +75,8 @@ function acceptBidOnBooking(booking, bidId, _ownerUserId) {
   const bid = bidding.acceptBid(booking, bidId, _ownerUserId);
   booking.owner = bid.owner;
   if (bid.truck) booking.truck = bid.truck;
-  booking.paymentAmount = Number(bid.amount);
+  booking.paymentBreakdown = paymentBreakdown(bid.amount);
+  booking.paymentAmount = booking.paymentBreakdown.shipperTotal;
   if (!booking.paymentStatus) booking.paymentStatus = 'unpaid';
 
   if (typeof booking.transitionTo === 'function') {
@@ -344,11 +303,14 @@ async function recomputeTruckRating(truckId) {
 
 async function recomputeUserRating(userId, direction) {
   if (!userId) return null;
-  const field = direction === 'owner' ? 'rating.clientToOwner.score' : 'rating.ownerToClient.score';
-  const query =
+  const field =
     direction === 'owner'
-      ? { owner: userId, status: 'delivered', [field]: { $type: 'number' } }
-      : { client: userId, status: 'delivered', [field]: { $type: 'number' } };
+      ? 'rating.clientToOwner.score'
+      : direction === 'driver'
+        ? 'rating.clientToDriver.score'
+        : 'rating.ownerToClient.score';
+  const partyField = direction === 'owner' ? 'owner' : direction === 'driver' ? 'driver' : 'client';
+  const query = { [partyField]: userId, status: 'delivered', [field]: { $type: 'number' } };
 
   const bookings = await Booking.find(query).select(field);
   const rating = averageScore(bookings, field);
@@ -359,7 +321,10 @@ async function recomputeUserRating(userId, direction) {
 
 function ratingTargetFor(user, booking, requestedTarget) {
   if (user.role === 'admin') return requestedTarget || 'owner';
-  if (user.role === 'client' && String(booking.client?._id || booking.client) === String(user._id)) return 'owner';
+  if (user.role === 'client' && String(booking.client?._id || booking.client) === String(user._id)) {
+    if (requestedTarget === 'driver' && booking.driver) return 'driver';
+    return 'owner';
+  }
   if (user.role === 'owner' && String(booking.owner?._id || booking.owner) === String(user._id)) return 'client';
   return null;
 }
@@ -367,6 +332,14 @@ function ratingTargetFor(user, booking, requestedTarget) {
 function canApplyStatusUpdate(user, booking, nextStatus) {
   if (nextStatus === 'cancelled') return canCancelBooking(user, booking);
   return canManageBookingStatus(user, booking);
+}
+
+function assertPaymentReadyForDispatch(booking, nextStatus) {
+  if (nextStatus !== 'in_transit') return;
+  if (['escrowed', 'released'].includes(booking.paymentStatus)) return;
+  const error = new Error('Fund escrow before starting dispatch');
+  error.status = 409;
+  throw error;
 }
 
 router.get('/', listBookingsSchema, validate, async (req, res, next) => {
@@ -620,6 +593,19 @@ router.patch(
         },
         req.app.get('io')
       );
+      await notifications.deliver(
+        booking.client,
+        'payment.required',
+        {
+          title: `Fund escrow for ${booking._id}`,
+          message: `Fund ${booking.paymentBreakdown.shipperTotal} ${booking.paymentBreakdown.currency} to unlock dispatch.`,
+          link: `/app/shipments/${booking._id}`,
+          bookingId: booking._id,
+          amount: booking.paymentBreakdown.shipperTotal,
+          platformFee: booking.paymentBreakdown.platformFee
+        },
+        req.app.get('io')
+      );
       emitBooking(req, booking._id, 'bid-accepted', booking, { silent: true });
       res.json({ booking });
     } catch (err) {
@@ -823,8 +809,9 @@ router.patch(
         {
           title: `${booking._id} delivered`,
           message: `${booking.pickup || 'Pickup'} to ${booking.destination || 'delivery'} was confirmed delivered.`,
-          link: '/app/shipments',
-          bookingId: booking._id
+          link: `/app/shipments/${booking._id}`,
+          bookingId: booking._id,
+          reviewRequested: true
         },
         req.app.get('io')
       );
@@ -852,7 +839,11 @@ router.post('/:id/ratings', bookingRatingSchema, validate, async (req, res, next
       if (!target) return res.status(403).json({ message: 'Only booking parties can rate this shipment' });
 
       booking.rating = booking.rating || {};
-      booking.rating[target === 'owner' ? 'clientToOwner' : 'ownerToClient'] = {
+      const ratingField =
+        target === 'owner' ? 'clientToOwner' : target === 'driver' ? 'clientToDriver' : 'ownerToClient';
+      if (booking.rating[ratingField])
+        return res.status(409).json({ message: 'This review has already been submitted' });
+      booking.rating[ratingField] = {
         score,
         comment,
         user: req.user._id,
@@ -871,9 +862,15 @@ router.post('/:id/ratings', bookingRatingSchema, validate, async (req, res, next
     const detail = { score, comment, user: req.user._id, createdAt: new Date() };
     if (target === 'owner') {
       if (!booking.owner || !booking.truck) return res.status(409).json({ message: 'Carrier is not assigned' });
+      if (booking.rating?.clientToOwner) return res.status(409).json({ message: 'Carrier review already submitted' });
       booking.rating = { ...(booking.rating || {}), clientToOwner: detail };
+    } else if (target === 'driver') {
+      if (!booking.driver) return res.status(409).json({ message: 'Driver is not assigned' });
+      if (booking.rating?.clientToDriver) return res.status(409).json({ message: 'Driver review already submitted' });
+      booking.rating = { ...(booking.rating || {}), clientToDriver: detail };
     } else {
       if (!booking.client) return res.status(409).json({ message: 'Shipper is not assigned' });
+      if (booking.rating?.ownerToClient) return res.status(409).json({ message: 'Shipper review already submitted' });
       booking.rating = { ...(booking.rating || {}), ownerToClient: detail };
     }
 
@@ -882,7 +879,26 @@ router.post('/:id/ratings', bookingRatingSchema, validate, async (req, res, next
     const [truck, ratedUser] =
       target === 'owner'
         ? await Promise.all([recomputeTruckRating(booking.truck), recomputeUserRating(booking.owner, 'owner')])
-        : await Promise.all([Promise.resolve(null), recomputeUserRating(booking.client, 'client')]);
+        : target === 'driver'
+          ? await Promise.all([Promise.resolve(null), recomputeUserRating(booking.driver, 'driver')])
+          : await Promise.all([Promise.resolve(null), recomputeUserRating(booking.client, 'client')]);
+
+    const ratedParty = target === 'owner' ? booking.owner : target === 'driver' ? booking.driver : booking.client;
+    await notifications
+      .deliver(
+        ratedParty,
+        'review.received',
+        {
+          title: `New ${score}-star review`,
+          message: `A completed shipment review was submitted for ${booking._id}.`,
+          link: `/app/shipments/${booking._id}`,
+          bookingId: booking._id,
+          target,
+          score
+        },
+        req.app.get('io')
+      )
+      .catch(() => null);
 
     res.json({ booking, truck, user: ratedUser });
   } catch (err) {
@@ -908,6 +924,7 @@ router.patch(
         if (!canApplyStatusUpdate(req.user, booking, req.body.status)) {
           return res.status(403).json({ message: 'Forbidden' });
         }
+        assertPaymentReadyForDispatch(booking, req.body.status);
         if (req.body.status === 'delivered' && req.user.role !== 'admin') {
           return res.status(403).json({ message: 'The shipper or an administrator must confirm final delivery' });
         }
@@ -935,6 +952,7 @@ router.patch(
       if (!canApplyStatusUpdate(req.user, booking, req.body.status)) {
         return res.status(403).json({ message: 'Forbidden' });
       }
+      assertPaymentReadyForDispatch(booking, req.body.status);
       if (req.body.status === 'delivered' && req.user.role !== 'admin') {
         return res.status(403).json({ message: 'The shipper or an administrator must confirm final delivery' });
       }
@@ -974,9 +992,10 @@ router.patch(
         {
           title: `${booking._id} ${booking.status.replaceAll('_', ' ')}`,
           message: `${booking.pickup || 'Pickup'} to ${booking.destination || 'delivery'} status changed.`,
-          link: '/app/shipments',
+          link: `/app/shipments/${booking._id}`,
           bookingId: booking._id,
-          status: booking.status
+          status: booking.status,
+          reviewRequested: booking.status === 'delivered'
         },
         req.app.get('io')
       );

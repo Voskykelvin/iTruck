@@ -9,6 +9,8 @@ const notifications = require('../services/notifications');
 const payment = require('../services/payment');
 const ProviderOperation = require('../models/ProviderOperation');
 const Transaction = require('../models/Transaction');
+const Booking = require('../models/Booking');
+const { memoryBookings } = require('../data/demo-bookings');
 const {
   amountSchema,
   executePayoutSchema,
@@ -97,12 +99,19 @@ function demoMobileMoneyPayment(req, bookingId) {
   transaction.reference = reference;
   transaction.provider = method;
 
+  const booking = memoryBookings.find((item) => String(item._id) === String(bookingId));
+  if (booking) {
+    booking.paymentStatus = 'pending';
+    booking.paymentReference = reference;
+    booking.paymentAmount = Number(booking.paymentBreakdown?.shipperTotal || transaction.amount);
+    booking.paymentMethod = method;
+  }
   return {
     success: true,
     provider: method,
     providerReference: reference,
     message: `${method === 'mpesa' ? 'M-Pesa' : 'MTN MoMo'} request queued in demo mode`,
-    booking: {
+    booking: booking || {
       _id: bookingId,
       paymentStatus: 'pending',
       paymentReference: reference,
@@ -327,6 +336,25 @@ router.post(
       phone: req.body.phone,
       idempotencyKey: idempotencyKey(req)
     });
+    if (!result.alreadyFunded) {
+      await notifications
+        .notifyBookingParties(
+          result.booking,
+          'payment.pending',
+          {
+            title: `${result.booking._id} payment requested`,
+            message: 'A mobile-money escrow request is awaiting provider confirmation.',
+            link: `/app/shipments/${result.booking._id}`,
+            bookingId: result.booking._id,
+            provider: result.provider,
+            amount: result.booking.paymentAmount
+          },
+          req.app.get('io')
+        )
+        .catch(() => null);
+      const io = req.app.get('io');
+      if (io?.emitToBooking) io.emitToBooking(result.booking._id, 'payment-pending', result.booking);
+    }
     res.status(result.alreadyFunded ? 200 : 202).json(result);
   })
 );
@@ -339,20 +367,22 @@ router.post(
   asyncHandler(async (req, res) => {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
+      const booking = memoryBookings.find((item) => String(item._id) === String(req.params.bookingId));
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (String(booking.client) !== String(req.user._id)) return res.status(403).json({ message: 'Forbidden' });
+      const amount = Number(booking.paymentBreakdown?.shipperTotal || booking.paymentAmount || req.body.amount || 0);
       const transaction = demoTransaction(req, 'payment', {
-        amount: req.body.amount || 0,
+        amount,
         method: 'wallet',
         description: `Escrow funded for booking ${req.params.bookingId}`,
         status: 'completed'
       });
+      booking.paymentStatus = 'escrowed';
+      booking.paymentReference = transaction.reference;
+      booking.paymentAmount = amount;
+      booking.paidAt = new Date().toISOString();
       return res.status(201).json({
-        booking: {
-          _id: req.params.bookingId,
-          paymentStatus: 'escrowed',
-          paymentReference: transaction.reference,
-          paymentAmount: transaction.amount,
-          paidAt: new Date().toISOString()
-        },
+        booking,
         transaction,
         balance: Number(req.user.walletBalance || 0),
         alreadyFunded: false,
@@ -396,25 +426,47 @@ router.post(
 
 router.post(
   '/bookings/:bookingId/release',
-  restrictTo('admin'),
+  restrictTo('client', 'admin'),
   releasePaymentSchema,
   validate,
   asyncHandler(async (req, res) => {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
+      const booking = memoryBookings.find((item) => String(item._id) === String(req.params.bookingId));
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (req.user.role !== 'admin' && String(booking.client) !== String(req.user._id)) {
+        return res.status(403).json({ message: 'Only the booking shipper can release payment' });
+      }
+      if (booking.status !== 'delivered')
+        return res.status(409).json({ message: 'Confirm delivery before releasing payment' });
+      if (booking.paymentStatus !== 'escrowed') {
+        return res.status(409).json({ message: 'Booking payment is not held in escrow' });
+      }
+      if (booking) {
+        booking.paymentStatus = 'released';
+        booking.releasedAt = new Date().toISOString();
+      }
       return res.status(201).json({
-        booking: {
+        booking: booking || {
           _id: req.params.bookingId,
           paymentStatus: 'released',
           releasedAt: new Date().toISOString()
         },
         transaction: demoTransaction(req, 'credit', {
-          amount: req.body.amount,
+          amount: booking.paymentBreakdown?.carrierPayout || booking.paymentAmount,
           description: `Payment release for booking ${req.params.bookingId}`
         }),
         alreadyReleased: false,
         mode: 'memory'
       });
+    }
+
+    if (req.user.role !== 'admin') {
+      const booking = await Booking.findById(req.params.bookingId).select('client');
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (String(booking.client) !== String(req.user._id)) {
+        return res.status(403).json({ message: 'Only the booking shipper can release payment' });
+      }
     }
 
     const result = await payment.wallet.releaseBookingPayment(req.params.bookingId, req.user._id, {
@@ -427,6 +479,23 @@ router.post(
       transaction: result.transaction?._id,
       alreadyReleased: Boolean(result.alreadyReleased)
     });
+    if (!result.alreadyReleased) {
+      await notifications.notifyBookingParties(
+        result.booking,
+        'payment.released',
+        {
+          title: `${result.booking._id} payment released`,
+          message: `Carrier payout of ${result.transaction?.amount || result.booking?.paymentBreakdown?.carrierPayout} has been released.`,
+          link: '/app/payments',
+          bookingId: result.booking._id,
+          carrierPayout: result.transaction?.amount,
+          platformFee: result.revenueTransaction?.amount
+        },
+        req.app.get('io')
+      );
+      const io = req.app.get('io');
+      if (io?.emitToBooking) io.emitToBooking(result.booking._id, 'payment-released', result.booking);
+    }
     res.status(result.alreadyReleased ? 200 : 201).json(result);
   })
 );

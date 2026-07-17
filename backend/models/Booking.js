@@ -208,6 +208,16 @@ const bookingSchema = new mongoose.Schema(
     paymentStatus: { type: String, enum: PAYMENT_STATUSES, default: 'unpaid' },
     paymentReference: String,
     paymentAmount: Number,
+    paymentBreakdown: {
+      carrierAmount: Number,
+      platformFeeRate: Number,
+      platformFee: Number,
+      providerFee: Number,
+      shipperTotal: Number,
+      carrierPayout: Number,
+      currency: { type: String, default: 'USD' },
+      calculatedAt: Date
+    },
     paidAt: Date,
     releasedAt: Date,
     deliveredAt: Date,
@@ -286,6 +296,7 @@ const bookingSchema = new mongoose.Schema(
     ],
     rating: {
       clientToOwner: ratingDetailSchema,
+      clientToDriver: ratingDetailSchema,
       ownerToClient: ratingDetailSchema
     }
   },

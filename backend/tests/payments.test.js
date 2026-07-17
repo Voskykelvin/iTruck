@@ -229,7 +229,16 @@ test('wallet payment release requires approved delivery proof', async () => {
     owner: 'owner-1',
     status: 'delivered',
     paymentStatus: 'escrowed',
-    paymentAmount: 1260,
+    paymentAmount: 1291.5,
+    paymentBreakdown: {
+      carrierAmount: 1260,
+      platformFeeRate: 0.025,
+      platformFee: 31.5,
+      providerFee: 0,
+      shipperTotal: 1291.5,
+      carrierPayout: 1260,
+      currency: 'USD'
+    },
     documents: [{ type: 'pod', status: 'pending', url: 'https://example.com/pod.pdf' }]
   };
 
@@ -251,7 +260,16 @@ test('wallet payment release credits owner after approved delivery proof', async
     owner: 'owner-1',
     status: 'delivered',
     paymentStatus: 'escrowed',
-    paymentAmount: 1260,
+    paymentAmount: 1291.5,
+    paymentBreakdown: {
+      carrierAmount: 1260,
+      platformFeeRate: 0.025,
+      platformFee: 31.5,
+      providerFee: 0,
+      shipperTotal: 1291.5,
+      carrierPayout: 1260,
+      currency: 'USD'
+    },
     documents: [{ type: 'receiver-confirmation', status: 'approved', url: 'https://example.com/receiver.pdf' }],
     deliveryProof: {
       proof: 'proof-1',
@@ -269,7 +287,7 @@ test('wallet payment release credits owner after approved delivery proof', async
 
   Booking.findById.mockResolvedValue(booking);
   Transaction.findOne.mockReturnValue({
-    sort: jest.fn().mockResolvedValue({ _id: 'tx-payment', amount: 1260 })
+    sort: jest.fn().mockResolvedValue({ _id: 'tx-payment', amount: 1291.5, method: 'wallet', currency: 'USD' })
   });
   Booking.findOneAndUpdate.mockResolvedValue(reserved);
   Wallet.findOneAndUpdate.mockResolvedValue({ _id: 'wallet-owner', balance: 1260 });
@@ -286,6 +304,16 @@ test('wallet payment release credits owner after approved delivery proof', async
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
   expect(reserved.save).toHaveBeenCalled();
+  expect(Transaction.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      booking: 'booking-1',
+      type: 'platform_fee',
+      amount: 31.5,
+      reference: 'platform-fee:booking-1',
+      status: 'completed'
+    })
+  );
+  expect(result.revenueTransaction.amount).toBe(31.5);
   expect(result.booking.paymentStatus).toBe('released');
   expect(result.alreadyReleased).toBe(false);
 });

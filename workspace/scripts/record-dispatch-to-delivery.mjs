@@ -148,8 +148,14 @@ async function prepareConfirmedBooking() {
   });
   const bid = bidResult.booking.bids.at(-1);
   const bidId = bid._id || bid.id || bid.owner || bid.truck;
-  await apiJson(shipper, `/api/bookings/${encodeURIComponent(bookingId)}/bids/${encodeURIComponent(bidId)}/accept`, {
-    method: 'PATCH'
+  const accepted = await apiJson(
+    shipper,
+    `/api/bookings/${encodeURIComponent(bookingId)}/bids/${encodeURIComponent(bidId)}/accept`,
+    { method: 'PATCH' }
+  );
+  await apiJson(shipper, `/api/payments/bookings/${encodeURIComponent(bookingId)}/escrow`, {
+    method: 'POST',
+    body: { amount: accepted.booking.paymentBreakdown?.shipperTotal || 1486.25 }
   });
 
   const ownerStorage = await ownerContext.storageState();
@@ -271,7 +277,7 @@ async function recordDeliveryJourney({ bookingId, ownerStorage }) {
   );
   await pause(page, 2_500);
   pass('Confirmed handoff', `${bookingId} starts this recording in Confirmed with the accepted USD 1,450 offer.`);
-  await qaNote(page, 'Owner sees the confirmed job, accepted carrier offer, and payment pending before dispatch.');
+  await qaNote(page, 'Owner sees the confirmed job, accepted carrier offer, and funded escrow before dispatch.');
 
   const dispatchResponsePromise = page.waitForResponse(
     (response) =>
@@ -307,10 +313,7 @@ async function recordDeliveryJourney({ bookingId, ownerStorage }) {
     'Shipper in-transit visibility',
     `The shipper sees ${bookingId} In Transit and receives the confirmation action.`
   );
-  await qaNote(
-    page,
-    'Both sides align: the shipper sees In Transit, the accepted USD 1,450 offer, and payment pending.'
-  );
+  await qaNote(page, 'Both sides align: the shipper sees In Transit, the accepted USD 1,450 offer, and funded escrow.');
   await page.screenshot({ path: path.join(outputDir, 'dispatch-qa-02-shipper-in-transit.png'), fullPage: true });
 
   const deliveryResponsePromise = page.waitForResponse((response) =>

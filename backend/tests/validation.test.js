@@ -461,12 +461,12 @@ test('mobile money callbacks fail closed in live mode', async () => {
   }
 });
 
-test('non-admin users cannot release booking payments', async () => {
+test('payments cannot be released before delivery', async () => {
   const res = await request(app)
     .post('/api/payments/bookings/ITK-2044/release')
     .set('Authorization', authHeader({ id: 'demo-client-primary', role: 'client' }));
 
-  expect(res.status).toBe(403);
+  expect(res.status).toBe(409);
 });
 
 test('tracking updates are owner scoped and validate coordinate payloads', async () => {
@@ -614,7 +614,13 @@ test('booking clients can accept a pending bid and confirm the booking', async (
   expect(res.body.booking.status).toBe('confirmed');
   expect(res.body.booking.owner).toBe('demo-owner-secondary');
   expect(res.body.booking.bids[0].status).toBe('accepted');
-  expect(res.body.booking.paymentAmount).toBe(3040);
+  expect(res.body.booking.paymentAmount).toBe(3116);
+  expect(res.body.booking.paymentBreakdown).toMatchObject({
+    carrierAmount: 3040,
+    platformFee: 76,
+    shipperTotal: 3116,
+    carrierPayout: 3040
+  });
   expect(res.body.booking.paymentStatus).toBe('unpaid');
 });
 
@@ -824,6 +830,12 @@ test('booking ratings are tied to delivered jobs for both parties', async () => 
     .patch(`/api/bookings/${bookingId}/bids/${owner.id}/accept`)
     .set('Authorization', authHeader(client));
   expect(accepted.status).toBe(200);
+
+  const funded = await request(app)
+    .post(`/api/payments/bookings/${bookingId}/escrow`)
+    .set('Authorization', authHeader(client))
+    .send({ amount: accepted.body.booking.paymentBreakdown.shipperTotal });
+  expect(funded.status).toBe(201);
 
   const inTransit = await request(app)
     .patch(`/api/bookings/${bookingId}/status`)
