@@ -1,6 +1,7 @@
 import { chromium } from '@playwright/test';
-import { mkdir, readdir, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, unlink, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,6 +31,14 @@ if (process.argv.includes('--clean-only') || process.argv.includes('--clean-all'
   console.log(`Removed ${videos.length} recording files.`);
   process.exit(0);
 }
+
+const previousVideos = (await readdir(outputDir)).filter(
+  (name) => /^page@[a-f0-9]+\.webm$/.test(name) || /^itruck-.*\.webm$/.test(name)
+);
+await Promise.all(previousVideos.map((name) => unlink(path.join(outputDir, name))));
+console.log(`Removed ${previousVideos.length} previous recording files.`);
+
+const videoTempDir = await mkdtemp(path.join(os.tmpdir(), 'itruck-recording-'));
 
 async function waitForServer(url, timeoutMs = 30_000) {
   const startedAt = Date.now();
@@ -148,12 +157,24 @@ async function qaNote(page, text, tone = 'pass') {
 async function spotlightClick(page, locator, after = 1_200) {
   await locator.scrollIntoViewIfNeeded();
   await locator.evaluate((element) => {
+    element.dataset.recordingSpotlight = 'true';
+    element.dataset.recordingPreviousOutline = element.style.outline;
+    element.dataset.recordingPreviousOutlineOffset = element.style.outlineOffset;
     element.style.outline = '4px solid rgba(13, 148, 136, .58)';
     element.style.outlineOffset = '4px';
   });
   await pause(page, 700);
   await locator.click();
   await pause(page, after);
+  await page.evaluate(() => {
+    document.querySelectorAll('[data-recording-spotlight]').forEach((element) => {
+      element.style.outline = element.dataset.recordingPreviousOutline || '';
+      element.style.outlineOffset = element.dataset.recordingPreviousOutlineOffset || '';
+      delete element.dataset.recordingSpotlight;
+      delete element.dataset.recordingPreviousOutline;
+      delete element.dataset.recordingPreviousOutlineOffset;
+    });
+  });
 }
 
 async function slowFill(page, label, value) {
@@ -209,7 +230,7 @@ async function recordCompleteJourney() {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
-    recordVideo: { dir: outputDir, size: { width: 1440, height: 900 } }
+    recordVideo: { dir: videoTempDir, size: { width: 1440, height: 900 } }
   });
   const page = await context.newPage();
   page.setDefaultTimeout(30_000);
@@ -307,7 +328,7 @@ async function recordCompleteJourney() {
   await pause(page, 3_000);
 
   await spotlightClick(page, page.getByRole('button', { name: 'Submit Bid', exact: true }), 1_000);
-  const bidDialog = page.getByRole('dialog', { name: 'Submit Bid' });
+  const bidDialog = page.getByRole('dialog');
   await bidDialog.getByLabel('Bid amount (USD)').fill('1450');
   await bidDialog.getByLabel('Vehicle').selectOption({ index: 1 });
   await bidDialog.getByLabel('Message to shipper').fill('Available for the requested pickup window.');
@@ -507,9 +528,9 @@ async function recordCompleteJourney() {
 
   const video = page.video();
   await context.close();
+  await writeFile(qaReportPath, `${JSON.stringify({ ...qa, bookingId }, null, 2)}\n`, 'utf8');
   await video.saveAs(finalVideo);
   await video.delete();
-  await writeFile(qaReportPath, `${JSON.stringify({ ...qa, bookingId }, null, 2)}\n`, 'utf8');
 }
 
 try {
@@ -519,4 +540,5 @@ try {
 } finally {
   await browser.close();
   backendProcess?.kill();
+  await rm(videoTempDir, { recursive: true, force: true });
 }
