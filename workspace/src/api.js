@@ -406,6 +406,7 @@ export const api = {
   adminListTrucks: () => request('/admin/trucks'),
   adminListBookings: () => request('/admin/bookings'),
   adminListPayments: () => request('/admin/payments'),
+  adminPaymentSummary: () => request('/admin/payments/summary'),
   adminProviderOperations: () => request('/payments/provider-operations'),
   adminReleaseBookingPayment: (bookingId) =>
     request(`/payments/bookings/${encodeURIComponent(bookingId)}/release`, {

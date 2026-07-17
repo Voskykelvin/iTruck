@@ -893,6 +893,31 @@ test('payment methods expose KES card and M-Pesa while MTN and iTruck wallet fun
   expect(removedWalletFunding.status).toBe(404);
 });
 
+test('admin payment summary exposes KES revenue, exceptions, and provider readiness', async () => {
+  const admin = await request(app)
+    .get('/api/admin/payments/summary')
+    .set('Authorization', authHeader({ id: 'demo-admin', role: 'admin' }));
+
+  expect(admin.status).toBe(200);
+  expect(admin.body).toEqual(
+    expect.objectContaining({
+      currency: 'KES',
+      totals: expect.objectContaining({ platformRevenue: expect.any(Number), grossCollected: expect.any(Number) }),
+      counts: expect.objectContaining({ pendingPayments: expect.any(Number), failedPayments: expect.any(Number) }),
+      providers: expect.arrayContaining([
+        expect.objectContaining({ id: 'card' }),
+        expect.objectContaining({ id: 'mpesa' }),
+        expect.objectContaining({ id: 'mtn', collections: false })
+      ])
+    })
+  );
+
+  const forbidden = await request(app)
+    .get('/api/admin/payments/summary')
+    .set('Authorization', authHeader({ id: 'demo-client-primary', role: 'client' }));
+  expect(forbidden.status).toBe(403);
+});
+
 test('avatar uploads reject unsupported file types before storage', async () => {
   const res = await request(app)
     .post('/api/upload/avatar')
