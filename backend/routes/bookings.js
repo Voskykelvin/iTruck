@@ -117,6 +117,8 @@ function acceptBidOnBooking(booking, bidId, _ownerUserId) {
   const bid = bidding.acceptBid(booking, bidId, _ownerUserId);
   booking.owner = bid.owner;
   if (bid.truck) booking.truck = bid.truck;
+  booking.paymentAmount = Number(bid.amount);
+  if (!booking.paymentStatus) booking.paymentStatus = 'unpaid';
 
   if (typeof booking.transitionTo === 'function') {
     booking.transitionTo('confirmed');
@@ -513,9 +515,15 @@ router.post('/:id/bids', restrictTo('owner', 'admin'), submitBidSchema, validate
       const booking = memoryBookings.find((item) => item._id === req.params.id);
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
       if (!bookingOpenForBids(booking)) return res.status(409).json({ message: 'Booking is not open for bids' });
+      const truck = demoTrucks.find(
+        (item) => String(item._id) === String(req.body.truck) && String(item.owner) === String(req.user._id)
+      );
+      assertOwnerCanBid(req.user, truck || null);
 
       booking.bids = booking.bids || [];
-      booking.bids.push({ ...req.body, owner: req.user._id, status: 'pending', createdAt: new Date().toISOString() });
+      const bid = bidding.submitBid(booking, req.user, req.body, truck);
+      bid.ownerName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.company;
+      bid.truckName = [truck.make, truck.model, truck.plateNumber].filter(Boolean).join(' ');
       if (booking.status === 'pending') Booking.assertStatusTransition(booking.status, 'bidding');
       if (booking.status === 'pending') booking.status = 'bidding';
       emitBooking(req, booking._id, 'bid-created', booking);

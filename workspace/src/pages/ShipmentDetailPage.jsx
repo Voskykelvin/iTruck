@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useBookingCache, useBookingAction } from '../queries/commercial';
+import { useBookingCache, useBookingAction, useFleetTrucks } from '../queries/commercial';
 import { useSessionBootstrap } from '../queries/session';
 import { roleForUser } from '../utils/roles';
 import { api } from '../api';
@@ -13,7 +13,7 @@ import BidCard from '../components/domain/BidCard';
 import DeliveryProofModal from '../components/domain/DeliveryProofModal';
 import DeliveryProofViewer from '../components/domain/DeliveryProofViewer';
 import { AlertTriangle, ArrowLeft, Box, ShieldCheck, Truck } from 'lucide-react';
-import { money } from '../utils/helpers';
+import { money, normalizeBookingShipment, paymentStatusLabel, paymentTone } from '../utils/helpers';
 import { useToast } from '../components/ui/Toast';
 import Modal from '../components/ui/Modal';
 
@@ -29,6 +29,7 @@ export default function ShipmentDetailPage() {
   const [shipment, setShipment] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isProofModalOpen, setIsProofModalOpen] = useState(false);
+  const [isBidModalOpen, setIsBidModalOpen] = useState(false);
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
   const [isSubmittingIssue, setIsSubmittingIssue] = useState(false);
   const [issueDraft, setIssueDraft] = useState({
@@ -37,11 +38,13 @@ export default function ShipmentDetailPage() {
     severity: 'normal',
     message: ''
   });
+  const [bidDraft, setBidDraft] = useState({ amount: '', truck: '', message: '', expiresAt: '' });
 
   const actionMutation = useBookingAction(async (actionFn) => {
     const data = await actionFn();
     return data;
   });
+  const { data: fleet = [] } = useFleetTrucks({ enabled: role === 'owner' });
 
   useEffect(() => {
     fetchBooking(id)
@@ -82,16 +85,46 @@ export default function ShipmentDetailPage() {
   const isInTransit = shipment.rawStatus === 'in_transit';
   const isDelivered = shipment.rawStatus === 'delivered';
 
-  const handleAction = (label, apiCall) => {
+  const handleAction = (label, apiCall, options = {}) => {
     actionMutation.mutate(apiCall, {
       onSuccess: (data) => {
         addToast({ title: 'Success', message: `${label} successful.`, type: 'success' });
-        if (data?.booking) setShipment(data.booking);
+        if (data?.booking) setShipment(normalizeBookingShipment(data.booking));
+        options.onSuccess?.(data);
       },
       onError: (err) => {
         addToast({ title: 'Action Failed', message: err.message, type: 'error' });
       }
     });
+  };
+
+  const openBidModal = () => {
+    const defaultTruck = fleet.find((truck) => truck.isAvailable !== false && truck.isVerified !== false);
+    setBidDraft({ amount: '', truck: defaultTruck?.id || '', message: '', expiresAt: '' });
+    setIsBidModalOpen(true);
+  };
+
+  const submitBid = () => {
+    const amount = Number(bidDraft.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      addToast({ title: 'Enter a valid amount', message: 'Bid amount must be greater than zero.', type: 'warning' });
+      return;
+    }
+    if (bidDraft.expiresAt && new Date(bidDraft.expiresAt) <= new Date()) {
+      addToast({ title: 'Choose a future expiry', message: 'Offer expiry must be in the future.', type: 'warning' });
+      return;
+    }
+    handleAction(
+      'Bid submitted',
+      () =>
+        api.submitBookingBid(shipment.id, {
+          amount,
+          ...(bidDraft.truck ? { truck: bidDraft.truck } : {}),
+          ...(bidDraft.message.trim() ? { message: bidDraft.message.trim() } : {}),
+          ...(bidDraft.expiresAt ? { expiresAt: new Date(bidDraft.expiresAt).toISOString() } : {})
+        }),
+      { onSuccess: () => setIsBidModalOpen(false) }
+    );
   };
 
   const submitIssue = async () => {
@@ -148,14 +181,7 @@ export default function ShipmentDetailPage() {
             </Button>
           )}
           {isOwner && isPending && (
-            <Button
-              variant="primary"
-              onClick={() => {
-                const amount = prompt('Enter your bid amount in USD:');
-                if (amount)
-                  handleAction('Bid submitted', () => api.submitBookingBid(shipment.id, { amount: Number(amount) }));
-              }}
-            >
+            <Button variant="primary" onClick={openBidModal}>
               Submit Bid
             </Button>
           )}
@@ -273,11 +299,24 @@ export default function ShipmentDetailPage() {
                     <BidCard
                       key={bid.id}
                       bid={bid}
-                      onAccept={(id) => handleAction('Bid accepted', () => api.acceptBookingBid(shipment.id, id))}
+                      onAccept={(id) =>
+                        handleAction('Bid accepted', () => api.acceptBookingBid(shipment.id, id), {
+                          removeFromOpen: true
+                        })
+                      }
                     />
                   ))}
                 </div>
               )}
+            </Card>
+          )}
+
+          {!isPending && shipment.bids?.some((bid) => bid.status === 'accepted') && (
+            <Card className="stack">
+              <h3 className="eyebrow" style={{ margin: 0 }}>
+                Accepted Offer
+              </h3>
+              <BidCard bid={shipment.bids.find((bid) => bid.status === 'accepted')} isOwner />
             </Card>
           )}
 
@@ -289,12 +328,17 @@ export default function ShipmentDetailPage() {
               </h3>
               <div className="row-between" style={{ fontSize: 'var(--text-sm)' }}>
                 <span className="text-secondary">Agreed Price</span>
-                <span style={{ fontWeight: 600 }}>{money(shipment.price)}</span>
+                <span style={{ fontWeight: 600 }}>{money(shipment.amount)}</span>
               </div>
               <div className="row-between" style={{ fontSize: 'var(--text-sm)' }}>
                 <span className="text-secondary">Escrow Status</span>
-                <Badge variant="success" icon={ShieldCheck}>
-                  Funded
+                <Badge
+                  variant={
+                    paymentTone(shipment.paymentStatus) === 'warn' ? 'warning' : paymentTone(shipment.paymentStatus)
+                  }
+                  icon={ShieldCheck}
+                >
+                  {paymentStatusLabel(shipment.paymentStatus)}
                 </Badge>
               </div>
             </Card>
@@ -310,6 +354,78 @@ export default function ShipmentDetailPage() {
         onClose={() => setIsProofModalOpen(false)}
         shipmentId={shipment.id}
       />
+
+      <Modal
+        isOpen={isBidModalOpen}
+        onClose={() => setIsBidModalOpen(false)}
+        title="Submit a bid"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setIsBidModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={actionMutation.isPending} onClick={submitBid}>
+              Submit Bid
+            </Button>
+          </>
+        }
+      >
+        <div className="stack">
+          <p className="text-secondary">
+            Review {shipment.origin} to {shipment.destination}, then choose the vehicle and commercial terms.
+          </p>
+          <label className="input-group">
+            <span className="input-label">Bid amount (USD)</span>
+            <input
+              className="input-field"
+              type="number"
+              min="0.01"
+              step="0.01"
+              required
+              value={bidDraft.amount}
+              onChange={(event) => setBidDraft({ ...bidDraft, amount: event.target.value })}
+            />
+          </label>
+          <label className="input-group">
+            <span className="input-label">Vehicle</span>
+            <select
+              className="input-field"
+              value={bidDraft.truck}
+              onChange={(event) => setBidDraft({ ...bidDraft, truck: event.target.value })}
+            >
+              <option value="">Choose a vehicle</option>
+              {fleet.map((truck) => (
+                <option key={truck.id} value={truck.id}>
+                  {[truck.make, truck.model, truck.plate].filter(Boolean).join(' · ') || truck.type}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="input-group">
+            <span className="input-label">Message to shipper</span>
+            <textarea
+              className="input-field"
+              rows="4"
+              maxLength="1000"
+              placeholder="Share availability, pickup timing, or handling details."
+              value={bidDraft.message}
+              onChange={(event) => setBidDraft({ ...bidDraft, message: event.target.value })}
+            />
+          </label>
+          <label className="input-group">
+            <span className="input-label">Offer expires (optional)</span>
+            <input
+              className="input-field"
+              type="datetime-local"
+              value={bidDraft.expiresAt}
+              onChange={(event) => setBidDraft({ ...bidDraft, expiresAt: event.target.value })}
+            />
+          </label>
+          {bidDraft.expiresAt && new Date(bidDraft.expiresAt) <= new Date() && (
+            <div className="input-message error">Expiry must be in the future.</div>
+          )}
+        </div>
+      </Modal>
 
       <Modal
         isOpen={isIssueModalOpen}

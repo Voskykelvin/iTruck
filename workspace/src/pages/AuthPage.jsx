@@ -47,6 +47,7 @@ export default function AuthPage() {
         setFormData((current) => ({ ...current, password: '' }));
         return;
       }
+      queryClient.removeQueries({ queryKey: ['commercial'] });
       setSession(data);
       queryClient.setQueryData(['session', 'current'], data.user);
 

@@ -679,6 +679,20 @@ export function paymentTone(status = 'unpaid') {
   return 'default';
 }
 
+export function paymentStatusLabel(status = 'unpaid') {
+  const labels = {
+    unpaid: 'Payment pending',
+    pending: 'Funding in progress',
+    escrowed: 'Funded',
+    release_pending: 'Release pending',
+    released: 'Released',
+    failed: 'Payment failed',
+    refunded: 'Refunded',
+    refund_pending: 'Refund pending'
+  };
+  return labels[status] || statusLabel(status);
+}
+
 export function isDebitTransaction(transaction = {}) {
   return ['debit', 'payment', 'withdrawal'].includes(transaction.type);
 }
@@ -734,13 +748,26 @@ export function normalizeBookingShipment(booking) {
   const hasLatestCoordinates = [latest.lat, latest.lng].every((value) => Number.isFinite(Number(value)));
   const latestSpeed = Number(latest.speed);
   const bookingDocuments = bookingDocumentsFrom(booking);
-  const etaDate = booking.eta?.estimatedArrivalAt ? new Date(booking.eta.estimatedArrivalAt) : null;
+  const etaDetails =
+    booking.eta && typeof booking.eta === 'object'
+      ? booking.eta
+      : booking.etaDetails && typeof booking.etaDetails === 'object'
+        ? booking.etaDetails
+        : null;
+  const etaDate = etaDetails?.estimatedArrivalAt ? new Date(etaDetails.estimatedArrivalAt) : null;
   const etaText =
     etaDate && !Number.isNaN(etaDate.getTime())
       ? etaDate.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
-      : booking.status === 'delivered'
-        ? 'POD ready'
-        : 'Awaiting update';
+      : typeof booking.eta === 'string' && booking.eta.trim()
+        ? booking.eta
+        : booking.status === 'delivered'
+          ? 'POD ready'
+          : 'Awaiting update';
+  const vehicleType = booking.vehicleType || booking.vehicle || booking.truck?.type || 'Vehicle pending';
+  const weight = booking.weight || booking.cargoWeightTonnes || booking.reservedCapacityTonnes || '';
+  const amount = bookingPaymentAmount(booking);
+  const owner = booking.owner && typeof booking.owner === 'object' ? booking.owner : null;
+  const driver = booking.driver && typeof booking.driver === 'object' ? booking.driver : null;
 
   return {
     id: bookingRef(booking),
@@ -751,23 +778,28 @@ export function normalizeBookingShipment(booking) {
     destination: booking.destination || 'Destination pending',
     cargo: booking.cargo || 'Cargo pending',
     loadMode: booking.loadMode || 'full-truck',
-    vehicle: booking.vehicleType || booking.truck?.type || 'Vehicle pending',
+    vehicle: vehicleType,
+    vehicleType,
+    weight,
+    requirements: booking.requirements || 'Standard',
+    pickupDate: booking.pickupDate || '',
     plate: booking.truck?.plateNumber || booking.plate || 'Unassigned',
-    driver: booking.driver
-      ? `${booking.driver.firstName || ''} ${booking.driver.lastName || ''}`.trim()
-      : booking.owner
-        ? `${booking.owner.firstName || ''} ${booking.owner.lastName || ''}`.trim()
+    driver: driver
+      ? `${driver.firstName || ''} ${driver.lastName || ''}`.trim()
+      : owner
+        ? `${owner.firstName || ''} ${owner.lastName || ''}`.trim()
         : 'Driver pending',
     status: statusLabel(normStatus),
     rawStatus: normStatus,
     progress,
     eta: etaText,
-    etaDetails: booking.eta || null,
+    etaDetails,
     position: latest.city || (hasLatestCoordinates ? formatCoordinatePair(latest) : 'Awaiting GPS update'),
     speed: Number.isFinite(latestSpeed) ? `${Number(latestSpeed.toFixed(1))} km/h` : 'Speed pending',
     payment: booking.paymentMethod || 'Payment pending',
     paymentStatus: booking.paymentStatus || 'unpaid',
-    amount: bookingPaymentAmount(booking),
+    amount,
+    price: amount,
     paymentReference: booking.paymentReference || '',
     documents: booking.estimate?.requiredDocuments || demoDocuments.slice(0, 3),
     bookingDocuments,
@@ -819,10 +851,15 @@ export function normalizeOpenLoad(booking) {
     cargo: booking.cargo || 'Cargo pending',
     route: bookingRoute(booking),
     pickup: booking.pickup || 'Pickup pending',
+    origin: booking.pickup || 'Pickup pending',
     destination: booking.destination || 'Destination pending',
     vehicle: booking.vehicleType || 'Vehicle pending',
+    vehicleType: booking.vehicleType || 'Vehicle pending',
+    weight: booking.weight || booking.cargoWeightTonnes || '',
     shipper: userDisplayName(client, 'Shipper'),
     price: amount,
+    budget: amount,
+    border: booking.border || 'Domestic',
     distance: booking.distance ? `${Number(booking.distance).toLocaleString()} km` : 'Distance pending',
     window: booking.pickupWindow || 'Pickup window pending',
     requirements: booking.requirements || 'Standard handling',

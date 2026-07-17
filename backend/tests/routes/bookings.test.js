@@ -371,6 +371,8 @@ describe('Bookings Integration Tests', () => {
 
       expect(acceptRes.body.booking.status).toBe('confirmed');
       expect(acceptRes.body.booking.bids[0].status).toBe('accepted');
+      expect(acceptRes.body.booking.paymentAmount).toBe(1700);
+      expect(acceptRes.body.booking.paymentStatus).toBe('unpaid');
     });
 
     test('non-owner client cannot accept bids on another client booking (403)', async () => {

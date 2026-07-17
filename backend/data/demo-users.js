@@ -1,3 +1,16 @@
+const approvedDocument = (type) => ({
+  type,
+  url: `https://demo.itruck.africa/documents/${type}.pdf`,
+  fileName: `${type}.pdf`,
+  status: 'approved',
+  reviewedAt: new Date().toISOString()
+});
+
+const shipperDocuments = () => ['shipper-kyc', 'business-registration', 'tax-certificate'].map(approvedDocument);
+const ownerDocuments = () => ['owner-kyc', 'driver-id', 'business-registration', 'insurance'].map(approvedDocument);
+const truckDocuments = () =>
+  ['vehicle-photos', 'insurance', 'vehicle-logbook', 'road-license', 'inspection-report'].map(approvedDocument);
+
 const demoUsers = [
   {
     _id: 'demo-admin',
@@ -21,6 +34,7 @@ const demoUsers = [
     role: 'client',
     password: 'ChangeMeUser123!',
     isVerified: true,
+    documents: shipperDocuments(),
     walletBalance: 4200
   },
   {
@@ -33,6 +47,7 @@ const demoUsers = [
     role: 'client',
     password: 'ChangeMeUser123!',
     isVerified: true,
+    documents: shipperDocuments(),
     walletBalance: 1850
   },
   {
@@ -45,6 +60,7 @@ const demoUsers = [
     role: 'owner',
     password: 'ChangeMeUser123!',
     isVerified: true,
+    documents: ownerDocuments(),
     walletBalance: 8700
   },
   {
@@ -57,6 +73,7 @@ const demoUsers = [
     role: 'owner',
     password: 'ChangeMeUser123!',
     isVerified: true,
+    documents: ownerDocuments(),
     walletBalance: 11200
   }
 ];
@@ -74,6 +91,7 @@ const demoTrucks = [
     routes: ['Nairobi-Kampala', 'Mombasa-Nairobi'],
     features: ['GPS', 'Insured', 'Cross-border'],
     isVerified: true,
+    documents: truckDocuments(),
     isAvailable: true,
     pricePerKm: 2.1
   },
@@ -89,6 +107,7 @@ const demoTrucks = [
     routes: ['Nairobi-Lagos', 'Mombasa-Kigali'],
     features: ['GPS', 'Container locks', 'Long haul'],
     isVerified: true,
+    documents: truckDocuments(),
     isAvailable: true,
     pricePerKm: 3.8
   },
@@ -104,6 +123,7 @@ const demoTrucks = [
     routes: ['Nairobi-Naivasha', 'Nairobi-Nakuru'],
     features: ['Rural roads', 'Express'],
     isVerified: true,
+    documents: truckDocuments(),
     isAvailable: true,
     pricePerKm: 1.25
   }
