@@ -831,6 +831,10 @@ class StripeService {
     );
   }
 
+  async retrieveCheckoutSession(sessionId) {
+    return this.client.checkout.sessions.retrieve(sessionId);
+  }
+
   async refund({ paymentIntent, charge, amount, currency, reason, idempotencyKey, metadata }) {
     const zeroDecimal = stripeAmount(1, currency) === 1;
     const smallestUnit = zeroDecimal ? Math.round(amount) : Math.round(amount * 100);
@@ -1821,6 +1825,98 @@ class PaymentReconciliationService {
   }
 }
 
+class PaymentRecheckService {
+  constructor(options = {}) {
+    this.stripe = options.stripe;
+    this.reconciliation = options.reconciliation || new PaymentReconciliationService();
+  }
+
+  async recheck(transactionId) {
+    const transaction = await Transaction.findById(transactionId);
+    if (!transaction) throw appError('Payment transaction not found', 404);
+    if (transaction.type !== 'payment') throw appError('Only collection payments can be rechecked', 409);
+    if (!['pending', 'failed'].includes(transaction.status)) {
+      throw appError('Only pending or failed payments can be rechecked', 409);
+    }
+
+    const provider = transaction.provider || transaction.method;
+    if (provider === 'mpesa') {
+      return {
+        transaction,
+        provider: 'mpesa',
+        providerStatus: 'callback_required',
+        changed: false,
+        message: 'M-Pesa completion remains pending until the authenticated callback verifies the receipt and amount.'
+      };
+    }
+    if (provider !== 'stripe') throw appError('This payment provider does not support a safe status recheck', 409);
+
+    const sessionId = metadataObject(transaction.metadata).checkoutSessionId || transaction.providerEventId;
+    if (!sessionId) throw appError('Stripe checkout session reference is missing', 409);
+    const stripe = this.stripe || new StripeService();
+    const session = await stripe.retrieveCheckoutSession(sessionId);
+    const sessionTransactionId = session.metadata?.transactionId;
+    if (sessionTransactionId && String(sessionTransactionId) !== String(transaction._id)) {
+      throw appError('Stripe checkout session does not match this transaction', 409);
+    }
+    const sessionBookingId = session.metadata?.bookingId;
+    if (sessionBookingId && transaction.booking && String(sessionBookingId) !== String(transaction.booking)) {
+      throw appError('Stripe checkout session does not match this booking', 409);
+    }
+    const sessionCurrency = String(session.currency || transaction.currency || 'KES').toUpperCase();
+    if (transaction.currency && session.currency && sessionCurrency !== String(transaction.currency).toUpperCase()) {
+      throw appError('Stripe checkout currency does not match this transaction', 409);
+    }
+    const sessionAmount = stripeAmount(session.amount_total || 0, sessionCurrency);
+    if (session.amount_total && Math.abs(sessionAmount - Number(transaction.amount || 0)) > 0.01) {
+      throw appError('Stripe checkout amount does not match this transaction', 409);
+    }
+    const providerStatus = session.payment_status || session.status || 'unknown';
+    const eventType = session.payment_status === 'paid' ? 'checkout.session.completed' : null;
+    const failureEvent = session.status === 'expired' ? 'checkout.session.expired' : null;
+
+    if (eventType || failureEvent) {
+      const metadata = {
+        ...metadataObject(session.metadata),
+        bookingId: session.metadata?.bookingId || String(transaction.booking || ''),
+        userId: session.metadata?.userId || String(transaction.user || ''),
+        transactionId: session.metadata?.transactionId || String(transaction._id)
+      };
+      const reconciled = await this.reconciliation.reconcileStripeEvent({
+        id: `recheck:${session.id}:${providerStatus}`,
+        type: eventType || failureEvent,
+        livemode: Boolean(session.livemode),
+        data: { object: { ...session, metadata } }
+      });
+      return {
+        transaction: reconciled,
+        provider: 'stripe',
+        providerStatus,
+        changed: reconciled.status !== transaction.status,
+        message: eventType ? 'Stripe confirmed the payment.' : 'Stripe confirmed the checkout expired.'
+      };
+    }
+
+    const recheckMetadata = {
+      ...metadataObject(transaction.metadata),
+      lastRecheckedAt: new Date().toISOString(),
+      providerStatus
+    };
+    const unchanged = await Transaction.findByIdAndUpdate(
+      transaction._id,
+      { $set: { metadata: recheckMetadata } },
+      { new: true }
+    );
+    return {
+      transaction: unchanged || transaction,
+      provider: 'stripe',
+      providerStatus,
+      changed: false,
+      message: 'Stripe has not confirmed this payment yet.'
+    };
+  }
+}
+
 class ProviderOperationsService {
   constructor(options = {}) {
     this.stripe = options.stripe;
@@ -2181,6 +2277,7 @@ class ProviderOperationsService {
 
 module.exports = {
   payments: new PaymentReconciliationService(),
+  rechecks: new PaymentRecheckService(),
   providerOperations: new ProviderOperationsService(),
   mobileMoney: new MobileMoneyPaymentService(),
   cards: new CardPaymentService(),
@@ -2197,6 +2294,7 @@ module.exports = {
   MobileMoneyPaymentService,
   CardPaymentService,
   PaymentReconciliationService,
+  PaymentRecheckService,
   ProviderOperationsService,
   WalletService
 };

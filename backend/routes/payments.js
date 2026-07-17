@@ -19,6 +19,7 @@ const {
   initiateMobileMoneyBodySchema,
   initiateMobileMoneySchema,
   refundSchema,
+  recheckPaymentSchema,
   releasePaymentSchema,
   withdrawalSchema
 } = require('../validators/payments');
@@ -547,6 +548,33 @@ router.get(
       message:
         'Configured means code credentials are present; provider sandbox and production certification remain separate gates.'
     });
+  })
+);
+
+router.post(
+  '/transactions/:transactionId/recheck',
+  restrictTo('admin'),
+  recheckPaymentSchema,
+  validate,
+  asyncHandler(async (req, res) => {
+    if (requireDatabase(req, res)) return;
+    if (!mongoReady()) {
+      return res.json({
+        transaction: { id: req.params.transactionId, status: 'pending' },
+        provider: 'demo',
+        providerStatus: 'demo_pending',
+        changed: false,
+        message: 'Demo payment remains pending for callback review.',
+        mode: 'memory'
+      });
+    }
+    const result = await payment.rechecks.recheck(req.params.transactionId);
+    await recordAdminAudit(req, 'payment.status.recheck', 'transaction', req.params.transactionId, {
+      provider: result.provider,
+      providerStatus: result.providerStatus,
+      changed: result.changed
+    });
+    res.json(result);
   })
 );
 

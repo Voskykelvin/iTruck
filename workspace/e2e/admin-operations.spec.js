@@ -58,6 +58,18 @@ test('admin payments shows revenue, provider readiness, and reconciliation in KE
   await expect(readiness.getByText('MTN MoMo', { exact: true }).first()).toBeVisible();
   await expect(readiness.getByText('Disabled until a later launch phase').first()).toBeVisible();
   await expect(page.getByText('Wallet escrow')).toHaveCount(0);
+
+  const workflows = page.locator('.admin-content-card', { hasText: 'Payment provider workflows' });
+  await workflows.getByLabel('Status').selectOption('exceptions');
+  await expect(workflows.getByText('mpesa:demo:992').first()).toBeVisible();
+  await expect(workflows.getByText('stripe:demo:991')).toHaveCount(0);
+
+  await workflows.getByRole('button', { name: 'Recheck status' }).first().click();
+  await expect(page.getByText('Payment status checked')).toBeVisible();
+
+  const download = page.waitForEvent('download');
+  await workflows.getByRole('button', { name: 'Export CSV' }).click();
+  await expect((await download).suggestedFilename()).toMatch(/itruck-payment-reconciliation-\d{4}-\d{2}-\d{2}\.csv/);
 });
 
 test('admin operations remains usable on a phone and reports offline state', async ({ page }) => {

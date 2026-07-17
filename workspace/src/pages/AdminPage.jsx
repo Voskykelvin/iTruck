@@ -6,6 +6,7 @@ import {
   CheckCircle,
   CircleDollarSign,
   Clock3,
+  Download,
   FileCheck2,
   FileWarning,
   Landmark,
@@ -88,6 +89,7 @@ export default function AdminPage() {
   const [selectedReview, setSelectedReview] = useState(null);
   const [selectedCase, setSelectedCase] = useState(null);
   const [resolution, setResolution] = useState({ outcome: 'no_action', summary: '' });
+  const [paymentFilter, setPaymentFilter] = useState('all');
 
   const invalidate = async () => queryClient.invalidateQueries({ queryKey: adminQueryKeys.all });
   const actionMutation = useMutation({
@@ -292,7 +294,6 @@ export default function AdminPage() {
       accessor: 'id',
       align: 'right',
       cell: (row) => {
-        const bookingId = typeof row.booking === 'object' ? row.booking?._id || row.booking?.id : row.booking;
         if (row.type === 'withdrawal' && row.status === 'pending') {
           return (
             <Button
@@ -306,8 +307,25 @@ export default function AdminPage() {
             </Button>
           );
         }
-        if (row.type === 'payment' && row.status === 'pending' && bookingId)
-          return <span className="text-muted">Await provider callback</span>;
+        if (row.type === 'payment' && row.status === 'pending') {
+          return (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={actionMutation.isPending}
+              onClick={() =>
+                actionMutation.mutate({
+                  action: () => api.adminRecheckPayment(row.id),
+                  message: 'Payment status checked'
+                })
+              }
+            >
+              Recheck status
+            </Button>
+          );
+        }
+        if (row.type === 'payment' && row.status === 'failed')
+          return <span className="text-muted">Customer retry required</span>;
         if (row.type === 'payment' && row.status === 'completed') {
           return (
             <Button
@@ -400,6 +418,22 @@ export default function AdminPage() {
           payments={payments}
           providerOperations={providerOperations}
           columns={paymentColumns}
+          filter={paymentFilter}
+          onFilterChange={setPaymentFilter}
+          onExport={() =>
+            actionMutation.mutate({
+              action: () =>
+                api.adminExportPayments(
+                  paymentFilter === 'exceptions'
+                    ? { exception: true }
+                    : paymentFilter === 'all'
+                      ? {}
+                      : { status: paymentFilter }
+                ),
+              message: 'Reconciliation export downloaded'
+            })
+          }
+          pending={actionMutation.isPending}
         />
       )}
 
@@ -600,10 +634,24 @@ function OperationsTable({ title, description, data, columns, empty }) {
   );
 }
 
-function PaymentsWorkspace({ summary, payments, providerOperations, columns }) {
+function PaymentsWorkspace({
+  summary,
+  payments,
+  providerOperations,
+  columns,
+  filter,
+  onFilterChange,
+  onExport,
+  pending
+}) {
   const totals = summary?.totals || {};
   const counts = summary?.counts || {};
   const currency = summary?.currency || 'KES';
+  const visiblePayments = payments.filter((payment) => {
+    if (filter === 'all') return true;
+    if (filter === 'exceptions') return ['pending', 'failed'].includes(payment.status);
+    return payment.status === filter;
+  });
   return (
     <div className="stack-lg">
       <div className="grid-4">
@@ -721,13 +769,44 @@ function PaymentsWorkspace({ summary, payments, providerOperations, columns }) {
         />
       </section>
 
-      <OperationsTable
-        title="Payment provider workflows"
-        description="Release escrow only after evidence checks; execute refunds and payouts through auditable provider operations."
-        data={payments}
-        columns={columns}
-        empty="No payment transactions need review."
-      />
+      <section className="stack admin-content-card">
+        <div className="row-between admin-content-heading">
+          <div>
+            <h2>Payment provider workflows</h2>
+            <p className="text-secondary">
+              Review exceptions, confirm provider status, and export a non-sensitive reconciliation ledger.
+            </p>
+          </div>
+          <div className="row" style={{ flexWrap: 'wrap' }}>
+            <label className="text-secondary" htmlFor="payment-reconciliation-filter">
+              Status
+            </label>
+            <select
+              id="payment-reconciliation-filter"
+              value={filter}
+              onChange={(event) => onFilterChange(event.target.value)}
+            >
+              <option value="all">All transactions</option>
+              <option value="exceptions">Exceptions</option>
+              <option value="pending">Pending</option>
+              <option value="failed">Failed</option>
+              <option value="completed">Completed</option>
+              <option value="refunded">Refunded</option>
+            </select>
+            <Button size="sm" variant="secondary" onClick={onExport} disabled={pending}>
+              <Download size={16} /> Export CSV
+            </Button>
+          </div>
+        </div>
+        {visiblePayments.length ? (
+          <DataTable columns={columns} data={visiblePayments} />
+        ) : (
+          <div className="admin-empty-state">
+            <CheckCircle size={32} />
+            <strong>No transactions match this view.</strong>
+          </div>
+        )}
+      </section>
       <section className="stack admin-content-card">
         <div className="admin-content-heading">
           <h2>Provider operations</h2>

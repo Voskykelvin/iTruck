@@ -918,6 +918,46 @@ test('admin payment summary exposes KES revenue, exceptions, and provider readin
   expect(forbidden.status).toBe(403);
 });
 
+test('admin payment reconciliation supports exception filters and a non-sensitive CSV export', async () => {
+  const authorization = authHeader({ id: 'demo-admin', role: 'admin' });
+  const exceptions = await request(app).get('/api/admin/payments?exception=true').set('Authorization', authorization);
+
+  expect(exceptions.status).toBe(200);
+  expect(exceptions.body.transactions).toHaveLength(1);
+  expect(exceptions.body.transactions[0]).toEqual(expect.objectContaining({ id: 'TX-992', status: 'pending' }));
+
+  const exported = await request(app)
+    .get('/api/admin/payments/export?exception=true')
+    .set('Authorization', authorization);
+  expect(exported.status).toBe(200);
+  expect(exported.headers['content-type']).toContain('text/csv');
+  expect(exported.headers['content-disposition']).toContain('itruck-payment-reconciliation');
+  expect(exported.text).toContain(
+    '"Date","Reference","Booking","Type","Method","Provider","Status","Currency","Amount"'
+  );
+  expect(exported.text).toContain('mpesa:demo:992');
+  expect(exported.text).not.toContain('metadata');
+  expect(exported.text).not.toContain('phone');
+
+  const forbidden = await request(app)
+    .get('/api/admin/payments/export')
+    .set('Authorization', authHeader({ id: 'demo-client-primary', role: 'client' }));
+  expect(forbidden.status).toBe(403);
+});
+
+test('admin payment status recheck is read-only in demo mode', async () => {
+  const response = await request(app)
+    .post('/api/payments/transactions/TX-992/recheck')
+    .set('Authorization', authHeader({ id: 'demo-admin', role: 'admin' }))
+    .send({});
+
+  expect(response.status).toBe(200);
+  expect(response.body).toEqual(
+    expect.objectContaining({ changed: false, providerStatus: 'demo_pending', mode: 'memory' })
+  );
+  expect(response.body.transaction).toEqual(expect.objectContaining({ id: 'TX-992', status: 'pending' }));
+});
+
 test('avatar uploads reject unsupported file types before storage', async () => {
   const res = await request(app)
     .post('/api/upload/avatar')
