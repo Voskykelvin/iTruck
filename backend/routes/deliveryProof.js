@@ -27,7 +27,7 @@ const upload = multer({
 router.use(protect);
 
 router.get('/delivery-proof/policy', (req, res) => {
-  res.json(deliveryProofPolicy());
+  res.json({ ...deliveryProofPolicy(), directShipperConfirmation: !mongoReady() });
 });
 
 function requireProofDatabase(req, res) {

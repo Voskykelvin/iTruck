@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useBookingCache, useBookingAction, useFleetTrucks } from '../queries/commercial';
 import { useSessionBootstrap } from '../queries/session';
+import { useDeliveryProofPolicy } from '../queries/operations';
 import { roleForUser } from '../utils/roles';
 import { api } from '../api';
 import Button from '../components/ui/Button';
@@ -45,6 +46,7 @@ export default function ShipmentDetailPage() {
     return data;
   });
   const { data: fleet = [] } = useFleetTrucks({ enabled: role === 'owner' });
+  const { data: deliveryPolicy } = useDeliveryProofPolicy({ enabled: role === 'client' });
 
   useEffect(() => {
     fetchBooking(id)
@@ -83,6 +85,7 @@ export default function ShipmentDetailPage() {
   const isPending = shipment.rawStatus === 'pending' || shipment.rawStatus === 'bidding';
   const isConfirmed = shipment.rawStatus === 'confirmed';
   const isInTransit = shipment.rawStatus === 'in_transit';
+  const isDeliveryPending = shipment.rawStatus === 'delivery_pending';
   const isDelivered = shipment.rawStatus === 'delivered';
 
   const handleAction = (label, apiCall, options = {}) => {
@@ -188,9 +191,19 @@ export default function ShipmentDetailPage() {
           {isOwner && isConfirmed && (
             <Button
               variant="primary"
-              onClick={() => handleAction('Dispatch started', () => api.bookingDispatch(shipment.id))}
+              onClick={() =>
+                handleAction('Dispatch started', () => api.updateBookingStatus(shipment.id, { status: 'in_transit' }))
+              }
             >
               Start Dispatch
+            </Button>
+          )}
+          {isShipper && (isDeliveryPending || (isInTransit && deliveryPolicy?.directShipperConfirmation)) && (
+            <Button
+              variant="primary"
+              onClick={() => handleAction('Delivery confirmed', () => api.confirmDelivery(shipment.id))}
+            >
+              Confirm Receipt
             </Button>
           )}
           {(isOwner || role === 'driver') && isInTransit && (
