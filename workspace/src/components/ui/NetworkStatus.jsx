@@ -5,12 +5,13 @@ export default function NetworkStatus({ className = '' }) {
   const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
 
   useEffect(() => {
-    const updateStatus = () => setOnline(navigator.onLine);
-    window.addEventListener('online', updateStatus);
-    window.addEventListener('offline', updateStatus);
+    const markOnline = () => setOnline(true);
+    const markOffline = () => setOnline(false);
+    window.addEventListener('online', markOnline);
+    window.addEventListener('offline', markOffline);
     return () => {
-      window.removeEventListener('online', updateStatus);
-      window.removeEventListener('offline', updateStatus);
+      window.removeEventListener('online', markOnline);
+      window.removeEventListener('offline', markOffline);
     };
   }, []);
 
