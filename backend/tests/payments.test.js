@@ -12,6 +12,8 @@ jest.mock('../models/Wallet', () => ({
 jest.mock('../models/Transaction', () => ({
   create: jest.fn((payload) => Promise.resolve({ _id: 'tx-test', ...payload })),
   find: jest.fn(),
+  findById: jest.fn(),
+  findByIdAndUpdate: jest.fn(),
   findOne: jest.fn(),
   findOneAndUpdate: jest.fn()
 }));
@@ -43,6 +45,7 @@ const {
   generateIdempotencyKey,
   MpesaService,
   MobileMoneyPaymentService,
+  PaymentRecheckService,
   PaymentReconciliationService,
   runWithIdempotency,
   StripeService,
@@ -62,6 +65,8 @@ beforeEach(() => {
   Wallet.updateOne.mockReset();
   Transaction.create.mockClear();
   Transaction.find.mockReset();
+  Transaction.findById.mockReset();
+  Transaction.findByIdAndUpdate.mockReset();
   Transaction.findOne.mockReset();
   Transaction.findOneAndUpdate.mockReset();
   Booking.findById.mockReset();
@@ -633,6 +638,99 @@ test('stripe reconciliation idempotently records completed escrow payments', asy
     },
     { new: true }
   );
+});
+
+test('payment recheck reconciles a Stripe checkout only after Stripe reports it paid', async () => {
+  const transactionId = '507f1f77bcf86cd799439013';
+  const transaction = {
+    _id: transactionId,
+    booking: '507f1f77bcf86cd799439011',
+    user: '507f1f77bcf86cd799439012',
+    provider: 'stripe',
+    method: 'stripe',
+    type: 'payment',
+    amount: 1291.5,
+    currency: 'KES',
+    status: 'pending',
+    providerEventId: 'cs_test_paid',
+    metadata: { checkoutSessionId: 'cs_test_paid' }
+  };
+  const stripe = {
+    retrieveCheckoutSession: jest.fn().mockResolvedValue({
+      id: 'cs_test_paid',
+      payment_status: 'paid',
+      status: 'complete',
+      amount_total: 129150,
+      currency: 'kes',
+      livemode: false,
+      metadata: {}
+    })
+  };
+  const reconciliation = {
+    reconcileStripeEvent: jest.fn().mockResolvedValue({ ...transaction, status: 'completed' })
+  };
+  Transaction.findById.mockResolvedValue(transaction);
+
+  const result = await new PaymentRecheckService({ stripe, reconciliation }).recheck(transactionId);
+
+  expect(stripe.retrieveCheckoutSession).toHaveBeenCalledWith('cs_test_paid');
+  expect(reconciliation.reconcileStripeEvent).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: 'checkout.session.completed',
+      data: { object: expect.objectContaining({ metadata: expect.objectContaining({ transactionId }) }) }
+    })
+  );
+  expect(result).toEqual(expect.objectContaining({ changed: true, providerStatus: 'paid' }));
+});
+
+test('payment recheck rejects a Stripe checkout amount mismatch', async () => {
+  const transaction = {
+    _id: '507f1f77bcf86cd799439013',
+    booking: '507f1f77bcf86cd799439011',
+    user: '507f1f77bcf86cd799439012',
+    provider: 'stripe',
+    method: 'stripe',
+    type: 'payment',
+    amount: 1291.5,
+    currency: 'KES',
+    status: 'pending',
+    providerEventId: 'cs_test_mismatch',
+    metadata: { checkoutSessionId: 'cs_test_mismatch' }
+  };
+  Transaction.findById.mockResolvedValue(transaction);
+  const stripe = {
+    retrieveCheckoutSession: jest.fn().mockResolvedValue({
+      id: 'cs_test_mismatch',
+      payment_status: 'paid',
+      amount_total: 10000,
+      currency: 'kes',
+      metadata: { transactionId: transaction._id, bookingId: transaction.booking }
+    })
+  };
+
+  await expect(new PaymentRecheckService({ stripe }).recheck(transaction._id)).rejects.toMatchObject({
+    status: 409,
+    message: 'Stripe checkout amount does not match this transaction'
+  });
+  expect(Transaction.findOneAndUpdate).not.toHaveBeenCalled();
+});
+
+test('payment recheck keeps M-Pesa pending until its authenticated callback verifies the receipt', async () => {
+  const transaction = {
+    _id: '507f1f77bcf86cd799439013',
+    provider: 'mpesa',
+    method: 'mpesa',
+    type: 'payment',
+    status: 'pending'
+  };
+  Transaction.findById.mockResolvedValue(transaction);
+
+  const result = await new PaymentRecheckService().recheck(transaction._id);
+
+  expect(result).toEqual(
+    expect.objectContaining({ changed: false, provider: 'mpesa', providerStatus: 'callback_required' })
+  );
+  expect(Transaction.findByIdAndUpdate).not.toHaveBeenCalled();
 });
 
 test('mpesa callback completes transaction and marks booking escrowed', async () => {

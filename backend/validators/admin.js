@@ -60,6 +60,27 @@ const notificationDeliveryListSchema = [
 const notificationDeliveryRetrySchema = [liveMongoIdParam('id')];
 const securitySessionRevokeSchema = [liveMongoIdParam('id')];
 
+const paymentListSchema = [
+  query('exception')
+    .optional({ checkFalsy: true })
+    .isBoolean()
+    .withMessage('exception must be true or false')
+    .toBoolean(),
+  query('status')
+    .optional({ checkFalsy: true })
+    .isIn(['pending', 'failed', 'completed', 'refunded'])
+    .withMessage('status is invalid'),
+  query('method')
+    .optional({ checkFalsy: true })
+    .isIn(['stripe', 'mpesa', 'mtn', 'wallet', 'bank', 'cash'])
+    .withMessage('method is invalid'),
+  query('type')
+    .optional({ checkFalsy: true })
+    .isIn(['payment', 'platform_fee', 'credit', 'refund', 'withdrawal', 'debit'])
+    .withMessage('type is invalid'),
+  query('limit').optional({ checkFalsy: true }).isInt({ min: 1, max: 5000 }).withMessage('limit is invalid').toInt()
+];
+
 const documentReviewSchema = [
   liveMongoIdParam('id'),
   param('documentType').trim().isLength({ min: 2, max: 80 }).withMessage('documentType is invalid'),
@@ -73,6 +94,7 @@ module.exports = {
   notifySchema,
   notificationDeliveryListSchema,
   notificationDeliveryRetrySchema,
+  paymentListSchema,
   securitySessionRevokeSchema,
   userDeletionSchema,
   truckVerificationSchema,

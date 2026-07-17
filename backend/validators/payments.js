@@ -34,6 +34,7 @@ const refundSchema = [
   idempotencyKeyBody
 ];
 const executePayoutSchema = [liveMongoIdParam('transactionId'), idempotencyKeyBody];
+const recheckPaymentSchema = [liveMongoIdParam('transactionId')];
 
 const mobileMoneyProvider = body('method')
   .optional({ checkFalsy: true })
@@ -91,6 +92,7 @@ module.exports = {
   initiateMobileMoneySchema,
   executePayoutSchema,
   refundSchema,
+  recheckPaymentSchema,
   releasePaymentSchema,
   withdrawalSchema
 };

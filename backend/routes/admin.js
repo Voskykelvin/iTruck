@@ -21,6 +21,7 @@ const {
   notifySchema,
   notificationDeliveryListSchema,
   notificationDeliveryRetrySchema,
+  paymentListSchema,
   securitySessionRevokeSchema,
   truckVerificationSchema,
   userDeletionSchema,
@@ -43,6 +44,89 @@ const demoBookings = [
   ['ITK-1003', 'Distribution center to receiver', 'Delivered', 'POD ready']
 ];
 const activeBookingStatuses = ['pending', 'bidding', 'confirmed', 'in_transit', 'delivery_pending', 'disputed'];
+const demoPaymentTransactions = [
+  {
+    id: 'TX-991',
+    method: 'stripe',
+    provider: 'stripe',
+    type: 'payment',
+    amount: 920,
+    status: 'completed',
+    currency: 'KES',
+    reference: 'stripe:demo:991',
+    booking: 'ITK-1001',
+    createdAt: '2026-07-15T09:15:00.000Z'
+  },
+  {
+    id: 'TX-992',
+    method: 'mpesa',
+    provider: 'mpesa',
+    type: 'payment',
+    amount: 1291.5,
+    status: 'pending',
+    currency: 'KES',
+    reference: 'mpesa:demo:992',
+    booking: 'ITK-1002',
+    createdAt: '2026-07-16T10:30:00.000Z'
+  },
+  {
+    id: 'TX-993',
+    method: 'stripe',
+    provider: 'stripe',
+    type: 'platform_fee',
+    amount: 36.25,
+    status: 'completed',
+    currency: 'KES',
+    reference: 'fee:demo:993',
+    booking: 'ITK-1001',
+    createdAt: '2026-07-15T09:16:00.000Z'
+  }
+];
+
+function paymentFilter(query = {}) {
+  const filter = {};
+  if (query.exception) filter.status = { $in: ['pending', 'failed'] };
+  else if (query.status) filter.status = query.status;
+  if (query.method) filter.method = query.method;
+  if (query.type) filter.type = query.type;
+  return filter;
+}
+
+function matchesDemoPayment(transaction, query = {}) {
+  if (query.exception && !['pending', 'failed'].includes(transaction.status)) return false;
+  if (!query.exception && query.status && transaction.status !== query.status) return false;
+  if (query.method && transaction.method !== query.method) return false;
+  if (query.type && transaction.type !== query.type) return false;
+  return true;
+}
+
+function csvCell(value) {
+  let text = value === undefined || value === null ? '' : String(value);
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function paymentCsv(transactions) {
+  const rows = [['Date', 'Reference', 'Booking', 'Type', 'Method', 'Provider', 'Status', 'Currency', 'Amount']];
+  transactions.forEach((transaction) => {
+    const booking =
+      typeof transaction.booking === 'object'
+        ? transaction.booking?._id || transaction.booking?.id || ''
+        : transaction.booking || '';
+    rows.push([
+      transaction.createdAt ? new Date(transaction.createdAt).toISOString() : '',
+      transaction.reference || transaction.id || transaction._id,
+      booking,
+      transaction.type,
+      transaction.method,
+      transaction.provider || transaction.method,
+      transaction.status,
+      transaction.currency || 'KES',
+      Number(transaction.amount || 0).toFixed(2)
+    ]);
+  });
+  return `\uFEFF${rows.map((row) => row.map(csvCell).join(',')).join('\r\n')}\r\n`;
+}
 
 async function recordAudit(req, action, targetType, targetId, metadata = {}) {
   if (!mongoReady()) return null;
@@ -296,20 +380,38 @@ router.get('/payments/summary', async (req, res, next) => {
   }
 });
 
-router.get('/payments', async (req, res, next) => {
+router.get('/payments', paymentListSchema, validate, async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
       return res.json({
-        transactions: [
-          { id: 'TX-991', method: 'stripe', type: 'payment', amount: 920, status: 'completed', currency: 'KES' },
-          { id: 'TX-992', method: 'mpesa', type: 'payment', amount: 1291.5, status: 'pending', currency: 'KES' },
-          { id: 'TX-993', method: 'stripe', type: 'platform_fee', amount: 36.25, status: 'completed', currency: 'KES' }
-        ],
+        transactions: demoPaymentTransactions.filter((transaction) => matchesDemoPayment(transaction, req.query)),
         mode: 'memory'
       });
     }
-    res.json({ transactions: await Transaction.find().sort('-createdAt').limit(100) });
+    res.json({
+      transactions: await Transaction.find(paymentFilter(req.query))
+        .sort('-createdAt')
+        .limit(Math.min(req.query.limit || 100, 500))
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/payments/export', paymentListSchema, validate, async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    const transactions = !mongoReady()
+      ? demoPaymentTransactions.filter((transaction) => matchesDemoPayment(transaction, req.query))
+      : await Transaction.find(paymentFilter(req.query))
+          .sort('-createdAt')
+          .limit(Math.min(req.query.limit || 5000, 5000))
+          .lean();
+    const filename = `itruck-payment-reconciliation-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.set('Content-Type', 'text/csv; charset=utf-8');
+    res.set('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(paymentCsv(transactions));
   } catch (err) {
     next(err);
   }

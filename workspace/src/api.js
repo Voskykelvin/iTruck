@@ -405,7 +405,12 @@ export const api = {
   adminListUsers: () => request('/admin/users'),
   adminListTrucks: () => request('/admin/trucks'),
   adminListBookings: () => request('/admin/bookings'),
-  adminListPayments: () => request('/admin/payments'),
+  adminListPayments: (params = {}) => request(`/admin/payments${queryString(params)}`),
+  adminExportPayments: (params = {}) =>
+    downloadFile(
+      `/admin/payments/export${queryString(params)}`,
+      `itruck-payment-reconciliation-${new Date().toISOString().slice(0, 10)}.csv`
+    ),
   adminPaymentSummary: () => request('/admin/payments/summary'),
   adminProviderOperations: () => request('/payments/provider-operations'),
   adminReleaseBookingPayment: (bookingId) =>
@@ -417,6 +422,11 @@ export const api = {
     request(`/payments/transactions/${encodeURIComponent(transactionId)}/refund`, {
       method: 'POST',
       body: JSON.stringify(payload)
+    }),
+  adminRecheckPayment: (transactionId) =>
+    request(`/payments/transactions/${encodeURIComponent(transactionId)}/recheck`, {
+      method: 'POST',
+      body: JSON.stringify({})
     }),
   adminExecutePayout: (transactionId) =>
     request(`/payments/withdrawals/${encodeURIComponent(transactionId)}/execute`, {
