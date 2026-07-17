@@ -68,42 +68,56 @@ async function loadResource(label, request, select, previous) {
 
 async function fetchAdminWorkspace(previous = {}) {
   const prior = previous.data || emptyAdminData;
-  const [stats, users, trucks, bookings, documents, payments, providerOperations, cases, deliveries, sessions, logs] =
-    await Promise.all([
-      loadResource('Statistics', api.adminStats, (data) => data, previous.stats || null),
-      loadResource('Profiles', api.adminListUsers, (data) => data.users || [], prior.users),
-      loadResource('Vehicles', api.adminListTrucks, (data) => data.trucks || [], prior.trucks),
-      loadResource('Bookings', api.adminListBookings, (data) => data.bookings || [], prior.bookings),
-      loadResource(
-        'Documents',
-        () => api.listDocuments({ limit: 100 }),
-        (data) => data.documents || [],
-        prior.documents
-      ),
-      loadResource('Payments', api.adminListPayments, (data) => data.transactions || [], prior.payments),
-      loadResource(
-        'Provider operations',
-        api.adminProviderOperations,
-        (data) => data.operations || [],
-        prior.providerOperations
-      ),
-      loadResource(
-        'Support cases',
-        () => api.adminCases({ limit: 100 }),
-        (data) => data.cases || [],
-        prior.cases
-      ),
-      loadResource(
-        'Notification delivery queue',
-        api.adminNotificationDeliveries,
-        (data) => data.deliveries || [],
-        prior.notificationDeliveries
-      ),
-      loadResource('Security sessions', api.adminSecuritySessions, (data) => data.sessions || [], prior.sessions),
-      loadResource('Audit logs', api.adminAuditLogs, (data) => data.logs || [], prior.logs)
-    ]);
+  const [
+    stats,
+    paymentSummary,
+    users,
+    trucks,
+    bookings,
+    documents,
+    payments,
+    providerOperations,
+    cases,
+    deliveries,
+    sessions,
+    logs
+  ] = await Promise.all([
+    loadResource('Statistics', api.adminStats, (data) => data, previous.stats || null),
+    loadResource('Payment summary', api.adminPaymentSummary, (data) => data, previous.paymentSummary || null),
+    loadResource('Profiles', api.adminListUsers, (data) => data.users || [], prior.users),
+    loadResource('Vehicles', api.adminListTrucks, (data) => data.trucks || [], prior.trucks),
+    loadResource('Bookings', api.adminListBookings, (data) => data.bookings || [], prior.bookings),
+    loadResource(
+      'Documents',
+      () => api.listDocuments({ limit: 100 }),
+      (data) => data.documents || [],
+      prior.documents
+    ),
+    loadResource('Payments', api.adminListPayments, (data) => data.transactions || [], prior.payments),
+    loadResource(
+      'Provider operations',
+      api.adminProviderOperations,
+      (data) => data.operations || [],
+      prior.providerOperations
+    ),
+    loadResource(
+      'Support cases',
+      () => api.adminCases({ limit: 100 }),
+      (data) => data.cases || [],
+      prior.cases
+    ),
+    loadResource(
+      'Notification delivery queue',
+      api.adminNotificationDeliveries,
+      (data) => data.deliveries || [],
+      prior.notificationDeliveries
+    ),
+    loadResource('Security sessions', api.adminSecuritySessions, (data) => data.sessions || [], prior.sessions),
+    loadResource('Audit logs', api.adminAuditLogs, (data) => data.logs || [], prior.logs)
+  ]);
   const errors = [
     stats,
+    paymentSummary,
     users,
     trucks,
     bookings,
@@ -124,6 +138,7 @@ async function fetchAdminWorkspace(previous = {}) {
   const trucksWithDocuments = mergeDocumentIndex(trucks.value || [], normalizedDocuments, 'truck');
 
   return {
+    paymentSummary: paymentSummary.value || previous.paymentSummary || null,
     stats: {
       users: Number(stats.value?.users ?? stats.value?.totalUsers ?? normalizedUsers.length),
       trucks: Number(stats.value?.trucks ?? stats.value?.totalTrucks ?? trucksWithDocuments.length),

@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Truck = require('../models/Truck');
 const Booking = require('../models/Booking');
 const Transaction = require('../models/Transaction');
+const ProviderOperation = require('../models/ProviderOperation');
 const AuditLog = require('../models/AuditLog');
 const Document = require('../models/Document');
 const RefreshToken = require('../models/RefreshToken');
@@ -14,6 +15,7 @@ const { protect, restrictTo } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const { recordReviewedDocument } = require('../services/documentRecords');
 const notifications = require('../services/notifications');
+const { paymentProviderReadiness } = require('../services/providerReadiness');
 const {
   documentReviewSchema,
   notifySchema,
@@ -163,20 +165,151 @@ router.get('/bookings', async (req, res, next) => {
   }
 });
 
+router.get('/payments/summary', async (req, res, next) => {
+  try {
+    if (requireDatabase(req, res)) return;
+    const readiness = paymentProviderReadiness(process.env, { demo: !mongoReady() });
+    if (!mongoReady()) {
+      return res.json({
+        currency: 'KES',
+        totals: {
+          grossCollected: 5968.75,
+          platformRevenue: 145.75,
+          carrierPayouts: 4200,
+          refunds: 0,
+          heldEscrow: 1291.5
+        },
+        counts: { pendingPayments: 1, failedPayments: 0, pendingProviderOperations: 1, failedProviderOperations: 0 },
+        methods: [
+          { method: 'mpesa', status: 'completed', count: 3, total: 4482.5 },
+          { method: 'stripe', status: 'completed', count: 1, total: 1486.25 }
+        ],
+        trend: [
+          { date: new Date().toISOString().slice(0, 10), type: 'payment', total: 1486.25 },
+          { date: new Date().toISOString().slice(0, 10), type: 'platform_fee', total: 36.25 }
+        ],
+        providers: readiness.providers,
+        mode: 'memory'
+      });
+    }
+
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const [financials, bookingPayments, methods, trend, providerStatuses] = await Promise.all([
+      Transaction.aggregate([
+        {
+          $match: {
+            status: 'completed',
+            $or: [
+              { type: { $in: ['payment', 'platform_fee', 'refund'] } },
+              { type: 'credit', booking: { $exists: true, $ne: null } }
+            ]
+          }
+        },
+        { $group: { _id: { type: '$type', currency: '$currency' }, total: { $sum: '$amount' }, count: { $sum: 1 } } }
+      ]),
+      Booking.aggregate([
+        { $match: { paymentStatus: { $in: ['pending', 'failed', 'escrowed', 'release_pending'] } } },
+        {
+          $group: {
+            _id: {
+              status: '$paymentStatus',
+              currency: { $ifNull: ['$paymentBreakdown.currency', readiness.currency] }
+            },
+            total: { $sum: { $ifNull: ['$paymentBreakdown.shipperTotal', '$paymentAmount'] } },
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+      Transaction.aggregate([
+        { $match: { type: 'payment' } },
+        {
+          $group: {
+            _id: { method: '$method', status: '$status', currency: '$currency' },
+            total: { $sum: '$amount' },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { count: -1 } }
+      ]),
+      Transaction.aggregate([
+        { $match: { status: 'completed', type: { $in: ['payment', 'platform_fee'] }, createdAt: { $gte: since } } },
+        {
+          $group: {
+            _id: {
+              date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+              type: '$type',
+              currency: '$currency'
+            },
+            total: { $sum: '$amount' }
+          }
+        },
+        { $sort: { '_id.date': 1 } }
+      ]),
+      ProviderOperation.aggregate([
+        { $match: { status: { $in: ['processing', 'pending', 'failed'] } } },
+        { $group: { _id: '$status', count: { $sum: 1 }, total: { $sum: '$amount' } } }
+      ])
+    ]);
+
+    const currency = readiness.currency;
+    const financialTotal = (type) =>
+      financials.find((item) => item._id.type === type && String(item._id.currency || currency) === currency)?.total ||
+      0;
+    const bookingStatus = (status) =>
+      bookingPayments.find(
+        (item) => item._id.status === status && String(item._id.currency || currency) === currency
+      ) || { count: 0, total: 0 };
+    const providerStatus = (status) => providerStatuses.find((item) => item._id === status) || { count: 0, total: 0 };
+
+    res.json({
+      currency,
+      totals: {
+        grossCollected: financialTotal('payment'),
+        platformRevenue: financialTotal('platform_fee'),
+        carrierPayouts: financialTotal('credit'),
+        refunds: financialTotal('refund'),
+        heldEscrow: bookingStatus('escrowed').total + bookingStatus('release_pending').total
+      },
+      counts: {
+        pendingPayments: bookingStatus('pending').count,
+        failedPayments: bookingStatus('failed').count,
+        pendingProviderOperations: providerStatus('pending').count + providerStatus('processing').count,
+        failedProviderOperations: providerStatus('failed').count
+      },
+      methods: methods.map((item) => ({
+        method: item._id.method,
+        status: item._id.status,
+        currency: item._id.currency || currency,
+        count: item.count,
+        total: item.total
+      })),
+      trend: trend.map((item) => ({
+        date: item._id.date,
+        type: item._id.type,
+        currency: item._id.currency || currency,
+        total: item.total
+      })),
+      providers: readiness.providers
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/payments', async (req, res, next) => {
   try {
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) {
       return res.json({
         transactions: [
-          { id: 'TX-991', method: 'Wallet escrow', amount: 920, status: 'held' },
-          { id: 'TX-992', method: 'M-Pesa', amount: 1260, status: 'pending release' },
-          { id: 'TX-993', method: 'Card escrow', amount: 780, status: 'paid' }
+          { id: 'TX-991', method: 'stripe', type: 'payment', amount: 920, status: 'completed', currency: 'KES' },
+          { id: 'TX-992', method: 'mpesa', type: 'payment', amount: 1291.5, status: 'pending', currency: 'KES' },
+          { id: 'TX-993', method: 'stripe', type: 'platform_fee', amount: 36.25, status: 'completed', currency: 'KES' }
         ],
         mode: 'memory'
       });
     }
-    res.json({ transactions: await Transaction.find().limit(100) });
+    res.json({ transactions: await Transaction.find().sort('-createdAt').limit(100) });
   } catch (err) {
     next(err);
   }

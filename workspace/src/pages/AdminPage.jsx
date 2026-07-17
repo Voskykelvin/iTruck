@@ -100,6 +100,7 @@ export default function AdminPage() {
   });
 
   const stats = workspace?.stats || {};
+  const paymentSummary = workspace?.paymentSummary || {};
   const {
     users = [],
     trucks = [],
@@ -276,7 +277,11 @@ export default function AdminPage() {
         </div>
       )
     },
-    { header: 'Amount', accessor: 'amount', cell: (row) => <strong>{money(row.amount || 0)}</strong> },
+    {
+      header: 'Amount',
+      accessor: 'amount',
+      cell: (row) => <strong>{money(row.amount || 0, row.currency || 'KES')}</strong>
+    },
     {
       header: 'Status',
       accessor: 'status',
@@ -301,22 +306,8 @@ export default function AdminPage() {
             </Button>
           );
         }
-        if (row.type === 'payment' && row.status === 'pending' && bookingId) {
-          return (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() =>
-                actionMutation.mutate({
-                  action: () => api.adminReleaseBookingPayment(bookingId),
-                  message: 'Payment released'
-                })
-              }
-            >
-              Release
-            </Button>
-          );
-        }
+        if (row.type === 'payment' && row.status === 'pending' && bookingId)
+          return <span className="text-muted">Await provider callback</span>;
         if (row.type === 'payment' && row.status === 'completed') {
           return (
             <Button
@@ -404,7 +395,12 @@ export default function AdminPage() {
       )}
 
       {section === 'payments' && (
-        <PaymentsWorkspace payments={payments} providerOperations={providerOperations} columns={paymentColumns} />
+        <PaymentsWorkspace
+          summary={paymentSummary}
+          payments={payments}
+          providerOperations={providerOperations}
+          columns={paymentColumns}
+        />
       )}
 
       {section === 'security' && (
@@ -604,9 +600,127 @@ function OperationsTable({ title, description, data, columns, empty }) {
   );
 }
 
-function PaymentsWorkspace({ payments, providerOperations, columns }) {
+function PaymentsWorkspace({ summary, payments, providerOperations, columns }) {
+  const totals = summary?.totals || {};
+  const counts = summary?.counts || {};
+  const currency = summary?.currency || 'KES';
   return (
     <div className="stack-lg">
+      <div className="grid-4">
+        <MetricCard
+          title="Platform revenue"
+          value={money(totals.platformRevenue || 0, currency)}
+          icon={CircleDollarSign}
+          subtitle="Recognized iTruck fees"
+        />
+        <MetricCard
+          title="Gross collected"
+          value={money(totals.grossCollected || 0, currency)}
+          icon={Activity}
+          subtitle={`${money(totals.refunds || 0, currency)} refunded`}
+        />
+        <MetricCard
+          title="Held for delivery"
+          value={money(totals.heldEscrow || 0, currency)}
+          icon={ShieldCheck}
+          subtitle="Funded but not released"
+        />
+        <MetricCard
+          title="Carrier payouts"
+          value={money(totals.carrierPayouts || 0, currency)}
+          icon={Landmark}
+          subtitle="Completed payout credits"
+        />
+      </div>
+
+      <section className="stack admin-content-card">
+        <div className="admin-content-heading">
+          <h2>Payment readiness and exceptions</h2>
+          <p className="text-secondary">
+            {counts.pendingPayments || 0} pending payments · {counts.failedPayments || 0} failed payments ·{' '}
+            {counts.pendingProviderOperations || 0} provider operations awaiting callbacks ·{' '}
+            {counts.failedProviderOperations || 0} failed provider operations
+          </p>
+        </div>
+        <DataTable
+          columns={[
+            { header: 'Provider', accessor: 'label', cell: (row) => <strong>{row.label}</strong> },
+            {
+              header: 'Collections',
+              accessor: 'collections',
+              cell: (row) => (
+                <Badge variant={row.collections ? 'success' : 'warning'}>
+                  {row.collections ? 'Configured' : 'Off'}
+                </Badge>
+              )
+            },
+            {
+              header: 'Refunds',
+              accessor: 'refunds',
+              cell: (row) => (
+                <Badge variant={row.refunds ? 'success' : 'default'}>
+                  {row.refunds ? 'Configured' : 'Not configured'}
+                </Badge>
+              )
+            },
+            {
+              header: 'Payouts',
+              accessor: 'payouts',
+              cell: (row) => (
+                <Badge variant={row.payouts ? 'success' : 'default'}>
+                  {row.payouts ? 'Configured' : 'Not configured'}
+                </Badge>
+              )
+            },
+            {
+              header: 'Configuration',
+              accessor: 'message',
+              cell: (row) => <span className="text-secondary">{row.message}</span>
+            }
+          ]}
+          data={summary?.providers || []}
+        />
+      </section>
+
+      <section className="stack admin-content-card">
+        <div className="admin-content-heading">
+          <h2>Collection reconciliation</h2>
+          <p className="text-secondary">Transaction counts and values grouped by provider method and status.</p>
+        </div>
+        <DataTable
+          columns={[
+            { header: 'Method', accessor: 'method', cell: (row) => <strong>{row.method || 'Unknown'}</strong> },
+            {
+              header: 'Status',
+              accessor: 'status',
+              cell: (row) => <Badge variant={statusVariant(row.status)}>{row.status}</Badge>
+            },
+            { header: 'Transactions', accessor: 'count' },
+            { header: 'Value', accessor: 'total', cell: (row) => money(row.total || 0, row.currency || currency) }
+          ]}
+          data={summary?.methods || []}
+        />
+      </section>
+
+      <section className="stack admin-content-card">
+        <div className="admin-content-heading">
+          <h2>30-day revenue activity</h2>
+          <p className="text-secondary">Daily collected value and recognized iTruck platform fees.</p>
+        </div>
+        <DataTable
+          columns={[
+            { header: 'Date', accessor: 'date' },
+            {
+              header: 'Category',
+              accessor: 'type',
+              cell: (row) => (row.type === 'platform_fee' ? 'Platform revenue' : 'Gross collection')
+            },
+            { header: 'Value', accessor: 'total', cell: (row) => money(row.total || 0, row.currency || currency) }
+          ]}
+          data={summary?.trend || []}
+        />
+      </section>
+
       <OperationsTable
         title="Payment provider workflows"
         description="Release escrow only after evidence checks; execute refunds and payouts through auditable provider operations."
@@ -626,7 +740,7 @@ function PaymentsWorkspace({ payments, providerOperations, columns }) {
             columns={[
               { header: 'Operation', accessor: 'type', cell: (row) => <strong>{row.type}</strong> },
               { header: 'Provider', accessor: 'provider' },
-              { header: 'Amount', accessor: 'amount', cell: (row) => money(row.amount || 0) },
+              { header: 'Amount', accessor: 'amount', cell: (row) => money(row.amount || 0, row.currency || currency) },
               {
                 header: 'Status',
                 accessor: 'status',

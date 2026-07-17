@@ -41,6 +41,25 @@ test('admin operations separates vehicle and people verification queues', async 
   await expect(page.getByRole('table').getByText('Platform Admin')).toBeVisible();
 });
 
+test('admin payments shows revenue, provider readiness, and reconciliation in KES', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/app/admin');
+  await page.getByRole('button', { name: 'Payments', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: 'Platform revenue', exact: true })).toBeVisible();
+  await expect(page.getByText(/KES\s*145\.75/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Payment readiness and exceptions' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Collection reconciliation' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '30-day revenue activity' })).toBeVisible();
+
+  const readiness = page.locator('.admin-content-card', { hasText: 'Payment readiness and exceptions' });
+  await expect(readiness.getByText('Bank card', { exact: true }).first()).toBeVisible();
+  await expect(readiness.getByText('M-Pesa', { exact: true }).first()).toBeVisible();
+  await expect(readiness.getByText('MTN MoMo', { exact: true }).first()).toBeVisible();
+  await expect(readiness.getByText('Disabled until a later launch phase').first()).toBeVisible();
+  await expect(page.getByText('Wallet escrow')).toHaveCount(0);
+});
+
 test('admin operations remains usable on a phone and reports offline state', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await loginAsAdmin(page);

@@ -11,6 +11,7 @@ const ProviderOperation = require('../models/ProviderOperation');
 const Transaction = require('../models/Transaction');
 const Booking = require('../models/Booking');
 const { memoryBookings } = require('../data/demo-bookings');
+const { paymentProviderReadiness } = require('../services/providerReadiness');
 const {
   amountSchema,
   executePayoutSchema,
@@ -221,30 +222,25 @@ router.use(protect);
 
 router.get('/methods', (_req, res) => {
   const demo = !mongoReady();
-  const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET);
-  const mpesaConfigured = Boolean(
-    process.env.MPESA_CONSUMER_KEY &&
-    process.env.MPESA_CONSUMER_SECRET &&
-    process.env.MPESA_SHORTCODE &&
-    process.env.MPESA_PASSKEY &&
-    process.env.MPESA_CALLBACK_URL
-  );
+  const readiness = paymentProviderReadiness(process.env, { demo });
+  const card = readiness.providers.find((provider) => provider.id === 'card');
+  const mpesa = readiness.providers.find((provider) => provider.id === 'mpesa');
   res.json({
-    currency: String(process.env.DEFAULT_CURRENCY || 'KES').toUpperCase(),
+    currency: readiness.currency,
     methods: [
       {
         id: 'card',
         label: 'Bank card',
-        enabled: demo || stripeConfigured,
+        enabled: card.available,
         description: 'Visa or Mastercard through secure hosted checkout',
-        unavailableReason: demo || stripeConfigured ? '' : 'Card checkout is awaiting provider configuration'
+        unavailableReason: card.available ? '' : card.message
       },
       {
         id: 'mpesa',
         label: 'M-Pesa',
-        enabled: demo || mpesaConfigured,
+        enabled: mpesa.available,
         description: 'Pay from a Kenyan M-Pesa number',
-        unavailableReason: demo || mpesaConfigured ? '' : 'M-Pesa is awaiting provider configuration'
+        unavailableReason: mpesa.available ? '' : mpesa.message
       },
       {
         id: 'mtn',
@@ -536,40 +532,17 @@ router.get(
   '/providers/certification-status',
   restrictTo('admin'),
   asyncHandler(async (_req, res) => {
-    const configured = {
-      stripe: {
-        refunds: Boolean(process.env.STRIPE_SECRET_KEY),
-        payouts: Boolean(process.env.STRIPE_SECRET_KEY)
-      },
-      mpesa: {
-        refunds: Boolean(
-          process.env.MPESA_CONSUMER_KEY &&
-          process.env.MPESA_CONSUMER_SECRET &&
-          process.env.MPESA_REVERSAL_INITIATOR_NAME &&
-          process.env.MPESA_REVERSAL_SECURITY_CREDENTIAL
-        ),
-        payouts: Boolean(
-          process.env.MPESA_CONSUMER_KEY &&
-          process.env.MPESA_CONSUMER_SECRET &&
-          process.env.MPESA_B2C_INITIATOR_NAME &&
-          process.env.MPESA_B2C_SECURITY_CREDENTIAL
-        )
-      },
-      mtn: {
-        refunds: Boolean(
-          (process.env.MTN_MOMO_SUBSCRIPTION_KEY || process.env.MOMO_SUBSCRIBER_KEY) &&
-          (process.env.MTN_MOMO_API_USER || process.env.MOMO_USER_ID) &&
-          (process.env.MTN_MOMO_API_KEY || process.env.MOMO_API_KEY)
-        ),
-        payouts: Boolean(
-          (process.env.MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY || process.env.MOMO_DISB_SUBSCRIBER_KEY) &&
-          (process.env.MTN_MOMO_DISBURSEMENT_API_USER || process.env.MOMO_DISB_USER_ID) &&
-          (process.env.MTN_MOMO_DISBURSEMENT_API_KEY || process.env.MOMO_DISB_API_KEY)
-        )
-      }
-    };
+    const readiness = paymentProviderReadiness();
+    const configured = Object.fromEntries(
+      readiness.providers.map((provider) => [
+        provider.id === 'card' ? 'stripe' : provider.id,
+        { collections: provider.collections, refunds: provider.refunds, payouts: provider.payouts }
+      ])
+    );
     res.json({
       configured,
+      providers: readiness.providers,
+      currency: readiness.currency,
       liveCertificationRequired: true,
       message:
         'Configured means code credentials are present; provider sandbox and production certification remain separate gates.'
