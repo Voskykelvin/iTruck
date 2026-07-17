@@ -91,7 +91,7 @@ function draftPayload(body = {}) {
     communicationPreference: body.communicationPreference,
     paymentMethod: body.paymentMethod,
     amount: body.budget || body.estimate?.total || 0,
-    total: body.estimate?.total ? `${body.estimate.currency || 'USD'} ${body.estimate.total}` : undefined
+    total: body.estimate?.total ? `${body.estimate.currency || 'KES'} ${body.estimate.total}` : undefined
   };
 }
 

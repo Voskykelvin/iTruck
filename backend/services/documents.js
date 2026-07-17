@@ -15,9 +15,11 @@ function line(doc, label, value) {
   doc.moveDown(0.7);
 }
 
-function usd(value, fallback = 'Pending') {
+function currencyAmount(value, currency = 'KES', fallback = 'Pending') {
   const amount = Number(value);
-  return Number.isFinite(amount) ? `USD ${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : fallback;
+  return Number.isFinite(amount)
+    ? `${currency} ${amount.toLocaleString('en-KE', { minimumFractionDigits: 2 })}`
+    : fallback;
 }
 
 function createDocument(title, booking = {}, sections = []) {
@@ -134,22 +136,23 @@ function createReceiverConfirmation(booking) {
 
 function createInvoice(booking) {
   const terms = booking.paymentBreakdown || {};
+  const currency = terms.currency || booking.currency || 'KES';
   return createDocument('Commercial Invoice', booking, [
     {
       heading: 'Billing',
       items: [
         ['Client', booking.client || 'Client account'],
         ['Owner', booking.owner || 'Fleet owner'],
-        ['Carrier amount', usd(terms.carrierAmount || booking.paymentAmount)],
+        ['Carrier amount', currencyAmount(terms.carrierAmount || booking.paymentAmount, currency)],
         ['Escrow/payment status', booking.paymentStatus || 'Paid']
       ]
     },
     {
       heading: 'Charges',
       items: [
-        ['iTruck platform fee', usd(terms.platformFee, 'USD 0.00')],
-        ['Payment-provider fee', usd(terms.providerFee, 'USD 0.00')],
-        ['Total funded', usd(terms.shipperTotal || booking.paymentAmount)]
+        ['iTruck platform fee', currencyAmount(terms.platformFee, currency, `${currency} 0.00`)],
+        ['Payment-provider fee', currencyAmount(terms.providerFee, currency, `${currency} 0.00`)],
+        ['Total funded', currencyAmount(terms.shipperTotal || booking.paymentAmount, currency)]
       ]
     }
   ]);
@@ -207,7 +210,7 @@ function createCargoValueDeclaration(booking) {
       items: [
         ['Cargo', booking.cargo || 'General cargo'],
         ['Declared value', booking.cargoValue || booking.declaredValue || 'Not declared'],
-        ['Currency', booking.currency || 'USD'],
+        ['Currency', booking.currency || 'KES'],
         ['Insurance basis', booking.insuranceBasis || 'Declared by shipper']
       ]
     },

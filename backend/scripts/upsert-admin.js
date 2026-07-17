@@ -46,7 +46,7 @@ async function run() {
 
   await Wallet.findOneAndUpdate(
     { user: user._id },
-    { user: user._id, balance: Number(process.env.ADMIN_WALLET_BALANCE || 0), currency: 'USD' },
+    { user: user._id, balance: Number(process.env.ADMIN_WALLET_BALANCE || 0), currency: 'KES' },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
 

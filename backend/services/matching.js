@@ -182,7 +182,7 @@ function buildEstimate(input = {}) {
     billableCapacityShare: ltl.billableCapacityShare,
     consolidationEligible: ltl.consolidationEligible,
     routeKey: routeKeyFor({ ...input, vehicleType }),
-    currency: input.currency || 'USD',
+    currency: input.currency || 'KES',
     basePrice,
     fullTruckBasePrice,
     crossBorderFee,

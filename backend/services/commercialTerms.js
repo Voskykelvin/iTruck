@@ -27,7 +27,7 @@ function paymentBreakdown(carrierAmount, options = {}) {
     providerFee,
     shipperTotal: roundMoney(carrier + platformFee + providerFee),
     carrierPayout: carrier,
-    currency: String(options.currency || 'USD').toUpperCase(),
+    currency: String(options.currency || process.env.DEFAULT_CURRENCY || 'KES').toUpperCase(),
     calculatedAt: options.calculatedAt || new Date()
   };
 }
@@ -45,7 +45,7 @@ function termsForBooking(booking = {}) {
     providerFee: 0,
     shipperTotal: legacyAmount,
     carrierPayout: legacyAmount,
-    currency: 'USD'
+    currency: String(process.env.DEFAULT_CURRENCY || 'KES').toUpperCase()
   };
 }
 

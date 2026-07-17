@@ -44,9 +44,9 @@ async function run() {
   });
 
   await Wallet.create([
-    { user: admin._id, balance: 2500, currency: 'USD' },
-    { user: owner._id, balance: 8700, currency: 'USD' },
-    { user: client._id, balance: 4200, currency: 'USD' }
+    { user: admin._id, balance: 2500, currency: 'KES' },
+    { user: owner._id, balance: 8700, currency: 'KES' },
+    { user: client._id, balance: 4200, currency: 'KES' }
   ]);
 
   await Truck.create({

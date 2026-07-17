@@ -5,16 +5,6 @@ const idempotencyKeyBody = optionalString('idempotencyKey', 128);
 
 const amountSchema = [positiveAmount('amount'), optionalString('description', 240), idempotencyKeyBody];
 
-const fundEscrowSchema = [
-  liveMongoIdParam('bookingId'),
-  body('amount')
-    .optional({ checkFalsy: true })
-    .isFloat({ min: 0.01 })
-    .withMessage('amount must be greater than zero')
-    .toFloat(),
-  idempotencyKeyBody
-];
-
 const withdrawalSchema = [
   positiveAmount('amount'),
   body('method').isIn(['mpesa', 'mtn', 'bank', 'stripe']).withMessage('Choose a supported withdrawal method'),
@@ -25,6 +15,15 @@ const withdrawalSchema = [
 ];
 
 const releasePaymentSchema = [liveMongoIdParam('bookingId'), idempotencyKeyBody];
+const initiateCardCheckoutSchema = [
+  liveMongoIdParam('bookingId'),
+  body('amount')
+    .optional({ checkFalsy: true })
+    .isFloat({ min: 0.01 })
+    .withMessage('amount must be greater than zero')
+    .toFloat(),
+  idempotencyKeyBody
+];
 const refundSchema = [
   liveMongoIdParam('transactionId'),
   body('amount').optional().isFloat({ min: 0.01 }).withMessage('amount must be greater than zero').toFloat(),
@@ -87,7 +86,7 @@ const initiateMobileMoneyBodySchema = [
 
 module.exports = {
   amountSchema,
-  fundEscrowSchema,
+  initiateCardCheckoutSchema,
   initiateMobileMoneyBodySchema,
   initiateMobileMoneySchema,
   executePayoutSchema,

@@ -54,7 +54,7 @@ test('shipper booking, owner bid, and acceptance stay visible and financially ac
           cargoValue: 18000,
           receiverName: 'QA Receiver',
           receiverPhone: '+256700123456',
-          paymentMethod: 'Wallet'
+          paymentMethod: 'Card'
         })
       });
       return { status: response.status, body: await response.json() };
@@ -73,7 +73,7 @@ test('shipper booking, owner bid, and acceptance stay visible and financially ac
   await loadCard.click();
 
   await owner.getByRole('button', { name: 'Submit Bid', exact: true }).click();
-  await owner.getByLabel('Bid amount (USD)').fill('1450');
+  await owner.getByLabel('Bid amount (KES)').fill('1450');
   await owner.getByLabel('Vehicle').selectOption({ index: 1 });
   await owner.getByLabel('Message to shipper').fill('Available for pickup tomorrow morning.');
   const bidResponse = owner.waitForResponse(
@@ -86,12 +86,12 @@ test('shipper booking, owner bid, and acceptance stay visible and financially ac
   await expect(owner.getByRole('tab', { name: /My Bids \(\d+\)/ })).toBeVisible();
   const ownerBidRow = owner.getByRole('row', { name: new RegExp(bookingId) });
   await expect(ownerBidRow).toBeVisible();
-  await expect(ownerBidRow.getByText(/USD\s*1,450/)).toBeVisible();
+  await expect(ownerBidRow.getByText(/KES\s*1,450/)).toBeVisible();
   await expect(ownerBidRow.getByText('pending', { exact: true })).toBeVisible();
 
   await shipper.goto(`/app/shipments/${bookingId}`);
   await expect(shipper.getByText('Carrier Bids')).toBeVisible();
-  await expect(shipper.getByText(/USD\s*1,450/)).toBeVisible();
+  await expect(shipper.getByText(/KES\s*1,450/)).toBeVisible();
   const acceptResponse = shipper.waitForResponse(
     (response) => response.url().endsWith('/accept') && response.request().method() === 'PATCH'
   );
@@ -100,17 +100,24 @@ test('shipper booking, owner bid, and acceptance stay visible and financially ac
 
   await expect(shipper.getByText('Confirmed', { exact: true })).toBeVisible();
   await expect(shipper.getByText('Accepted Offer')).toBeVisible();
-  await expect(shipper.getByText(/USD\s*1,450/).first()).toBeVisible();
+  await expect(shipper.getByText(/KES\s*1,450/).first()).toBeVisible();
   await expect(shipper.getByText('Payment pending')).toBeVisible();
   await expect(shipper.getByText('8 tonnes')).toBeVisible();
   await expect(shipper.getByText('Lorry', { exact: true })).toBeVisible();
 
-  await shipper.getByRole('button', { name: 'Fund Escrow', exact: true }).click();
-  await expect(shipper.getByRole('dialog').getByText(/USD\s*1,486\.25/)).toBeVisible();
-  const fundingResponse = shipper.waitForResponse((response) =>
-    response.url().endsWith(`/api/payments/bookings/${bookingId}/escrow`)
+  await shipper.getByRole('button', { name: 'Pay Securely', exact: true }).click();
+  await expect(shipper.getByRole('dialog').getByText(/KES\s*1,486\.25/)).toBeVisible();
+  await expect(shipper.getByRole('dialog').getByLabel('Payment method')).toHaveValue('card');
+  await expect(shipper.getByRole('dialog').getByRole('option', { name: 'M-Pesa' })).toBeEnabled();
+  await expect(shipper.getByRole('dialog').getByRole('option', { name: 'MTN MoMo — unavailable' })).toHaveAttribute(
+    'disabled',
+    ''
   );
-  await shipper.getByRole('dialog').getByRole('button', { name: 'Fund Escrow', exact: true }).click();
+  await expect(shipper.getByRole('dialog').getByRole('option', { name: /iTruck Wallet/i })).toHaveCount(0);
+  const fundingResponse = shipper.waitForResponse((response) =>
+    response.url().endsWith(`/api/payments/bookings/${bookingId}/card-checkout`)
+  );
+  await shipper.getByRole('dialog').getByRole('button', { name: 'Continue to Secure Checkout', exact: true }).click();
   expect((await fundingResponse).ok()).toBe(true);
   await expect(shipper.getByText('Funded', { exact: true })).toBeVisible();
 
@@ -135,7 +142,7 @@ test('shipper booking, owner bid, and acceptance stay visible and financially ac
   await expect(shipper.getByText('Delivered', { exact: true })).toBeVisible();
   await expect(shipper.getByText('Shipment completed')).toBeVisible();
   await expect(shipper.getByText('Accepted Offer')).toBeVisible();
-  await expect(shipper.getByText(/USD\s*1,450/).first()).toBeVisible();
+  await expect(shipper.getByText(/KES\s*1,450/).first()).toBeVisible();
   await expect(shipper.getByRole('button', { name: 'Invoice', exact: true })).toBeVisible();
   await expect(shipper.getByRole('button', { name: 'Proof of Delivery', exact: true })).toBeVisible();
 

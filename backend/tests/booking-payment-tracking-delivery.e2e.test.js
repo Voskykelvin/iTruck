@@ -68,6 +68,7 @@ const Transaction = require('../models/Transaction');
 const Truck = require('../models/Truck');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
+const paymentService = require('../services/payment');
 
 function id() {
   return new mongoose.Types.ObjectId();
@@ -277,6 +278,13 @@ describe('booking to payment to tracking to delivery flow', () => {
       ]
     ]);
     transactions = new Map();
+    paymentService.cards.stripe = {
+      createCheckoutSession: jest.fn(async () => ({
+        id: 'cs_test_booking_flow',
+        url: 'https://checkout.stripe.test/session',
+        payment_intent: 'pi_test_booking_flow'
+      }))
+    };
 
     jest.spyOn(User, 'findById').mockImplementation((userId) => ({
       select: jest.fn(async () => users.get(String(userId)) || null)
@@ -383,7 +391,7 @@ describe('booking to payment to tracking to delivery flow', () => {
         cargoValue: 8000,
         weight: '8 tonnes',
         budget: 1500,
-        paymentMethod: 'wallet',
+        paymentMethod: 'card',
         receiverName: 'Kampala Receiver',
         receiverPhone: '+256700111222',
         quoteAcknowledged: true
@@ -417,15 +425,36 @@ describe('booking to payment to tracking to delivery flow', () => {
       expect.objectContaining({ carrierAmount: 1250, platformFee: 31.25, shipperTotal: 1281.25 })
     );
 
-    const escrow = await request(app)
-      .post(`/api/payments/bookings/${bookingId}/escrow`)
+    const checkout = await request(app)
+      .post(`/api/payments/bookings/${bookingId}/card-checkout`)
       .set('Authorization', `Bearer ${clientToken}`)
       .send({ amount: 1250 })
       .expect(201);
 
-    expect(escrow.body.booking.paymentStatus).toBe('escrowed');
-    expect(escrow.body.transaction.status).toBe('completed');
-    expect(escrow.body.balance).toBe(3718.75);
+    expect(checkout.body.booking.paymentStatus).toBe('pending');
+    expect(checkout.body.checkoutUrl).toBe('https://checkout.stripe.test/session');
+
+    await paymentService.payments.reconcileStripeEvent({
+      id: 'evt_checkout_booking_flow',
+      type: 'checkout.session.completed',
+      livemode: false,
+      data: {
+        object: {
+          id: 'cs_test_booking_flow',
+          payment_intent: 'pi_test_booking_flow',
+          amount_total: 128125,
+          currency: 'kes',
+          client_reference_id: String(bookingId),
+          metadata: {
+            bookingId: String(bookingId),
+            userId: String(client._id),
+            transactionId: String(checkout.body.transaction._id)
+          }
+        }
+      }
+    });
+
+    expect(bookings.get(String(bookingId)).paymentStatus).toBe('escrowed');
 
     const inTransit = await request(app)
       .patch(`/api/bookings/${bookingId}/status`)
@@ -546,11 +575,9 @@ describe('booking to payment to tracking to delivery flow', () => {
     expect(booking.tracking).toHaveLength(4);
     expect(booking.documents).toContainEqual(expect.objectContaining({ type: 'cargo-photos', status: 'pending' }));
     expect(booking.documents).toContainEqual(expect.objectContaining({ type: 'pod', status: 'approved' }));
-    expect(clientWallet.balance).toBe(3718.75);
+    expect(clientWallet.balance).toBe(5000);
     expect(ownerWallet.balance).toBe(1250);
-    expect(payment).toEqual(
-      expect.objectContaining({ amount: 1281.25, status: 'completed', reference: `escrow:${bookingId}` })
-    );
+    expect(payment).toEqual(expect.objectContaining({ amount: 1281.25, status: 'completed', method: 'stripe' }));
     expect(payout).toEqual(
       expect.objectContaining({ amount: 1250, status: 'completed', reference: `release:${bookingId}` })
     );

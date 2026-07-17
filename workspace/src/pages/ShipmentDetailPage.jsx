@@ -42,7 +42,12 @@ export default function ShipmentDetailPage() {
     message: ''
   });
   const [bidDraft, setBidDraft] = useState({ amount: '', truck: '', message: '', expiresAt: '' });
-  const [paymentDraft, setPaymentDraft] = useState({ method: 'wallet', phone: '' });
+  const [paymentDraft, setPaymentDraft] = useState({ method: 'card', phone: '' });
+  const [paymentMethods, setPaymentMethods] = useState([
+    { id: 'card', label: 'Bank card', enabled: true },
+    { id: 'mpesa', label: 'M-Pesa', enabled: true },
+    { id: 'mtn', label: 'MTN MoMo', enabled: false, unavailableReason: 'Coming later' }
+  ]);
   const [reviewDraft, setReviewDraft] = useState({ target: 'owner', score: '5', comment: '' });
 
   const actionMutation = useBookingAction(async (actionFn) => {
@@ -58,6 +63,19 @@ export default function ShipmentDetailPage() {
       .catch(() => addToast({ title: 'Error', message: 'Failed to load shipment details', type: 'error' }))
       .finally(() => setLoading(false));
   }, [id, fetchBooking, addToast]);
+
+  useEffect(() => {
+    if (role !== 'client') return;
+    api
+      .paymentMethods()
+      .then((data) => {
+        if (!Array.isArray(data.methods)) return;
+        setPaymentMethods(data.methods);
+        const firstEnabled = data.methods.find((method) => method.enabled);
+        if (firstEnabled) setPaymentDraft((current) => ({ ...current, method: firstEnabled.id }));
+      })
+      .catch(() => null);
+  }, [role]);
 
   if (loading) {
     return (
@@ -93,6 +111,7 @@ export default function ShipmentDetailPage() {
   const isDelivered = shipment.rawStatus === 'delivered';
   const paymentFunded = ['escrowed', 'release_pending', 'released'].includes(shipment.paymentStatus);
   const paymentPending = shipment.paymentStatus === 'pending';
+  const resumableCardPayment = paymentPending && shipment.paymentMethod === 'stripe';
   const reviewTargets = isShipper
     ? [
         ...(!shipment.rating?.clientToOwner ? [{ value: 'owner', label: 'Carrier and vehicle' }] : []),
@@ -148,8 +167,12 @@ export default function ShipmentDetailPage() {
 
   const submitPayment = () => {
     const amount = Number(shipment.paymentBreakdown?.shipperTotal || shipment.amount);
-    const mobile = paymentDraft.method === 'mpesa' || paymentDraft.method === 'mtn';
-    if (mobile && paymentDraft.phone.trim().length < 8) {
+    const selectedMethod = paymentMethods.find((method) => method.id === paymentDraft.method);
+    if (!selectedMethod?.enabled) {
+      addToast({ title: 'Method unavailable', message: selectedMethod?.unavailableReason, type: 'warning' });
+      return;
+    }
+    if (paymentDraft.method === 'mpesa' && paymentDraft.phone.trim().length < 8) {
       addToast({
         title: 'Enter a valid phone',
         message: 'Mobile-money funding requires a phone number.',
@@ -158,16 +181,21 @@ export default function ShipmentDetailPage() {
       return;
     }
     handleAction(
-      mobile ? 'Payment request sent' : 'Escrow funded',
+      paymentDraft.method === 'card' ? 'Secure card checkout created' : 'M-Pesa request sent',
       () =>
-        mobile
-          ? api.initiateMobileMoneyEscrow(shipment.id, {
+        paymentDraft.method === 'card'
+          ? api.initiateCardCheckout(shipment.id, { amount })
+          : api.initiateMobileMoneyEscrow(shipment.id, {
               amount,
               method: paymentDraft.method,
               phone: paymentDraft.phone.trim()
-            })
-          : api.fundEscrow(shipment.id, { amount }),
-      { onSuccess: () => setIsPaymentModalOpen(false) }
+            }),
+      {
+        onSuccess: (data) => {
+          setIsPaymentModalOpen(false);
+          if (data?.checkoutUrl) window.location.assign(data.checkoutUrl);
+        }
+      }
     );
   };
 
@@ -273,8 +301,12 @@ export default function ShipmentDetailPage() {
             </Button>
           )}
           {isShipper && isConfirmed && !paymentFunded && (
-            <Button variant="primary" disabled={paymentPending} onClick={() => setIsPaymentModalOpen(true)}>
-              {paymentPending ? 'Payment Pending' : 'Fund Escrow'}
+            <Button
+              variant="primary"
+              disabled={paymentPending && !resumableCardPayment}
+              onClick={() => setIsPaymentModalOpen(true)}
+            >
+              {resumableCardPayment ? 'Resume Secure Payment' : paymentPending ? 'Payment Pending' : 'Pay Securely'}
             </Button>
           )}
           {isShipper && (isDeliveryPending || (isInTransit && deliveryPolicy?.directShipperConfirmation)) && (
@@ -515,7 +547,7 @@ export default function ShipmentDetailPage() {
               Cancel
             </Button>
             <Button variant="primary" loading={actionMutation.isPending} onClick={submitPayment}>
-              {paymentDraft.method === 'wallet' ? 'Fund Escrow' : 'Send Payment Request'}
+              {paymentDraft.method === 'card' ? 'Continue to Secure Checkout' : 'Send M-Pesa Prompt'}
             </Button>
           </>
         }
@@ -545,12 +577,20 @@ export default function ShipmentDetailPage() {
               value={paymentDraft.method}
               onChange={(event) => setPaymentDraft({ ...paymentDraft, method: event.target.value })}
             >
-              <option value="wallet">iTruck Wallet</option>
-              <option value="mpesa">M-Pesa</option>
-              <option value="mtn">MTN MoMo</option>
+              {paymentMethods.map((method) => (
+                <option key={method.id} value={method.id} disabled={!method.enabled}>
+                  {method.label}
+                  {method.enabled ? '' : ' — unavailable'}
+                </option>
+              ))}
             </select>
+            {paymentMethods.find((method) => method.id === paymentDraft.method)?.description && (
+              <span className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>
+                {paymentMethods.find((method) => method.id === paymentDraft.method).description}
+              </span>
+            )}
           </label>
-          {paymentDraft.method !== 'wallet' && (
+          {paymentDraft.method === 'mpesa' && (
             <label className="input-group">
               <span className="input-label">Mobile-money phone</span>
               <input
@@ -645,7 +685,7 @@ export default function ShipmentDetailPage() {
             Review {shipment.origin} to {shipment.destination}, then choose the vehicle and commercial terms.
           </p>
           <label className="input-group">
-            <span className="input-label">Bid amount (USD)</span>
+            <span className="input-label">Bid amount (KES)</span>
             <input
               className="input-field"
               type="number"

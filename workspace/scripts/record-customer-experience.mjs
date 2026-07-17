@@ -265,7 +265,7 @@ async function recordCompleteJourney() {
 
   await slowFill(page, 'Cargo Description', '12 pallets of packaged food');
   await slowFill(page, 'Total Weight (Tonnes)', '8');
-  await slowFill(page, 'Declared Value (USD)', '18000');
+  await slowFill(page, 'Declared Value (KES)', '18000');
   await slowFill(page, 'Receiver Name', 'Amina Nsubuga');
   await slowFill(page, 'Receiver Phone', '+256700123456');
   await pause(page, 2_000);
@@ -329,7 +329,7 @@ async function recordCompleteJourney() {
 
   await spotlightClick(page, page.getByRole('button', { name: 'Submit Bid', exact: true }), 1_000);
   const bidDialog = page.getByRole('dialog');
-  await bidDialog.getByLabel('Bid amount (USD)').fill('1450');
+  await bidDialog.getByLabel('Bid amount (KES)').fill('1450');
   await bidDialog.getByLabel('Vehicle').selectOption({ index: 1 });
   await bidDialog.getByLabel('Message to shipper').fill('Available for the requested pickup window.');
   const bidResponsePromise = page.waitForResponse(
@@ -341,7 +341,7 @@ async function recordCompleteJourney() {
   if (!bidResponse.ok()) throw new Error(`Bid submission failed: ${JSON.stringify(bidBody)}`);
   const submittedBid = bidBody.booking?.bids?.at(-1);
   await pause(page, 2_500);
-  pass('Owner bid submission', `A USD ${submittedBid?.amount} bid was stored on ${bookingId}.`);
+  pass('Owner bid submission', `A KES ${submittedBid?.amount} bid was stored on ${bookingId}.`);
   await qaNote(page, 'Bid submitted successfully. Next, verify where the owner can find it.');
 
   const jobsLink = page.getByRole('link', { name: 'My Bids & Jobs', exact: true });
@@ -394,7 +394,7 @@ async function recordCompleteJourney() {
 
   const carrierBids = page.getByText('Carrier Bids');
   await carrierBids.scrollIntoViewIfNeeded();
-  const bidAmount = page.getByText(/(?:USD|\$)\s*1,450/).first();
+  const bidAmount = page.getByText(/KES\s*1,450/).first();
   await pause(page, 5_000);
   let bidVisible = await bidAmount.isVisible().catch(() => false);
   if (!bidVisible) {
@@ -487,11 +487,11 @@ async function recordCompleteJourney() {
       'observe'
     );
     const confirmedPageText = await page.locator('body').innerText();
-    if (confirmedPageText.includes('Agreed Price') && confirmedPageText.includes('USD 0')) {
+    if (confirmedPageText.includes('Agreed Price') && confirmedPageText.includes('KES 0')) {
       finding(
         'high',
         'Confirmed payment amount does not match the accepted bid',
-        'The accepted bid was USD 1,450, but the confirmed Payment Summary displays Agreed Price USD 0.'
+        'The accepted bid was KES 1,450, but the confirmed Payment Summary displays Agreed Price KES 0.'
       );
     }
     if (confirmedPageText.includes('Escrow Status') && confirmedPageText.includes('FUNDED')) {
