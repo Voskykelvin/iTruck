@@ -17,12 +17,17 @@ test('manifest and install assets are valid and reachable', async ({ page }) => 
   }
 });
 
-test('service worker installs and provides the offline fallback', async ({ context, page }) => {
+test('service worker installs and provides the offline fallback', async ({ browserName, context, page }) => {
+  test.skip(browserName !== 'chromium', 'The Android Trusted Web Activity uses Chromium service-worker behavior.');
+
   await page.goto('/');
   await page.evaluate(() => navigator.serviceWorker.ready);
 
-  await context.setOffline(true);
-  await page.goto('/app/shipments');
-  await expect(page.getByRole('heading', { name: "You're offline" })).toBeVisible();
-  await context.setOffline(false);
+  try {
+    await context.setOffline(true);
+    await page.goto('/app/shipments');
+    await expect(page.getByRole('heading', { name: "You're offline" })).toBeVisible();
+  } finally {
+    await context.setOffline(false);
+  }
 });
