@@ -22,3 +22,4 @@ android/*.aab
 android/release-key.keystore
 android/*.jks
 workspace/vite-pwa.*.log
+recordings/

@@ -33,6 +33,7 @@ export default function OnboardingPage() {
   const requiredDocs = profileDocumentsForRole(role);
   const missingDocs = missingRequiredProfileDocuments(user, role);
   const isComplete = missingDocs.length === 0;
+  const isApproved = isComplete && user.isVerified === true;
 
   const triggerUpload = (docLabel) => {
     setActiveDocType(docLabel);
@@ -77,9 +78,11 @@ export default function OnboardingPage() {
         </div>
         <h1 className="page-title">Identity Verification</h1>
         <p className="text-secondary" style={{ maxWidth: 500 }}>
-          {isComplete
-            ? 'Your identity documents have been submitted and are under review by our team. You can proceed to the dashboard.'
-            : 'To ensure a safe and secure platform, please upload the required documents to verify your identity and business.'}
+          {isApproved
+            ? 'Your identity and business documents are verified. Keep them current to retain access to protected workflows.'
+            : isComplete
+              ? 'Your identity documents have been submitted and are under review by our team. You can proceed to the dashboard.'
+              : 'To ensure a safe and secure platform, please upload the required documents to verify your identity and business.'}
         </p>
 
         {isComplete && (
@@ -97,7 +100,7 @@ export default function OnboardingPage() {
         <div className="row-between">
           <h3 style={{ margin: 0 }}>Required Documents</h3>
           <Badge variant={isComplete ? 'success' : 'warning'}>
-            {isComplete ? 'Verification Pending' : `${missingDocs.length} remaining`}
+            {isApproved ? 'Approved' : isComplete ? 'Under Review' : `${missingDocs.length} remaining`}
           </Badge>
         </div>
 

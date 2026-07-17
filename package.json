@@ -21,6 +21,7 @@
     "test": "npm --prefix backend test",
     "test:frontend": "npm --prefix workspace test",
     "test:e2e": "npm --prefix workspace run test:e2e",
+    "record:customer-experience": "node workspace/scripts/record-customer-experience.mjs",
     "test:coverage": "npm --prefix backend run test:coverage",
     "live:check": "npm --prefix backend run live:check",
     "lint": "eslint \"backend/**/*.js\" \"workspace/src/**/*.{js,jsx}\"",

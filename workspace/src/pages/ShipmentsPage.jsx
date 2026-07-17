@@ -10,6 +10,7 @@ import Badge from '../components/ui/Badge';
 import { Search, Package, Plus, MapPin } from 'lucide-react';
 import { money } from '../utils/helpers';
 import Tabs from '../components/ui/Tabs';
+import { ownerBidRecordsFromShipments } from '../utils/helpers';
 
 export default function ShipmentsPage() {
   const navigate = useNavigate();
@@ -23,6 +24,7 @@ export default function ShipmentsPage() {
     ['in_transit', 'delivery_pending', 'pending', 'bidding', 'confirmed'].includes(s.rawStatus)
   );
   const pastShipments = shipments.filter((s) => ['delivered', 'cancelled'].includes(s.rawStatus));
+  const ownerBids = role === 'owner' ? ownerBidRecordsFromShipments(shipments, user) : [];
 
   const columns = [
     { header: 'ID', accessor: 'id', cell: (row) => <span className="mono text-muted">{row.id.substring(0, 8)}</span> },
@@ -73,6 +75,22 @@ export default function ShipmentsPage() {
       align: 'right',
       cell: (row) => <span style={{ fontWeight: 600 }}>{money(row.price)}</span>
     }
+  ];
+
+  const bidColumns = [
+    { header: 'Booking', accessor: 'bookingId', cell: (row) => <span className="mono">{row.bookingId}</span> },
+    { header: 'Route', accessor: 'route' },
+    { header: 'Amount', accessor: 'amount', align: 'right', cell: (row) => <strong>{money(row.amount)}</strong> },
+    {
+      header: 'Bid status',
+      accessor: 'status',
+      cell: (row) => (
+        <Badge variant={row.status === 'accepted' ? 'success' : row.status === 'pending' ? 'warning' : 'default'}>
+          {row.status}
+        </Badge>
+      )
+    },
+    { header: 'Vehicle', accessor: 'truckName' }
   ];
 
   const TableContent = ({ data }) => {
@@ -141,11 +159,27 @@ export default function ShipmentsPage() {
       </div>
 
       <Tabs
-        defaultTab="active"
+        defaultTab={role === 'owner' ? 'bids' : 'active'}
         tabs={[
+          ...(role === 'owner'
+            ? [
+                {
+                  id: 'bids',
+                  label: `My Bids (${ownerBids.length})`,
+                  content: (
+                    <DataTable
+                      columns={bidColumns}
+                      data={ownerBids}
+                      loading={isLoading}
+                      onRowClick={(row) => navigate(`/app/shipments/${row.bookingId}`)}
+                    />
+                  )
+                }
+              ]
+            : []),
           {
             id: 'active',
-            label: `Active (${activeShipments.length})`,
+            label: `${role === 'owner' ? 'Active Jobs' : 'Active'} (${activeShipments.length})`,
             content: <TableContent data={activeShipments} />
           },
           {

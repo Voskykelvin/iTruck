@@ -47,7 +47,7 @@ export default function Sidebar({ isOpen, onClose }) {
           { label: 'Verification', path: '/app/onboarding', icon: 'ShieldCheck' },
           { label: 'Vehicles', path: '/app/vehicles', icon: 'Truck' },
           { label: 'Load Board', path: '/app/bids', icon: 'Search' },
-          { label: 'Jobs', path: '/app/shipments', icon: 'Map' }
+          { label: 'My Bids & Jobs', path: '/app/shipments', icon: 'Map' }
         ]
       : role === 'admin'
         ? [{ label: 'Operations', path: '/app/admin', icon: 'LayoutDashboard' }]
@@ -55,6 +55,7 @@ export default function Sidebar({ isOpen, onClose }) {
           ? [{ label: 'My Jobs', path: '/app/shipments', icon: 'Map' }]
           : [
               { label: 'Dashboard', path: '/app/shipper', icon: 'LayoutDashboard' },
+              { label: 'Verification', path: '/app/onboarding', icon: 'ShieldCheck' },
               { label: 'Book Truck', path: '/app/book', icon: 'Truck' },
               { label: 'My Shipments', path: '/app/shipments', icon: 'Briefcase' }
             ];

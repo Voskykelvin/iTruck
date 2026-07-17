@@ -38,6 +38,7 @@ export function useLogout() {
   return useMutation({
     mutationFn: () => api.logout(),
     onSettled: () => {
+      queryClient.removeQueries({ queryKey: ['commercial'] });
       queryClient.setQueryData(sessionQueryKeys.current(), null);
     }
   });

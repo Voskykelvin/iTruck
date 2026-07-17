@@ -614,6 +614,8 @@ test('booking clients can accept a pending bid and confirm the booking', async (
   expect(res.body.booking.status).toBe('confirmed');
   expect(res.body.booking.owner).toBe('demo-owner-secondary');
   expect(res.body.booking.bids[0].status).toBe('accepted');
+  expect(res.body.booking.paymentAmount).toBe(3040);
+  expect(res.body.booking.paymentStatus).toBe('unpaid');
 });
 
 test('booking clients can confirm delivery after transit', async () => {
@@ -801,7 +803,7 @@ test('owners can attach vehicle photos to truck listings', async () => {
 
 test('booking ratings are tied to delivered jobs for both parties', async () => {
   const client = { id: 'demo-client-ratings', role: 'client' };
-  const owner = { id: 'demo-owner-ratings', role: 'owner' };
+  const owner = { id: 'demo-owner-secondary', role: 'owner' };
 
   const created = await request(app).post('/api/bookings').set('Authorization', authHeader(client)).send({
     pickup: 'Nairobi',
@@ -812,21 +814,27 @@ test('booking ratings are tied to delivered jobs for both parties', async () => 
   });
 
   const bookingId = created.body.booking._id;
-  await request(app)
+  const bid = await request(app)
     .post(`/api/bookings/${bookingId}/bids`)
     .set('Authorization', authHeader(owner))
-    .send({ amount: 900, truck: 'demo-truck-isuzu' });
+    .send({ amount: 900, truck: 'demo-truck-scania' });
+  expect(bid.status).toBe(200);
 
-  await request(app)
+  const accepted = await request(app)
     .patch(`/api/bookings/${bookingId}/bids/${owner.id}/accept`)
     .set('Authorization', authHeader(client));
+  expect(accepted.status).toBe(200);
 
-  await request(app)
+  const inTransit = await request(app)
     .patch(`/api/bookings/${bookingId}/status`)
     .set('Authorization', authHeader(owner))
     .send({ status: 'in_transit' });
+  expect(inTransit.status).toBe(200);
 
-  await request(app).patch(`/api/bookings/${bookingId}/confirm-delivery`).set('Authorization', authHeader(client));
+  const delivered = await request(app)
+    .patch(`/api/bookings/${bookingId}/confirm-delivery`)
+    .set('Authorization', authHeader(client));
+  expect(delivered.status).toBe(200);
 
   const clientRating = await request(app)
     .post(`/api/bookings/${bookingId}/ratings`)

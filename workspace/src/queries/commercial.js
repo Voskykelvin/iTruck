@@ -55,9 +55,11 @@ export function updateBookingCache(queryClient, booking, { removeFromOpen = fals
   });
   queryClient.setQueryData(commercialQueryKeys.bookingDetail(identity), normalized);
   queryClient.setQueryData(commercialQueryKeys.openBookings(), (current = []) => {
-    if (removeFromOpen) return current.filter((item) => bookingIdentity(item) !== identity);
+    const isOpen = ['pending', 'bidding'].includes(String(booking.status || '').toLowerCase()) && !booking.owner;
+    if (removeFromOpen || !isOpen) return current.filter((item) => bookingIdentity(item) !== identity);
     const open = normalizeOpenLoad(booking);
-    return current.map((item) => (bookingIdentity(item) === identity ? open : item));
+    const exists = current.some((item) => bookingIdentity(item) === identity);
+    return exists ? current.map((item) => (bookingIdentity(item) === identity ? open : item)) : [open, ...current];
   });
 }
 
@@ -195,6 +197,7 @@ export function useBookingCache() {
     (bookingId) =>
       queryClient.fetchQuery({
         queryKey: commercialQueryKeys.bookingDetail(bookingId),
+        staleTime: 0,
         queryFn: async () => {
           const data = await api.getBooking(bookingId);
           return normalizeBookingShipment(data.booking || {});
@@ -236,8 +239,10 @@ export function useCreateBooking() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload) => api.createBooking(payload),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data?.booking) updateBookingCache(queryClient, data.booking);
       queryClient.invalidateQueries({ queryKey: commercialQueryKeys.bookings() });
+      queryClient.invalidateQueries({ queryKey: commercialQueryKeys.openBookings() });
       queryClient.setQueryData(commercialQueryKeys.draft(), null);
     }
   });
