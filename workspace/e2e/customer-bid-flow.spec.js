@@ -18,7 +18,7 @@ async function login(page, email) {
 }
 
 test('shipper booking, owner bid, and acceptance stay visible and financially accurate', async ({ browser }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(120_000);
   const suffix = Date.now().toString().slice(-6);
   const pickup = `Nairobi QA ${suffix}`;
   const destination = `Kampala QA ${suffix}`;
@@ -104,6 +104,29 @@ test('shipper booking, owner bid, and acceptance stay visible and financially ac
   await expect(shipper.getByText('Payment pending')).toBeVisible();
   await expect(shipper.getByText('8 tonnes')).toBeVisible();
   await expect(shipper.getByText('Lorry', { exact: true })).toBeVisible();
+
+  await owner.goto(`/app/shipments/${bookingId}`);
+  await expect(owner.getByRole('button', { name: 'Start Dispatch', exact: true })).toBeVisible();
+  const dispatchResponse = owner.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/bookings/${bookingId}/status`) && response.request().method() === 'PATCH'
+  );
+  await owner.getByRole('button', { name: 'Start Dispatch', exact: true }).click();
+  expect((await dispatchResponse).ok()).toBe(true);
+  await expect(owner.getByText('In Transit', { exact: true })).toBeVisible();
+  await expect(owner.getByText('Currently on route to destination')).toBeVisible();
+
+  await shipper.goto(`/app/shipments/${bookingId}`);
+  await expect(shipper.getByText('In Transit', { exact: true })).toBeVisible();
+  const deliveryResponse = shipper.waitForResponse((response) =>
+    response.url().endsWith(`/api/bookings/${bookingId}/confirm-delivery`)
+  );
+  await shipper.getByRole('button', { name: 'Confirm Receipt', exact: true }).click();
+  expect((await deliveryResponse).ok()).toBe(true);
+  await expect(shipper.getByText('Delivered', { exact: true })).toBeVisible();
+  await expect(shipper.getByText('Shipment completed')).toBeVisible();
+  await expect(shipper.getByText('Accepted Offer')).toBeVisible();
+  await expect(shipper.getByText(/USD\s*1,450/).first()).toBeVisible();
 
   await ownerContext.close();
   await shipperContext.close();
