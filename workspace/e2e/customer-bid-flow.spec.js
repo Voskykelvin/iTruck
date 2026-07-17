@@ -105,6 +105,15 @@ test('shipper booking, owner bid, and acceptance stay visible and financially ac
   await expect(shipper.getByText('8 tonnes')).toBeVisible();
   await expect(shipper.getByText('Lorry', { exact: true })).toBeVisible();
 
+  await shipper.getByRole('button', { name: 'Fund Escrow', exact: true }).click();
+  await expect(shipper.getByRole('dialog').getByText(/USD\s*1,486\.25/)).toBeVisible();
+  const fundingResponse = shipper.waitForResponse((response) =>
+    response.url().endsWith(`/api/payments/bookings/${bookingId}/escrow`)
+  );
+  await shipper.getByRole('dialog').getByRole('button', { name: 'Fund Escrow', exact: true }).click();
+  expect((await fundingResponse).ok()).toBe(true);
+  await expect(shipper.getByText('Funded', { exact: true })).toBeVisible();
+
   await owner.goto(`/app/shipments/${bookingId}`);
   await expect(owner.getByRole('button', { name: 'Start Dispatch', exact: true })).toBeVisible();
   const dispatchResponse = owner.waitForResponse(
@@ -127,6 +136,24 @@ test('shipper booking, owner bid, and acceptance stay visible and financially ac
   await expect(shipper.getByText('Shipment completed')).toBeVisible();
   await expect(shipper.getByText('Accepted Offer')).toBeVisible();
   await expect(shipper.getByText(/USD\s*1,450/).first()).toBeVisible();
+  await expect(shipper.getByRole('button', { name: 'Invoice', exact: true })).toBeVisible();
+  await expect(shipper.getByRole('button', { name: 'Proof of Delivery', exact: true })).toBeVisible();
+
+  const releaseResponse = shipper.waitForResponse((response) =>
+    response.url().endsWith(`/api/payments/bookings/${bookingId}/release`)
+  );
+  await shipper.getByRole('button', { name: 'Release Payment', exact: true }).click();
+  expect((await releaseResponse).ok()).toBe(true);
+  await expect(shipper.getByText('Released', { exact: true })).toBeVisible();
+
+  await shipper.getByRole('button', { name: 'Leave a Review', exact: true }).click();
+  await shipper.getByLabel('Comment (optional)').fill('Reliable carrier and clear delivery handoff.');
+  const reviewResponse = shipper.waitForResponse((response) =>
+    response.url().endsWith(`/api/bookings/${bookingId}/ratings`)
+  );
+  await shipper.getByRole('dialog').getByRole('button', { name: 'Submit Review', exact: true }).click();
+  expect((await reviewResponse).ok()).toBe(true);
+  await expect(shipper.getByRole('button', { name: 'Leave a Review', exact: true })).toHaveCount(0);
 
   await ownerContext.close();
   await shipperContext.close();

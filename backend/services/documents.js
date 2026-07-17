@@ -15,6 +15,11 @@ function line(doc, label, value) {
   doc.moveDown(0.7);
 }
 
+function usd(value, fallback = 'Pending') {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? `USD ${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : fallback;
+}
+
 function createDocument(title, booking = {}, sections = []) {
   const doc = new PDFDocument({ margin: 48 });
   doc.fillColor(DOCUMENT_COLORS.brand).fontSize(13).text('iTruck Africa', { continued: true });
@@ -128,22 +133,23 @@ function createReceiverConfirmation(booking) {
 }
 
 function createInvoice(booking) {
+  const terms = booking.paymentBreakdown || {};
   return createDocument('Commercial Invoice', booking, [
     {
       heading: 'Billing',
       items: [
         ['Client', booking.client || 'Client account'],
         ['Owner', booking.owner || 'Fleet owner'],
-        ['Base freight', booking.base || '$920'],
+        ['Carrier amount', usd(terms.carrierAmount || booking.paymentAmount)],
         ['Escrow/payment status', booking.paymentStatus || 'Paid']
       ]
     },
     {
       heading: 'Charges',
       items: [
-        ['Insurance', booking.insurance || '$32'],
-        ['Platform fee', booking.platformFee || '$23'],
-        ['Total', booking.total || '$975']
+        ['iTruck platform fee', usd(terms.platformFee, 'USD 0.00')],
+        ['Payment-provider fee', usd(terms.providerFee, 'USD 0.00')],
+        ['Total funded', usd(terms.shipperTotal || booking.paymentAmount)]
       ]
     }
   ]);

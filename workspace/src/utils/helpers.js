@@ -768,6 +768,20 @@ export function normalizeBookingShipment(booking) {
   const amount = bookingPaymentAmount(booking);
   const owner = booking.owner && typeof booking.owner === 'object' ? booking.owner : null;
   const driver = booking.driver && typeof booking.driver === 'object' ? booking.driver : null;
+  const acceptedBid = (booking.bids || []).find((bid) => bid.status === 'accepted');
+  const carrierAmount = Number(booking.paymentBreakdown?.carrierAmount || acceptedBid?.amount || amount || 0);
+  const platformFee = Number(
+    booking.paymentBreakdown?.platformFee || (carrierAmount > 0 ? Math.round(carrierAmount * 0.025 * 100) / 100 : 0)
+  );
+  const paymentBreakdown = booking.paymentBreakdown || {
+    carrierAmount,
+    platformFeeRate: 0.025,
+    platformFee,
+    providerFee: 0,
+    shipperTotal: carrierAmount + platformFee,
+    carrierPayout: carrierAmount,
+    currency: 'USD'
+  };
 
   return {
     id: bookingRef(booking),
@@ -789,6 +803,7 @@ export function normalizeBookingShipment(booking) {
       : owner
         ? `${owner.firstName || ''} ${owner.lastName || ''}`.trim()
         : 'Driver pending',
+    driverId: driver?._id || booking.driverId || (typeof booking.driver === 'string' ? booking.driver : ''),
     status: statusLabel(normStatus),
     rawStatus: normStatus,
     progress,
@@ -801,6 +816,7 @@ export function normalizeBookingShipment(booking) {
     amount,
     price: amount,
     paymentReference: booking.paymentReference || '',
+    paymentBreakdown,
     documents: booking.estimate?.requiredDocuments || demoDocuments.slice(0, 3),
     bookingDocuments,
     destinationCoordinates: booking.destinationCoordinates,
@@ -814,6 +830,7 @@ export function normalizeBookingShipment(booking) {
     receiverName: booking.receiverName || '',
     receiverPhone: booking.receiverPhone || '',
     deliveryProof: booking.deliveryProof || null,
+    rating: booking.rating || {},
     bids: Array.isArray(booking.bids) ? booking.bids.map(normalizeBid) : [],
     tracking
   };

@@ -413,6 +413,9 @@ describe('booking to payment to tracking to delivery flow', () => {
     expect(accepted.body.booking.status).toBe('confirmed');
     expect(String(accepted.body.booking.owner)).toBe(String(owner._id));
     expect(String(accepted.body.booking.truck)).toBe(String(truck._id));
+    expect(accepted.body.booking.paymentBreakdown).toEqual(
+      expect.objectContaining({ carrierAmount: 1250, platformFee: 31.25, shipperTotal: 1281.25 })
+    );
 
     const escrow = await request(app)
       .post(`/api/payments/bookings/${bookingId}/escrow`)
@@ -422,7 +425,7 @@ describe('booking to payment to tracking to delivery flow', () => {
 
     expect(escrow.body.booking.paymentStatus).toBe('escrowed');
     expect(escrow.body.transaction.status).toBe('completed');
-    expect(escrow.body.balance).toBe(3750);
+    expect(escrow.body.balance).toBe(3718.75);
 
     const inTransit = await request(app)
       .patch(`/api/bookings/${bookingId}/status`)
@@ -536,19 +539,23 @@ describe('booking to payment to tracking to delivery flow', () => {
     const ownerWallet = wallets.get(String(owner._id));
     const payment = [...transactions.values()].find((transaction) => transaction.type === 'payment');
     const payout = [...transactions.values()].find((transaction) => transaction.type === 'credit');
+    const platformFee = [...transactions.values()].find((transaction) => transaction.type === 'platform_fee');
 
     expect(booking.status).toBe('delivered');
     expect(booking.paymentStatus).toBe('released');
     expect(booking.tracking).toHaveLength(4);
     expect(booking.documents).toContainEqual(expect.objectContaining({ type: 'cargo-photos', status: 'pending' }));
     expect(booking.documents).toContainEqual(expect.objectContaining({ type: 'pod', status: 'approved' }));
-    expect(clientWallet.balance).toBe(3750);
+    expect(clientWallet.balance).toBe(3718.75);
     expect(ownerWallet.balance).toBe(1250);
     expect(payment).toEqual(
-      expect.objectContaining({ amount: 1250, status: 'completed', reference: `escrow:${bookingId}` })
+      expect.objectContaining({ amount: 1281.25, status: 'completed', reference: `escrow:${bookingId}` })
     );
     expect(payout).toEqual(
       expect.objectContaining({ amount: 1250, status: 'completed', reference: `release:${bookingId}` })
+    );
+    expect(platformFee).toEqual(
+      expect.objectContaining({ amount: 31.25, status: 'completed', reference: `platform-fee:${bookingId}` })
     );
   });
 });

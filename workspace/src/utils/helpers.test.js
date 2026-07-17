@@ -39,6 +39,12 @@ describe('display helpers', () => {
       paymentStatus: 'unpaid'
     });
     expect(normalized.eta).toEqual(expect.any(String));
+    expect(normalized.paymentBreakdown).toMatchObject({
+      carrierAmount: 1450,
+      platformFee: 36.25,
+      shipperTotal: 1486.25,
+      carrierPayout: 1450
+    });
     expect(() => normalizeBookingShipment(normalized)).not.toThrow();
   });
 

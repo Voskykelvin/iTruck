@@ -181,9 +181,10 @@ router.post(
           message: strictDeliveryProof()
             ? 'Receiver OTP, electronic signature, GPS, and delivery photos were verified.'
             : 'Delivery photo verified. The shipment is now marked as delivered.',
-          link: '/app/shipments',
+          link: `/app/shipments/${result.booking._id}`,
           bookingId: result.booking._id,
-          proofHash: result.proof.recordHash
+          proofHash: result.proof.recordHash,
+          reviewRequested: result.booking.status === 'delivered'
         },
         req.app.get('io')
       );

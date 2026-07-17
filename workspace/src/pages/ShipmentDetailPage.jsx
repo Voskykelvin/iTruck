@@ -13,7 +13,7 @@ import ProgressRing from '../components/ui/ProgressRing';
 import BidCard from '../components/domain/BidCard';
 import DeliveryProofModal from '../components/domain/DeliveryProofModal';
 import DeliveryProofViewer from '../components/domain/DeliveryProofViewer';
-import { AlertTriangle, ArrowLeft, Box, ShieldCheck, Truck } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Box, Download, ShieldCheck, Star, Truck } from 'lucide-react';
 import { money, normalizeBookingShipment, paymentStatusLabel, paymentTone } from '../utils/helpers';
 import { useToast } from '../components/ui/Toast';
 import Modal from '../components/ui/Modal';
@@ -32,6 +32,8 @@ export default function ShipmentDetailPage() {
   const [isProofModalOpen, setIsProofModalOpen] = useState(false);
   const [isBidModalOpen, setIsBidModalOpen] = useState(false);
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [isSubmittingIssue, setIsSubmittingIssue] = useState(false);
   const [issueDraft, setIssueDraft] = useState({
     kind: 'support',
@@ -40,6 +42,8 @@ export default function ShipmentDetailPage() {
     message: ''
   });
   const [bidDraft, setBidDraft] = useState({ amount: '', truck: '', message: '', expiresAt: '' });
+  const [paymentDraft, setPaymentDraft] = useState({ method: 'wallet', phone: '' });
+  const [reviewDraft, setReviewDraft] = useState({ target: 'owner', score: '5', comment: '' });
 
   const actionMutation = useBookingAction(async (actionFn) => {
     const data = await actionFn();
@@ -87,6 +91,18 @@ export default function ShipmentDetailPage() {
   const isInTransit = shipment.rawStatus === 'in_transit';
   const isDeliveryPending = shipment.rawStatus === 'delivery_pending';
   const isDelivered = shipment.rawStatus === 'delivered';
+  const paymentFunded = ['escrowed', 'release_pending', 'released'].includes(shipment.paymentStatus);
+  const paymentPending = shipment.paymentStatus === 'pending';
+  const reviewTargets = isShipper
+    ? [
+        ...(!shipment.rating?.clientToOwner ? [{ value: 'owner', label: 'Carrier and vehicle' }] : []),
+        ...(shipment.driverId && !shipment.rating?.clientToDriver
+          ? [{ value: 'driver', label: 'Assigned driver' }]
+          : [])
+      ]
+    : isOwner && !shipment.rating?.ownerToClient
+      ? [{ value: 'client', label: 'Shipper' }]
+      : [];
 
   const handleAction = (label, apiCall, options = {}) => {
     actionMutation.mutate(apiCall, {
@@ -128,6 +144,62 @@ export default function ShipmentDetailPage() {
         }),
       { onSuccess: () => setIsBidModalOpen(false) }
     );
+  };
+
+  const submitPayment = () => {
+    const amount = Number(shipment.paymentBreakdown?.shipperTotal || shipment.amount);
+    const mobile = paymentDraft.method === 'mpesa' || paymentDraft.method === 'mtn';
+    if (mobile && paymentDraft.phone.trim().length < 8) {
+      addToast({
+        title: 'Enter a valid phone',
+        message: 'Mobile-money funding requires a phone number.',
+        type: 'warning'
+      });
+      return;
+    }
+    handleAction(
+      mobile ? 'Payment request sent' : 'Escrow funded',
+      () =>
+        mobile
+          ? api.initiateMobileMoneyEscrow(shipment.id, {
+              amount,
+              method: paymentDraft.method,
+              phone: paymentDraft.phone.trim()
+            })
+          : api.fundEscrow(shipment.id, { amount }),
+      { onSuccess: () => setIsPaymentModalOpen(false) }
+    );
+  };
+
+  const submitReview = () => {
+    handleAction(
+      'Review submitted',
+      () =>
+        api.rateBooking(shipment.id, {
+          target: reviewDraft.target,
+          score: Number(reviewDraft.score),
+          ...(reviewDraft.comment.trim() ? { comment: reviewDraft.comment.trim() } : {})
+        }),
+      { onSuccess: () => setIsReviewModalOpen(false) }
+    );
+  };
+
+  const releasePayment = () => {
+    handleAction('Payment released', () => api.releasePayment(shipment.id));
+  };
+
+  const openReview = () => {
+    setReviewDraft({ target: reviewTargets[0]?.value || 'owner', score: '5', comment: '' });
+    setIsReviewModalOpen(true);
+  };
+
+  const downloadDocument = async (type, label) => {
+    try {
+      await api.downloadDocument(type, shipment.id);
+      addToast({ title: `${label} ready`, message: 'Your download has started.', type: 'success' });
+    } catch (error) {
+      addToast({ title: 'Download failed', message: error.message, type: 'error' });
+    }
   };
 
   const submitIssue = async () => {
@@ -191,11 +263,18 @@ export default function ShipmentDetailPage() {
           {isOwner && isConfirmed && (
             <Button
               variant="primary"
+              disabled={!paymentFunded}
+              title={!paymentFunded ? 'The shipper must fund escrow before dispatch can start.' : undefined}
               onClick={() =>
                 handleAction('Dispatch started', () => api.updateBookingStatus(shipment.id, { status: 'in_transit' }))
               }
             >
-              Start Dispatch
+              {paymentFunded ? 'Start Dispatch' : 'Awaiting Escrow'}
+            </Button>
+          )}
+          {isShipper && isConfirmed && !paymentFunded && (
+            <Button variant="primary" disabled={paymentPending} onClick={() => setIsPaymentModalOpen(true)}>
+              {paymentPending ? 'Payment Pending' : 'Fund Escrow'}
             </Button>
           )}
           {isShipper && (isDeliveryPending || (isInTransit && deliveryPolicy?.directShipperConfirmation)) && (
@@ -209,6 +288,16 @@ export default function ShipmentDetailPage() {
           {(isOwner || role === 'driver') && isInTransit && (
             <Button variant="primary" onClick={() => setIsProofModalOpen(true)}>
               Confirm Delivery
+            </Button>
+          )}
+          {isDelivered && reviewTargets.length > 0 && (
+            <Button variant="primary" icon={Star} onClick={openReview}>
+              Leave a Review
+            </Button>
+          )}
+          {isShipper && isDelivered && shipment.paymentStatus === 'escrowed' && (
+            <Button variant="primary" onClick={releasePayment} loading={actionMutation.isPending}>
+              Release Payment
             </Button>
           )}
         </div>
@@ -341,7 +430,19 @@ export default function ShipmentDetailPage() {
               </h3>
               <div className="row-between" style={{ fontSize: 'var(--text-sm)' }}>
                 <span className="text-secondary">Agreed Price</span>
-                <span style={{ fontWeight: 600 }}>{money(shipment.amount)}</span>
+                <span style={{ fontWeight: 600 }}>
+                  {money(shipment.paymentBreakdown?.carrierAmount || shipment.amount)}
+                </span>
+              </div>
+              <div className="row-between" style={{ fontSize: 'var(--text-sm)' }}>
+                <span className="text-secondary">iTruck Platform Fee</span>
+                <span style={{ fontWeight: 600 }}>{money(shipment.paymentBreakdown?.platformFee || 0)}</span>
+              </div>
+              <div className="row-between" style={{ fontSize: 'var(--text-sm)' }}>
+                <span className="text-secondary">Total</span>
+                <span style={{ fontWeight: 700 }}>
+                  {money(shipment.paymentBreakdown?.shipperTotal || shipment.amount)}
+                </span>
               </div>
               <div className="row-between" style={{ fontSize: 'var(--text-sm)' }}>
                 <span className="text-secondary">Escrow Status</span>
@@ -359,6 +460,42 @@ export default function ShipmentDetailPage() {
 
           {/* Delivery Proof Viewer */}
           {isDelivered && <DeliveryProofViewer shipmentId={shipment.id} />}
+          {isDelivered && (
+            <Card className="stack">
+              <h3 className="eyebrow" style={{ margin: 0 }}>
+                Post-delivery Documents
+              </h3>
+              <p className="text-secondary" style={{ margin: 0 }}>
+                Download the final commercial and delivery records for this shipment.
+              </p>
+              <div className="row" style={{ flexWrap: 'wrap' }}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={Download}
+                  onClick={() => downloadDocument('invoice', 'Invoice')}
+                >
+                  Invoice
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={Download}
+                  onClick={() => downloadDocument('pod', 'Proof of Delivery')}
+                >
+                  Proof of Delivery
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={Download}
+                  onClick={() => downloadDocument('receiver-confirmation', 'Receiver Confirmation')}
+                >
+                  Receiver Confirmation
+                </Button>
+              </div>
+            </Card>
+          )}
         </div>
       </div>
 
@@ -367,6 +504,126 @@ export default function ShipmentDetailPage() {
         onClose={() => setIsProofModalOpen(false)}
         shipmentId={shipment.id}
       />
+
+      <Modal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        title="Fund shipment escrow"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setIsPaymentModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={actionMutation.isPending} onClick={submitPayment}>
+              {paymentDraft.method === 'wallet' ? 'Fund Escrow' : 'Send Payment Request'}
+            </Button>
+          </>
+        }
+      >
+        <div className="stack">
+          <p className="text-secondary">
+            Dispatch becomes available after the full shipment total is safely held in escrow.
+          </p>
+          <div className="glass-panel stack-sm" style={{ padding: 'var(--space-4)' }}>
+            <div className="row-between">
+              <span>Carrier amount</span>
+              <strong>{money(shipment.paymentBreakdown?.carrierAmount || shipment.amount)}</strong>
+            </div>
+            <div className="row-between">
+              <span>iTruck platform fee</span>
+              <strong>{money(shipment.paymentBreakdown?.platformFee || 0)}</strong>
+            </div>
+            <div className="row-between">
+              <span>Total to fund</span>
+              <strong>{money(shipment.paymentBreakdown?.shipperTotal || shipment.amount)}</strong>
+            </div>
+          </div>
+          <label className="input-group">
+            <span className="input-label">Payment method</span>
+            <select
+              className="input-field"
+              value={paymentDraft.method}
+              onChange={(event) => setPaymentDraft({ ...paymentDraft, method: event.target.value })}
+            >
+              <option value="wallet">iTruck Wallet</option>
+              <option value="mpesa">M-Pesa</option>
+              <option value="mtn">MTN MoMo</option>
+            </select>
+          </label>
+          {paymentDraft.method !== 'wallet' && (
+            <label className="input-group">
+              <span className="input-label">Mobile-money phone</span>
+              <input
+                className="input-field"
+                type="tel"
+                value={paymentDraft.phone}
+                onChange={(event) => setPaymentDraft({ ...paymentDraft, phone: event.target.value })}
+                placeholder="e.g. +254712345678"
+              />
+            </label>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isReviewModalOpen}
+        onClose={() => setIsReviewModalOpen(false)}
+        title="Review completed shipment"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setIsReviewModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={actionMutation.isPending} onClick={submitReview}>
+              Submit Review
+            </Button>
+          </>
+        }
+      >
+        <div className="stack">
+          {reviewTargets.length > 1 && (
+            <label className="input-group">
+              <span className="input-label">Review</span>
+              <select
+                className="input-field"
+                value={reviewDraft.target}
+                onChange={(event) => setReviewDraft({ ...reviewDraft, target: event.target.value })}
+              >
+                {reviewTargets.map((target) => (
+                  <option key={target.value} value={target.value}>
+                    {target.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="input-group">
+            <span className="input-label">Rating</span>
+            <select
+              className="input-field"
+              value={reviewDraft.score}
+              onChange={(event) => setReviewDraft({ ...reviewDraft, score: event.target.value })}
+            >
+              <option value="5">5 — Excellent</option>
+              <option value="4">4 — Good</option>
+              <option value="3">3 — Acceptable</option>
+              <option value="2">2 — Needs improvement</option>
+              <option value="1">1 — Poor</option>
+            </select>
+          </label>
+          <label className="input-group">
+            <span className="input-label">Comment (optional)</span>
+            <textarea
+              className="input-field"
+              rows="4"
+              maxLength="1000"
+              value={reviewDraft.comment}
+              onChange={(event) => setReviewDraft({ ...reviewDraft, comment: event.target.value })}
+              placeholder="Share useful feedback about this completed shipment."
+            />
+          </label>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={isBidModalOpen}
