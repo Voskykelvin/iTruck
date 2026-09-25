@@ -22,11 +22,8 @@ function sameId(left, right) {
 }
 
 function approvedDocumentTypes(documents = [], normalizeType = (value) => value, entity = {}) {
-  const docs = Array.isArray(documents)
-    ? documents
-    : Array.isArray(documents?.documents)
-      ? documents.documents
-      : [];
+  const docs =
+    Array.isArray(documents) ? documents : Array.isArray(documents?.documents) ? documents.documents : [];
   const set = new Set(
     docs
       .filter(

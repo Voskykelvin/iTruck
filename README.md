@@ -7,7 +7,7 @@ iTruck is a full-stack logistics platform for shippers, fleet owners, drivers, a
 - `workspace/` — React 18 single-page application built with Vite and TanStack Query.
 - `backend/` — Express API, Socket.IO, MongoDB/Mongoose models, and provider integrations.
 - `frontend/` — generated production build output; ignored by Git and recreated by `npm run build`.
-- `docs/` — active operational, production, provider, and legal documentation.
+- `docs/` — canonical operational and release documents only.
 - `scripts/` — deployment rehearsal, load, Docker, and launch checks.
 - `nginx/` — optional reverse proxy for the container stack.
 
@@ -104,9 +104,9 @@ At minimum, live deployments require secure MongoDB, JWT and delivery-OTP secret
 
 `render.yaml` defines the hosted service. `Dockerfile` builds the React application in a separate stage and copies its generated output into the non-root backend image. `docker-compose.yml` provides the application, MongoDB, Redis, and optional Nginx reverse proxy.
 
-Before deployment, follow [Production Gate](docs/PRODUCTION_GATE.md), [Operations Runbook](docs/OPERATIONS_RUNBOOK.md), and [Rollback Runbook](docs/ROLLBACK_RUNBOOK.md).
+Before deployment, follow the current release path in [Production Gate](docs/PRODUCTION_GATE.md) and [Operations Runbook](docs/OPERATIONS_RUNBOOK.md).
 
-Provider onboarding and backup procedures are documented in [Provider Certification](docs/PROVIDER_CERTIFICATION.md) and [Backup/Restore Runbook](docs/BACKUP_RESTORE_RUNBOOK.md).
+Only the active operational runbooks stay in the repo; historical deployment and build-step guides are intentionally omitted to keep the project documentation current and minimal.
 
 ## Legal Status
 

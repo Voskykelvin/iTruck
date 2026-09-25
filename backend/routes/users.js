@@ -91,7 +91,12 @@ router.patch('/documents/:documentType', documentUploadSchema, validate, async (
 
     if (!mongoReady()) {
       const userObj = demoUsers.find((item) => String(item._id || item.id) === String(req.user._id));
-      const documents = upsertDocument([...((userObj || req.user).documents || [])], documentType, req.body, req.user.role);
+      const documents = upsertDocument(
+        [...((userObj || req.user).documents || [])],
+        documentType,
+        req.body,
+        req.user.role
+      );
       if (userObj) {
         userObj.documents = documents;
       }

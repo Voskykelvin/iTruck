@@ -28,17 +28,6 @@ const localUploads = express.static(localUploadsDir, {
     response.setHeader('X-Content-Type-Options', 'nosniff');
   }
 });
-const legacyRouteMap = {
-  '/pages/dashboard-client.html': '/app/shipper',
-  '/pages/dashboard-owner.html': '/app/owner',
-  '/pages/book-truck.html': '/app/book',
-  '/pages/tracking.html': '/app/shipments',
-  '/pages/driver-contact.html': '/app/shipments',
-  '/pages/listings.html': '/app/marketplace',
-  '/pages/truck-profile.html': '/app/marketplace',
-  '/pages/profile.html': '/app/profile',
-  '/pages/admin/admin-dashboard.html': '/app/admin'
-};
 const contentSecurityPolicy = {
   directives: {
     defaultSrc: ["'self'"],
@@ -155,10 +144,6 @@ app.use('/api', (req, _res, next) => {
   next(AppError.notFound(`Route ${req.originalUrl} not found.`));
 });
 
-app.get(Object.keys(legacyRouteMap), (req, res) => {
-  res.redirect(308, legacyRouteMap[req.path]);
-});
-
 // Serve the built React frontend (SPA)
 app.use(express.static(frontendDir, { index: false }));
 
@@ -172,4 +157,4 @@ app.get('*', (req, res, next) => {
 
 app.use(errorHandler);
 
-module.exports = { app, corsOptions, legacyRouteMap };
+module.exports = { app, corsOptions };
