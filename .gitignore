@@ -3,6 +3,9 @@ node_modules/
 .env.production
 .env.render
 .env.local
+docs/RENDER_DEPLOYMENT_CHECKLIST.md
+docs/DEPLOYMENT_GUIDE.md
+docs/LAUNCH_CHECKLIST.md
 backend/uploads/
 backend/coverage/
 workspace/coverage/

@@ -23,7 +23,7 @@ const {
 } = require('../services/authCookies');
 
 const router = express.Router();
-const memoryUsers = [...demoUsers];
+const memoryUsers = demoUsers;
 const PASSWORD_RESET_MS = 60 * 60 * 1000;
 const PASSWORD_RESET_MESSAGE = 'If that email exists, password reset instructions have been sent.';
 

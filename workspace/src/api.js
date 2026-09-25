@@ -1,4 +1,9 @@
 import { getDeviceId } from './utils/deviceId.js';
+import {
+  normalizeProfileDocumentType,
+  normalizeTruckDocumentType,
+  normalizeBookingDocumentType
+} from './utils/helpers.js';
 
 const configuredApiBase = import.meta.env.VITE_API_BASE || '';
 const API_BASE = configuredApiBase.includes('your-domain.example') ? '/api' : configuredApiBase || '/api';
@@ -372,21 +377,27 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   uploadCargo: uploadCargoFiles,
-  uploadProfileDocument: (documentType, file) =>
-    uploadDocument(`/users/documents/${encodeURIComponent(documentType)}`, documentType, file),
+  uploadProfileDocument: (documentType, file) => {
+    const role = currentUser()?.role || 'client';
+    const slug = normalizeProfileDocumentType(documentType, role);
+    return uploadDocument(`/users/documents/${encodeURIComponent(slug)}`, slug, file);
+  },
   uploadTruckDocument: async (truckId, documentType, file) => {
+    const slug = normalizeTruckDocumentType(documentType);
     const data = await uploadVehicleFile(file, documentUploadTypes, 'Vehicle document');
-    return request(`/trucks/${encodeURIComponent(truckId)}/documents/${encodeURIComponent(documentType)}`, {
+    return request(`/trucks/${encodeURIComponent(truckId)}/documents/${encodeURIComponent(slug)}`, {
       method: 'PATCH',
-      body: JSON.stringify({ url: data.url, fileName: data.fileName || file.name, documentType })
+      body: JSON.stringify({ url: data.url, fileName: data.fileName || file.name, documentType: slug })
     });
   },
-  uploadBookingDocument: (bookingId, documentType, files) =>
-    uploadDocuments(
-      `/bookings/${encodeURIComponent(bookingId)}/documents/${encodeURIComponent(documentType)}`,
-      documentType,
+  uploadBookingDocument: (bookingId, documentType, files) => {
+    const slug = normalizeBookingDocumentType(documentType);
+    return uploadDocuments(
+      `/bookings/${encodeURIComponent(bookingId)}/documents/${encodeURIComponent(slug)}`,
+      slug,
       Array.isArray(files) ? files : [files]
-    ),
+    );
+  },
   uploadTruckPhoto: async (truckId, file) => {
     const data = await uploadVehicleFile(file, imageUploadTypes, 'Vehicle photo');
     const url = data.url;

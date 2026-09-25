@@ -92,7 +92,7 @@ const truckPhotoSchema = [
     .notEmpty()
     .withMessage('url is required')
     .bail()
-    .isURL({ require_protocol: true })
+    .custom(isDocumentUrl)
     .withMessage('url must be a valid photo URL'),
   optionalString('fileName', 240)
 ];

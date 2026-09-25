@@ -21,9 +21,14 @@ function sameId(left, right) {
   return String(left?._id || left || '') === String(right?._id || right || '');
 }
 
-function approvedDocumentTypes(documents = [], normalizeType = (value) => value) {
-  return new Set(
-    documents
+function approvedDocumentTypes(documents = [], normalizeType = (value) => value, entity = {}) {
+  const docs = Array.isArray(documents)
+    ? documents
+    : Array.isArray(documents?.documents)
+      ? documents.documents
+      : [];
+  const set = new Set(
+    docs
       .filter(
         (doc) =>
           doc?.status === 'approved' &&
@@ -32,6 +37,13 @@ function approvedDocumentTypes(documents = [], normalizeType = (value) => value)
       .map((doc) => normalizeType(doc.type))
       .filter(Boolean)
   );
+
+  const photos = entity?.photos || documents?.photos;
+  if (Array.isArray(photos) && photos.length > 0) {
+    set.add(normalizeType('vehicle-photos'));
+  }
+
+  return set;
 }
 
 function validCoordinates(value = {}) {
@@ -68,8 +80,8 @@ function latestTrackingLocation(booking = {}) {
   return null;
 }
 
-function missingApprovedDocuments(documents = [], requiredTypes = [], normalizeType = (value) => value) {
-  const approved = approvedDocumentTypes(documents, normalizeType);
+function missingApprovedDocuments(documents = [], requiredTypes = [], normalizeType = (value) => value, entity = {}) {
+  const approved = approvedDocumentTypes(documents, normalizeType, entity);
   return requiredTypes.filter((type) => !approved.has(normalizeType(type)));
 }
 
@@ -105,7 +117,8 @@ function assertOwnerCanBid(owner, truck) {
   const missingTruckDocuments = missingApprovedDocuments(
     truck.documents || [],
     TRUCK_REQUIRED_DOCUMENTS,
-    normalizeTruckDocumentType
+    normalizeTruckDocumentType,
+    truck
   );
   if (truck.isVerified !== true || missingTruckDocuments.length) {
     throw new AppError('Complete truck verification before bidding', 403, {

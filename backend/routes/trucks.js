@@ -19,7 +19,7 @@ const { demoTrucks } = require('../data/demo-users');
 const { normalizeTruckDocumentType } = require('../utils/documentTypes');
 
 const router = express.Router();
-const memoryTrucks = [...demoTrucks];
+const memoryTrucks = demoTrucks;
 const restrictedCreateFields = new Set([
   'owner',
   'isVerified',

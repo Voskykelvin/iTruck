@@ -27,7 +27,8 @@ export default function VehicleDetailPanel({ isOpen, onClose, truck }) {
   const REQUIRED_DOCS = [
     { type: 'insurance', label: 'Vehicle Insurance' },
     { type: 'vehicle-logbook', label: 'Logbook' },
-    { type: 'road-license', label: 'Road License' }
+    { type: 'road-license', label: 'Road License' },
+    { type: 'inspection-report', label: 'Inspection Report' }
   ];
 
   const handleAssignDriver = (e) => {

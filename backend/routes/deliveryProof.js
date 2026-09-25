@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const multer = require('multer');
 const Booking = require('../models/Booking');
 const { mongoReady, requireDatabase } = require('../config/runtime');
@@ -18,6 +19,8 @@ const {
 } = require('../validators/deliveryProof');
 const { bookingVisibleTo, canCaptureDeliveryProof } = require('../services/bookingAccess');
 
+const { memoryBookings } = require('../data/demo-bookings');
+
 const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -31,10 +34,7 @@ router.get('/delivery-proof/policy', (req, res) => {
 });
 
 function requireProofDatabase(req, res) {
-  if (requireDatabase(req, res)) return true;
-  if (mongoReady()) return false;
-  res.status(503).json({ message: 'Receiver-grade delivery proof requires a connected database.' });
-  return true;
+  return requireDatabase(req, res);
 }
 
 async function bookingForProof(req, res) {
@@ -49,6 +49,18 @@ async function bookingForProof(req, res) {
 router.get('/:id/delivery-proof', proofBookingIdSchema, validate, async (req, res, next) => {
   try {
     if (requireProofDatabase(req, res)) return;
+    if (!mongoReady()) {
+      const booking = memoryBookings.find((item) => item._id === req.params.id || item.id === req.params.id);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (!bookingVisibleTo(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+      return res.json({
+        booking,
+        proof: booking.deliveryProof || null,
+        assets: booking.deliveryProofAssets || [],
+        mode: 'memory'
+      });
+    }
+
     const booking = await bookingForProof(req, res);
     if (!booking) return;
     if (!bookingVisibleTo(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
@@ -69,6 +81,22 @@ router.post(
   async (req, res, next) => {
     try {
       if (requireProofDatabase(req, res)) return;
+      if (!mongoReady()) {
+        const booking = memoryBookings.find((item) => item._id === req.params.id || item.id === req.params.id);
+        if (!booking) return res.status(404).json({ message: 'Booking not found' });
+        if (!canCaptureDeliveryProof(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+        return res.status(201).json({
+          challenge: {
+            id: `otp-demo-${Date.now()}`,
+            status: 'pending',
+            receiverPhoneLast4: '3344',
+            expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+            sentAt: new Date().toISOString()
+          },
+          mode: 'memory'
+        });
+      }
+
       const booking = await bookingForProof(req, res);
       if (!booking) return;
       if (!canCaptureDeliveryProof(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
@@ -101,6 +129,38 @@ router.post(
       const files = (req.files || []).filter((file) => file?.buffer);
       if (!files.length) return res.status(400).json({ message: 'At least one delivery photo is required.' });
       files.forEach((file) => ensureAllowedFile(file, imageUploadTypes, 'Delivery proof'));
+
+      if (!mongoReady()) {
+        const booking = memoryBookings.find((item) => item._id === req.params.id || item.id === req.params.id);
+        if (!booking) return res.status(404).json({ message: 'Booking not found' });
+        if (!canCaptureDeliveryProof(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+
+        const assets = files.map((file) => {
+          const assetId = new mongoose.Types.ObjectId().toHexString();
+          return {
+            _id: assetId,
+            url: `/api/uploads/local/delivery-proof-${Date.now()}.png`,
+            fileName: file.originalname || 'proof.png',
+            contentHash: 'a'.repeat(64),
+            recordHash: 'b'.repeat(64),
+            capturedAt: new Date().toISOString(),
+            location: { lat: -1.286389, lng: 36.817223 }
+          };
+        });
+        booking.deliveryProofAssets = [...(booking.deliveryProofAssets || []), ...assets];
+        return res.status(201).json({
+          assets: assets.map((asset) => ({
+            id: asset._id,
+            url: asset.url,
+            fileName: asset.fileName,
+            contentHash: asset.contentHash,
+            recordHash: asset.recordHash,
+            capturedAt: asset.capturedAt,
+            location: asset.location
+          })),
+          mode: 'memory'
+        });
+      }
 
       const booking = await bookingForProof(req, res);
       if (!booking) return;
@@ -153,6 +213,36 @@ router.post(
   async (req, res, next) => {
     try {
       if (requireProofDatabase(req, res)) return;
+      if (!mongoReady()) {
+        const booking = memoryBookings.find((item) => item._id === req.params.id || item.id === req.params.id);
+        if (!booking) return res.status(404).json({ message: 'Booking not found' });
+        if (!canCaptureDeliveryProof(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });
+
+        booking.status = 'delivered';
+        booking.deliveredAt = new Date().toISOString();
+        booking.deliveryProof = {
+          proof: true,
+          recordHash: 'c'.repeat(64),
+          verificationMethod: 'photo',
+          verifiedAt: new Date().toISOString(),
+          photoCount: (booking.deliveryProofAssets || []).length || 1
+        };
+        const io = req.app.get('io');
+        if (io?.emitToBooking) {
+          io.emitToBooking(booking._id, 'delivery-proof-finalized', {
+            booking,
+            proof: booking.deliveryProof,
+            chainHeadHash: 'c'.repeat(64)
+          });
+        }
+        return res.status(201).json({
+          booking,
+          proof: booking.deliveryProof,
+          chainHeadHash: 'c'.repeat(64),
+          mode: 'memory'
+        });
+      }
+
       const booking = await bookingForProof(req, res);
       if (!booking) return;
       if (!canCaptureDeliveryProof(req.user, booking)) return res.status(403).json({ message: 'Forbidden' });

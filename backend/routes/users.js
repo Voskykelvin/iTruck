@@ -7,6 +7,7 @@ const validate = require('../middleware/validate');
 const { documentUploadSchema, updatePasswordSchema, updateProfileSchema } = require('../validators/users');
 const { recordUploadedDocument } = require('../services/documentRecords');
 const { normalizeProfileDocumentType } = require('../utils/documentTypes');
+const { demoUsers, safeUser } = require('../data/demo-users');
 
 const router = express.Router();
 const profileFields = ['firstName', 'lastName', 'phone', 'countryCode', 'country', 'accountType', 'company', 'avatar'];
@@ -46,7 +47,11 @@ router.patch('/profile', updateProfileSchema, validate, async (req, res, next) =
     if (requireDatabase(req, res)) return;
 
     if (!mongoReady()) {
-      return res.json({ user: { ...req.user, ...updates }, mode: 'memory' });
+      const userObj = demoUsers.find((item) => String(item._id || item.id) === String(req.user._id));
+      if (userObj) {
+        Object.assign(userObj, updates);
+      }
+      return res.json({ user: safeUser(userObj || { ...req.user, ...updates }), mode: 'memory' });
     }
 
     const user = await User.findByIdAndUpdate(req.user._id, updates, { new: true, runValidators: true }).select(
@@ -85,11 +90,13 @@ router.patch('/documents/:documentType', documentUploadSchema, validate, async (
     const documentType = normalizeProfileDocumentType(req.params.documentType, req.user.role);
 
     if (!mongoReady()) {
+      const userObj = demoUsers.find((item) => String(item._id || item.id) === String(req.user._id));
+      const documents = upsertDocument([...((userObj || req.user).documents || [])], documentType, req.body, req.user.role);
+      if (userObj) {
+        userObj.documents = documents;
+      }
       return res.json({
-        user: {
-          ...req.user,
-          documents: upsertDocument([...(req.user.documents || [])], documentType, req.body, req.user.role)
-        },
+        user: safeUser(userObj || { ...req.user, documents }),
         mode: 'memory'
       });
     }
