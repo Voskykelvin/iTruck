@@ -135,6 +135,21 @@ function VehiclesTab({ trucks, isLoading, search, onAddClick }) {
           </div>
 
           <div className="row-between text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
+            <span>Assigned Driver</span>
+            <span style={{ color: 'var(--ink)', fontWeight: 500 }}>
+              {truck.assignedDriver ? (
+                typeof truck.assignedDriver === 'object' ? (
+                  `${truck.assignedDriver.firstName || ''} ${truck.assignedDriver.lastName || ''}`.trim() || 'Assigned'
+                ) : (
+                  'Assigned'
+                )
+              ) : (
+                <span className="text-muted">Unassigned</span>
+              )}
+            </span>
+          </div>
+
+          <div className="row-between text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
             <span>Rating</span>
             <div className="row text-ink">
               <Star size={14} color="var(--mustard)" fill="var(--mustard)" />
@@ -177,23 +192,49 @@ function DriversTab({ search, onInviteClick }) {
 
   if (isLoading) return <Skeleton style={{ height: 200 }} />;
 
-  if (drivers.length === 0 && invitations.length === 0) {
-    return (
-      <EmptyState
-        icon={Users}
-        title="No drivers yet"
-        description="Invite drivers to join your fleet and assign them to vehicles."
-        action={
-          <Button variant="primary" icon={UserPlus} onClick={onInviteClick}>
-            Invite a Driver
-          </Button>
-        }
-      />
-    );
-  }
+  const ownerOperator = data?.ownerOperator;
 
   return (
     <div className="stack-lg">
+      {ownerOperator && (
+        <Card className="stack" style={{ background: 'var(--brand-soft)', border: '1px solid var(--border)' }}>
+          <div className="row-between">
+            <div className="row">
+              <div
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: '50%',
+                  background: 'var(--brand)',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: 'var(--text-md)'
+                }}
+              >
+                {ownerOperator.firstName?.[0] || 'O'}
+              </div>
+              <div style={{ marginLeft: 'var(--space-3)' }}>
+                <div className="row" style={{ gap: 'var(--space-2)' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--ink)' }}>
+                    {ownerOperator.firstName} {ownerOperator.lastName} (You)
+                  </span>
+                  <Badge variant="info">Owner-Operator</Badge>
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                  You can self-operate your trucks directly. No outside drivers required.
+                </div>
+              </div>
+            </div>
+            <Badge variant={ownerOperator.isVerified ? 'success' : 'warning'}>
+              {ownerOperator.isVerified ? 'KYC Verified' : 'Verification Pending'}
+            </Badge>
+          </div>
+        </Card>
+      )}
+
       {invitations.length > 0 && (
         <Card className="stack">
           <h3 className="eyebrow" style={{ margin: 0 }}>
@@ -216,7 +257,7 @@ function DriversTab({ search, onInviteClick }) {
                   </div>
                 </div>
                 <div className="row">
-                  <Badge variant="warning">Pending</Badge>
+                  <Badge variant="warning">Invitation Sent</Badge>
                   <Button variant="ghost" size="sm" onClick={() => handleRevoke(inv._id)}>
                     Revoke
                   </Button>
@@ -230,7 +271,7 @@ function DriversTab({ search, onInviteClick }) {
       {filteredDrivers.length > 0 && (
         <Card className="stack">
           <h3 className="eyebrow" style={{ margin: 0 }}>
-            Active Drivers
+            Hired Fleet Drivers
           </h3>
           <div className="stack-sm">
             {filteredDrivers.map((driver) => (
@@ -265,11 +306,33 @@ function DriversTab({ search, onInviteClick }) {
                     </div>
                   </div>
                 </div>
-                <Badge variant={driver.isActive ? 'success' : 'secondary'}>
-                  {driver.isActive ? 'Active' : 'Inactive'}
-                </Badge>
+                <div className="row" style={{ gap: 'var(--space-2)' }}>
+                  <Badge variant={driver.isVerified ? 'success' : 'warning'}>
+                    {driver.isVerified ? 'Docs Verified' : 'Docs Pending'}
+                  </Badge>
+                  <Badge variant={driver.isActive ? 'success' : 'secondary'}>
+                    {driver.isActive ? 'Active' : 'Inactive'}
+                  </Badge>
+                </div>
               </div>
             ))}
+          </div>
+        </Card>
+      )}
+
+      {drivers.length === 0 && invitations.length === 0 && (
+        <Card className="stack" style={{ textAlign: 'center', padding: 'var(--space-8)' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
+            <Users size={32} color="var(--text-muted)" />
+          </div>
+          <h3 style={{ margin: 0, fontSize: 'var(--text-md)', fontWeight: 600 }}>No External Drivers Added</h3>
+          <p className="text-secondary" style={{ maxWidth: 450, margin: '0 auto', fontSize: 'var(--text-sm)' }}>
+            You can drive your trucks yourself as an Owner-Operator. If your fleet grows, invite drivers to operate vehicles on your behalf.
+          </p>
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            <Button variant="primary" icon={UserPlus} onClick={onInviteClick}>
+              Invite a Driver
+            </Button>
           </div>
         </Card>
       )}

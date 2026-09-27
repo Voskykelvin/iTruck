@@ -32,6 +32,14 @@ export default function VehicleDetailPanel({ isOpen, onClose, truck }) {
   ];
 
   const truckId = truck.id || truck._id;
+  const ownerOperator = driversData?.ownerOperator;
+  const assignedDriverId =
+    truck.assignedDriver?._id ||
+    truck.assignedDriver?.id ||
+    (typeof truck.assignedDriver === 'string' ? truck.assignedDriver : '');
+  const isOwnerOperatorAssigned = Boolean(
+    ownerOperator?._id && String(assignedDriverId) === String(ownerOperator._id)
+  );
 
   const handleAssignDriver = (e) => {
     const driverId = e.target.value;
@@ -39,15 +47,30 @@ export default function VehicleDetailPanel({ isOpen, onClose, truck }) {
       assignDriver.mutate(
         { driverId, truckId },
         {
-          onSuccess: () => addToast({ title: 'Driver assigned', type: 'success' }),
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['commercial', 'fleet'] });
+            queryClient.invalidateQueries({ queryKey: ['commercial', 'drivers'] });
+            addToast({
+              title: 'Driver assigned',
+              message:
+                ownerOperator?._id && String(driverId) === String(ownerOperator._id)
+                  ? 'Assigned as Owner-Operator.'
+                  : 'Driver assigned to vehicle.',
+              type: 'success'
+            });
+          },
           onError: (err) => addToast({ title: 'Failed to assign driver', message: err.message, type: 'error' })
         }
       );
     } else {
-      const activeDriverId = truck.assignedDriver?._id || truck.assignedDriver?.id || truck.assignedDriver;
+      const activeDriverId = assignedDriverId;
       if (activeDriverId) {
         unassignDriver.mutate(activeDriverId, {
-          onSuccess: () => addToast({ title: 'Driver unassigned', type: 'info' })
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['commercial', 'fleet'] });
+            queryClient.invalidateQueries({ queryKey: ['commercial', 'drivers'] });
+            addToast({ title: 'Driver unassigned', type: 'info' });
+          }
         });
       }
     }
@@ -141,19 +164,51 @@ export default function VehicleDetailPanel({ isOpen, onClose, truck }) {
         <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-6)' }} className="stack-lg">
           {/* Driver Assignment */}
           <section className="stack">
-            <h3 className="eyebrow" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <UserPlus size={16} /> Driver Assignment
-            </h3>
-            <div className="input-group">
-              <select className="input-field" value={truck.assignedDriver || ''} onChange={handleAssignDriver}>
+            <div className="row-between">
+              <h3 className="eyebrow" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <UserPlus size={16} /> Driver Assignment
+              </h3>
+              {isOwnerOperatorAssigned && (
+                <Badge variant="info">Owner-Operator</Badge>
+              )}
+            </div>
+            <div className="input-group" style={{ margin: 0 }}>
+              <select
+                className="input-field"
+                value={assignedDriverId || ''}
+                onChange={handleAssignDriver}
+                disabled={assignDriver.isPending || unassignDriver.isPending}
+              >
                 <option value="">Unassigned</option>
+                {ownerOperator && (
+                  <option value={ownerOperator._id}>
+                    ⭐ Myself / Owner-Operator ({ownerOperator.firstName} {ownerOperator.lastName})
+                  </option>
+                )}
                 {drivers.map((d) => (
-                  <option key={d._id} value={d._id}>
-                    {d.firstName} {d.lastName}
+                  <option key={d._id} value={d._id} disabled={!d.isVerified}>
+                    {d.firstName} {d.lastName} {!d.isVerified ? '(Docs Pending Verification)' : ''}
                   </option>
                 ))}
               </select>
             </div>
+            {isOwnerOperatorAssigned && (
+              <p className="text-secondary" style={{ fontSize: 'var(--text-xs)', margin: 0 }}>
+                You operate this vehicle yourself. Confirmed bookings with this truck will automatically designate you as the driver.
+              </p>
+            )}
+            {!assignedDriverId && ownerOperator && (
+              <div style={{ marginTop: 'var(--space-1)' }}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleAssignDriver({ target: { value: ownerOperator._id } })}
+                  disabled={assignDriver.isPending}
+                >
+                  Drive this truck myself (Owner-Operator)
+                </Button>
+              </div>
+            )}
           </section>
 
           {/* Photos */}

@@ -74,4 +74,16 @@ describe('display helpers', () => {
     expect(paymentStatusLabel('unpaid')).toBe('Payment pending');
     expect(paymentStatusLabel('escrowed')).toBe('Funded');
   });
+
+  it('provides driver profile compliance documents and normalization', async () => {
+    const { driverProfileDocuments, profileDocumentsForRole, normalizeProfileDocumentType } = await import('./helpers');
+    expect(driverProfileDocuments).toEqual(['Driver License', 'Driver ID']);
+    expect(profileDocumentsForRole('driver')).toEqual(['Driver License', 'Driver ID']);
+    expect(normalizeProfileDocumentType('Driver License', 'driver')).toBe('driver-license');
+    expect(normalizeProfileDocumentType('Driving License', 'driver')).toBe('driver-license');
+    expect(normalizeProfileDocumentType('National ID', 'driver')).toBe('driver-id');
+    expect(normalizeProfileDocumentType('Driver ID', 'driver')).toBe('driver-id');
+    expect(normalizeProfileDocumentType('kyc', 'driver')).toBe('driver-id');
+  });
 });
+

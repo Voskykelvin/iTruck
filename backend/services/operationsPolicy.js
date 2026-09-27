@@ -7,6 +7,7 @@ const {
 } = require('../utils/documentTypes');
 
 const OWNER_REQUIRED_DOCUMENTS = ['owner-kyc', 'driver-id', 'business-registration', 'insurance'];
+const DRIVER_REQUIRED_DOCUMENTS = ['driver-license', 'driver-id'];
 const TRUCK_REQUIRED_DOCUMENTS = [
   'vehicle-photos',
   'insurance',
@@ -125,6 +126,41 @@ function assertOwnerCanBid(owner, truck) {
   }
 }
 
+function assertDriverCanOperate(driver) {
+  if (!driver) {
+    throw AppError.notFound('Driver not found');
+  }
+
+  if (driver.role === 'owner') {
+    const missingOwnerDocuments = missingApprovedDocuments(
+      driver.documents || [],
+      OWNER_REQUIRED_DOCUMENTS,
+      (type) => normalizeProfileDocumentType(type, 'owner')
+    );
+    if (driver.isVerified !== true || missingOwnerDocuments.length) {
+      throw new AppError('Complete owner verification before operating as a driver', 403, {
+        missingOwnerDocuments,
+        isVerified: Boolean(driver.isVerified)
+      });
+    }
+    return;
+  }
+
+  const missingDriverDocuments = missingApprovedDocuments(
+    driver.documents || [],
+    DRIVER_REQUIRED_DOCUMENTS,
+    (type) => normalizeProfileDocumentType(type, 'driver')
+  );
+
+  if (driver.isVerified !== true || missingDriverDocuments.length) {
+    throw new AppError('Driver must complete document verification before being assigned', 403, {
+      driverId: driver._id,
+      missingDriverDocuments,
+      isVerified: Boolean(driver.isVerified)
+    });
+  }
+}
+
 function deliveryProofDocuments(booking = {}, options = {}) {
   const approvedOnly = options.approvedOnly === true;
   return (booking.documents || []).filter((doc) => {
@@ -222,11 +258,13 @@ function assertDeliveryProofForPaymentRelease(booking = {}) {
 module.exports = {
   DELIVERY_PROOF_DOCUMENTS,
   DEFAULT_DELIVERY_GEOFENCE_METERS,
+  DRIVER_REQUIRED_DOCUMENTS,
   OWNER_REQUIRED_DOCUMENTS,
   TRUCK_REQUIRED_DOCUMENTS,
   assertDeliveryGeofence,
   assertDeliveryProofForDelivery,
   assertDeliveryProofForPaymentRelease,
+  assertDriverCanOperate,
   assertReceiverGradeDeliveryProof,
   assertOwnerCanBid,
   deliveryProofDocuments,

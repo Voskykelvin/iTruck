@@ -1,7 +1,9 @@
 const {
+  DRIVER_REQUIRED_DOCUMENTS,
   assertDeliveryProofForDelivery,
   assertDeliveryProofForPaymentRelease,
   assertDeliveryGeofence,
+  assertDriverCanOperate,
   assertReceiverGradeDeliveryProof,
   assertOwnerCanBid,
   geoDistanceMeters,
@@ -112,4 +114,47 @@ test('delivery geofence allows nearby driver positions and rejects distant ones'
 
 test('delivery geofence is skipped when destination coordinates are absent', () => {
   expect(() => assertDeliveryGeofence({ tracking: [] })).not.toThrow();
+});
+
+test('driver operation policy enforces verified status and required compliance documents', () => {
+  expect(DRIVER_REQUIRED_DOCUMENTS).toEqual(['driver-license', 'driver-id']);
+
+  const verifiedDriver = {
+    _id: 'driver-1',
+    role: 'driver',
+    isVerified: true,
+    documents: [
+      { type: 'driver-license', status: 'approved', url: 'https://example.com/license.pdf' },
+      { type: 'driver-id', status: 'approved', url: 'https://example.com/id.pdf' }
+    ]
+  };
+
+  expect(() => assertDriverCanOperate(verifiedDriver)).not.toThrow();
+
+  const unverifiedDriver = { ...verifiedDriver, isVerified: false };
+  expect(() => assertDriverCanOperate(unverifiedDriver)).toThrow(
+    'Driver must complete document verification before being assigned'
+  );
+
+  const missingDocsDriver = {
+    ...verifiedDriver,
+    documents: [{ type: 'driver-license', status: 'approved', url: 'https://example.com/license.pdf' }]
+  };
+  expect(() => assertDriverCanOperate(missingDocsDriver)).toThrow(
+    'Driver must complete document verification before being assigned'
+  );
+
+  // Owner operating as owner-operator
+  const verifiedOwner = {
+    _id: 'owner-1',
+    role: 'owner',
+    isVerified: true,
+    documents: ownerDocs
+  };
+  expect(() => assertDriverCanOperate(verifiedOwner)).not.toThrow();
+
+  const unverifiedOwner = { ...verifiedOwner, isVerified: false };
+  expect(() => assertDriverCanOperate(unverifiedOwner)).toThrow(
+    'Complete owner verification before operating as a driver'
+  );
 });

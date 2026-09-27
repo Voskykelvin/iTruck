@@ -10,8 +10,21 @@ function normalizeDocumentSlug(value) {
 
 function normalizeProfileDocumentType(value, role = 'client') {
   const slug = normalizeDocumentSlug(value);
-  if (slug === 'kyc') return role === 'owner' ? 'owner-kyc' : 'shipper-kyc';
-  return slug;
+  if (slug === 'kyc') {
+    if (role === 'owner') return 'owner-kyc';
+    if (role === 'driver') return 'driver-id';
+    return 'shipper-kyc';
+  }
+  const aliases = {
+    'driving-license': 'driver-license',
+    'driver-licence': 'driver-license',
+    'driving-licence': 'driver-license',
+    'driver-license': 'driver-license',
+    'national-id': 'driver-id',
+    'id-card': 'driver-id'
+  };
+
+  return aliases[slug] || slug;
 }
 
 function normalizeTruckDocumentType(value) {

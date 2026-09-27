@@ -153,6 +153,7 @@ export const cargoHandlingOptions = [
 ];
 
 export const ownerProfileDocuments = ['Owner KYC', 'Driver ID', 'Business registration', 'Insurance'];
+export const driverProfileDocuments = ['Driver License', 'Driver ID'];
 export const shipperProfileDocuments = ['Shipper KYC', 'Business registration', 'Tax certificate'];
 export const ownerVehicleDocuments = [
   'Vehicle photos',
@@ -171,6 +172,12 @@ export const documentStages = {
     'Register each vehicle with plate, capacity, routes, and photos',
     'Upload insurance, logbook, road license, and inspection proof',
     'Admin approves the profile before bidding on work'
+  ],
+  driver: [
+    'Accept invitation from your fleet owner',
+    'Upload Driver License and Government ID for compliance verification',
+    'Admin approves your documents for platform compliance',
+    'Get assigned to a fleet vehicle and operate confirmed shipments'
   ],
   client: [
     'Submit shipper identity and business documents',
@@ -342,8 +349,21 @@ export function slugDocumentType(value) {
 
 export function normalizeProfileDocumentType(value, role = 'client') {
   const slug = slugDocumentType(value);
-  if (slug === 'kyc') return role === 'owner' ? 'owner-kyc' : 'shipper-kyc';
-  return slug;
+  if (slug === 'kyc') {
+    if (role === 'owner') return 'owner-kyc';
+    if (role === 'driver') return 'driver-id';
+    return 'shipper-kyc';
+  }
+  const aliases = {
+    'driving-license': 'driver-license',
+    'driver-licence': 'driver-license',
+    'driving-licence': 'driver-license',
+    'driver-license': 'driver-license',
+    'national-id': 'driver-id',
+    'id-card': 'driver-id'
+  };
+
+  return aliases[slug] || slug;
 }
 
 export function normalizeTruckDocumentType(value) {
@@ -500,7 +520,8 @@ export function mergeDocumentIndex(records = [], indexedDocuments = [], targetTy
 
 export function profileDocumentsForRole(role) {
   if (role === 'owner') return ownerProfileDocuments;
-  if (role === 'admin' || role === 'driver') return [];
+  if (role === 'driver') return driverProfileDocuments;
+  if (role === 'admin') return [];
   return shipperProfileDocuments;
 }
 

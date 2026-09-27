@@ -12,6 +12,7 @@ const validate = require('../middleware/validate');
 const { recordAudit } = require('../services/audit');
 const { sendMail } = require('../services/email');
 const { createOne, runInTransaction, sessionOptions } = require('../services/transactions');
+const { assertDriverCanOperate } = require('../services/operationsPolicy');
 const AppError = require('../utils/AppError');
 const {
   acceptDriverInvitationSchema,
@@ -100,7 +101,7 @@ router.post(
           password: req.body.password,
           role: 'driver',
           accountType: 'personal',
-          isVerified: true,
+          isVerified: false,
           driverProfile: {
             owner: invitation.owner?._id || invitation.owner,
             invitation: invitation._id,
@@ -126,7 +127,7 @@ router.post(
     });
 
     res.status(201).json({
-      message: 'Driver account created. Sign in to view assigned jobs.',
+      message: 'Driver account created. Sign in and upload your compliance documents for verification.',
       user: {
         _id: driver._id,
         firstName: driver.firstName,
@@ -147,17 +148,33 @@ router.get(
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) return res.json({ drivers: [], invitations: [], assignments: [], mode: 'memory' });
     const owner = req.user.role === 'admin' && req.query.ownerId ? req.query.ownerId : req.user._id;
-    const [drivers, invitations, assignments] = await Promise.all([
+    const [drivers, invitations, assignments, ownerUser] = await Promise.all([
       User.find({ role: 'driver', 'driverProfile.owner': owner })
-        .select('firstName lastName email phone country isActive driverProfile createdAt')
+        .select('firstName lastName email phone country isActive isVerified driverProfile documents createdAt')
         .sort('firstName lastName'),
       DriverInvitation.find({ owner }).select('-tokenHash').sort('-createdAt').limit(100),
       DriverAssignment.find({ owner, status: 'active' })
-        .populate('driver', 'firstName lastName email phone')
+        .populate('driver', 'firstName lastName email phone isVerified')
         .populate('truck', 'plateNumber type make model')
-        .sort('-assignedAt')
+        .sort('-assignedAt'),
+      User.findById(owner).select('firstName lastName email phone isVerified documents')
     ]);
-    res.json({ drivers, invitations, assignments });
+    res.json({
+      drivers,
+      invitations,
+      assignments,
+      ownerOperator: ownerUser
+        ? {
+            _id: ownerUser._id,
+            firstName: ownerUser.firstName,
+            lastName: ownerUser.lastName,
+            email: ownerUser.email,
+            phone: ownerUser.phone,
+            isVerified: ownerUser.isVerified,
+            isOwnerOperator: true
+          }
+        : null
+    });
   })
 );
 
@@ -256,19 +273,38 @@ router.patch(
     }
     if (!booking.truck) throw new AppError('Assign a truck before assigning a driver', 409);
 
-    const assignment = await DriverAssignment.findOne({
-      owner: booking.owner,
-      driver: req.body.driverId,
-      truck: booking.truck,
-      status: 'active'
-    });
-    if (!assignment) throw new AppError('Driver must be actively assigned to this booking truck', 409);
+    const isSelfAssignment = String(req.body.driverId) === String(booking.owner);
+    let driver;
+
+    if (isSelfAssignment) {
+      driver = await User.findOne({ _id: booking.owner, role: 'owner', isActive: { $ne: false } });
+      if (!driver) throw AppError.notFound('Owner account not found');
+      assertDriverCanOperate(driver);
+    } else {
+      driver = await User.findOne({
+        _id: req.body.driverId,
+        role: 'driver',
+        'driverProfile.owner': booking.owner,
+        isActive: { $ne: false }
+      });
+      if (!driver) throw AppError.notFound('Driver not found');
+      assertDriverCanOperate(driver);
+
+      const assignment = await DriverAssignment.findOne({
+        owner: booking.owner,
+        driver: req.body.driverId,
+        truck: booking.truck,
+        status: 'active'
+      });
+      if (!assignment) throw new AppError('Driver must be actively assigned to this booking truck', 409);
+    }
 
     booking.driver = req.body.driverId;
     await booking.save();
     await recordAudit(req, 'booking.driver.assigned', 'booking', booking._id, {
       driver: booking.driver,
-      truck: booking.truck
+      truck: booking.truck,
+      isOwnerOperator: isSelfAssignment
     });
     res.json({ booking });
   })
@@ -283,17 +319,27 @@ router.patch(
     if (requireDatabase(req, res)) return;
     if (!mongoReady()) throw new AppError('Driver assignment requires a connected database', 503);
     const owner = req.user.role === 'admin' && req.body.ownerId ? req.body.ownerId : req.user._id;
+    const isSelfAssignment = String(req.params.driverId) === String(owner);
+
     const [driver, truck] = await Promise.all([
-      User.findOne({
-        _id: req.params.driverId,
-        role: 'driver',
-        'driverProfile.owner': owner,
-        isActive: { $ne: false }
-      }),
+      isSelfAssignment
+        ? User.findOne({
+            _id: owner,
+            role: 'owner',
+            isActive: { $ne: false }
+          })
+        : User.findOne({
+            _id: req.params.driverId,
+            role: 'driver',
+            'driverProfile.owner': owner,
+            isActive: { $ne: false }
+          }),
       Truck.findOne({ _id: req.body.truckId, owner, archivedAt: null })
     ]);
-    if (!driver) throw AppError.notFound('Driver not found');
+    if (!driver) throw AppError.notFound(isSelfAssignment ? 'Owner account not found' : 'Driver not found');
     if (!truck) throw AppError.notFound('Truck not found');
+
+    assertDriverCanOperate(driver);
 
     const assignment = await runInTransaction(async (session) => {
       const activeQuery = DriverAssignment.find({

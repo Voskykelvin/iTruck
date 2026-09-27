@@ -73,6 +73,15 @@ test('drivers can see and operate only their assigned booking', () => {
   expect(bookingRoomQuery(driver, 'booking-1')).toEqual({ _id: 'booking-1', driver: 'driver-1' });
 });
 
+test('owner-operator can see and manage their own booking when assigned as driver', () => {
+  const ownerOperator = { _id: 'owner-1', role: 'owner' };
+  const booking = { driver: 'owner-1', owner: 'owner-1', client: 'client-1' };
+
+  expect(bookingVisibleTo(ownerOperator, booking)).toBe(true);
+  expect(canManageBookingStatus(ownerOperator, booking)).toBe(true);
+  expect(canCaptureDeliveryProof(ownerOperator, booking)).toBe(true);
+});
+
 test('clients can cancel only their own cancellable bookings', () => {
   const client = { _id: 'client-1', role: 'client' };
   const owner = { _id: 'owner-1', role: 'owner' };
