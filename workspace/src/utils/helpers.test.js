@@ -86,4 +86,3 @@ describe('display helpers', () => {
     expect(normalizeProfileDocumentType('kyc', 'driver')).toBe('driver-id');
   });
 });
-

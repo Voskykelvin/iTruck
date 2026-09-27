@@ -327,7 +327,8 @@ function DriversTab({ search, onInviteClick }) {
           </div>
           <h3 style={{ margin: 0, fontSize: 'var(--text-md)', fontWeight: 600 }}>No External Drivers Added</h3>
           <p className="text-secondary" style={{ maxWidth: 450, margin: '0 auto', fontSize: 'var(--text-sm)' }}>
-            You can drive your trucks yourself as an Owner-Operator. If your fleet grows, invite drivers to operate vehicles on your behalf.
+            You can drive your trucks yourself as an Owner-Operator. If your fleet grows, invite drivers to operate
+            vehicles on your behalf.
           </p>
           <div style={{ marginTop: 'var(--space-3)' }}>
             <Button variant="primary" icon={UserPlus} onClick={onInviteClick}>

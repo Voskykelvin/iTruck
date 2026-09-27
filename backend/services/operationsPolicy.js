@@ -132,10 +132,8 @@ function assertDriverCanOperate(driver) {
   }
 
   if (driver.role === 'owner') {
-    const missingOwnerDocuments = missingApprovedDocuments(
-      driver.documents || [],
-      OWNER_REQUIRED_DOCUMENTS,
-      (type) => normalizeProfileDocumentType(type, 'owner')
+    const missingOwnerDocuments = missingApprovedDocuments(driver.documents || [], OWNER_REQUIRED_DOCUMENTS, (type) =>
+      normalizeProfileDocumentType(type, 'owner')
     );
     if (driver.isVerified !== true || missingOwnerDocuments.length) {
       throw new AppError('Complete owner verification before operating as a driver', 403, {
@@ -146,10 +144,8 @@ function assertDriverCanOperate(driver) {
     return;
   }
 
-  const missingDriverDocuments = missingApprovedDocuments(
-    driver.documents || [],
-    DRIVER_REQUIRED_DOCUMENTS,
-    (type) => normalizeProfileDocumentType(type, 'driver')
+  const missingDriverDocuments = missingApprovedDocuments(driver.documents || [], DRIVER_REQUIRED_DOCUMENTS, (type) =>
+    normalizeProfileDocumentType(type, 'driver')
   );
 
   if (driver.isVerified !== true || missingDriverDocuments.length) {

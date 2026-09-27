@@ -37,9 +37,7 @@ export default function VehicleDetailPanel({ isOpen, onClose, truck }) {
     truck.assignedDriver?._id ||
     truck.assignedDriver?.id ||
     (typeof truck.assignedDriver === 'string' ? truck.assignedDriver : '');
-  const isOwnerOperatorAssigned = Boolean(
-    ownerOperator?._id && String(assignedDriverId) === String(ownerOperator._id)
-  );
+  const isOwnerOperatorAssigned = Boolean(ownerOperator?._id && String(assignedDriverId) === String(ownerOperator._id));
 
   const handleAssignDriver = (e) => {
     const driverId = e.target.value;
@@ -165,12 +163,13 @@ export default function VehicleDetailPanel({ isOpen, onClose, truck }) {
           {/* Driver Assignment */}
           <section className="stack">
             <div className="row-between">
-              <h3 className="eyebrow" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <h3
+                className="eyebrow"
+                style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
+              >
                 <UserPlus size={16} /> Driver Assignment
               </h3>
-              {isOwnerOperatorAssigned && (
-                <Badge variant="info">Owner-Operator</Badge>
-              )}
+              {isOwnerOperatorAssigned && <Badge variant="info">Owner-Operator</Badge>}
             </div>
             <div className="input-group" style={{ margin: 0 }}>
               <select
@@ -194,7 +193,8 @@ export default function VehicleDetailPanel({ isOpen, onClose, truck }) {
             </div>
             {isOwnerOperatorAssigned && (
               <p className="text-secondary" style={{ fontSize: 'var(--text-xs)', margin: 0 }}>
-                You operate this vehicle yourself. Confirmed bookings with this truck will automatically designate you as the driver.
+                You operate this vehicle yourself. Confirmed bookings with this truck will automatically designate you
+                as the driver.
               </p>
             )}
             {!assignedDriverId && ownerOperator && (
