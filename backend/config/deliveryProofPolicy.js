@@ -1,9 +1,11 @@
+function normalizeDeliveryProofMode(value = process.env.DELIVERY_PROOF_MODE) {
+  const normalized = String(value ?? 'simple').trim().toLowerCase();
+  if (['strict', 'true', '1', 'enabled', 'on'].includes(normalized)) return 'strict';
+  return 'simple';
+}
+
 function deliveryProofMode() {
-  return String(process.env.DELIVERY_PROOF_MODE || 'simple')
-    .trim()
-    .toLowerCase() === 'strict'
-    ? 'strict'
-    : 'simple';
+  return normalizeDeliveryProofMode(process.env.DELIVERY_PROOF_MODE);
 }
 
 function strictDeliveryProof() {
@@ -24,4 +26,9 @@ function deliveryProofPolicy() {
   };
 }
 
-module.exports = { deliveryProofMode, deliveryProofPolicy, strictDeliveryProof };
+module.exports = {
+  deliveryProofMode,
+  deliveryProofPolicy,
+  normalizeDeliveryProofMode,
+  strictDeliveryProof
+};

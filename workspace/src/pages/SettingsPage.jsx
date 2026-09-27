@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useProfile, useUpdateProfile } from '../queries/operations';
 import { useSessionBootstrap, useLogout, useRevokeSession, useRevokeOtherSessions } from '../queries/session';
 import Button from '../components/ui/Button';
@@ -8,6 +9,8 @@ import Badge from '../components/ui/Badge';
 import { User, Shield, LogOut, Laptop, Smartphone } from 'lucide-react';
 import { useToast } from '../components/ui/Toast';
 import PushNotificationControl from '../components/domain/PushNotificationControl';
+import { normalizeProfilePayload, normalizeProfileRecord } from '../utils/profile';
+import { api } from '../api';
 
 export default function SettingsPage() {
   const { data: user } = useSessionBootstrap();
@@ -19,6 +22,12 @@ export default function SettingsPage() {
   const revokeOther = useRevokeOtherSessions();
   const { addToast } = useToast();
 
+  const { data: sessionsData } = useQuery({
+    queryKey: ['auth', 'sessions'],
+    queryFn: () => api.listSessions(),
+    staleTime: 60 * 1000
+  });
+
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -27,24 +36,32 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (profile) {
+      const record = normalizeProfileRecord(profile);
       setFormData({
-        firstName: profile.firstName || '',
-        lastName: profile.lastName || '',
-        companyName: profile.companyName || ''
+        firstName: record.firstName,
+        lastName: record.lastName,
+        companyName: record.companyName
       });
     }
   }, [profile]);
 
   const handleUpdate = (e) => {
     e.preventDefault();
-    updateProfile.mutate(formData, {
+    const payload = normalizeProfilePayload(formData);
+
+    if (!Object.keys(payload).length) {
+      addToast({ title: 'No changes to save', message: 'Update at least one field first.', type: 'info' });
+      return;
+    }
+
+    updateProfile.mutate(payload, {
       onSuccess: () =>
         addToast({ title: 'Profile Updated', message: 'Your settings have been saved.', type: 'success' }),
       onError: (err) => addToast({ title: 'Update Failed', message: err.message, type: 'error' })
     });
   };
 
-  const sessions = profile?.sessions || [];
+  const sessions = sessionsData?.sessions || [];
 
   return (
     <div className="animate-fade-in stack-lg">
@@ -128,31 +145,34 @@ export default function SettingsPage() {
             </p>
 
             <div className="stack-sm">
+              {sessions.length === 0 && (
+                <p className="text-muted" style={{ fontSize: 'var(--text-sm)' }}>No active sessions found.</p>
+              )}
               {sessions.map((session, i) => (
                 <div
                   key={session.id || i}
                   className="row-between glass-panel"
                   style={{
                     padding: 'var(--space-3)',
-                    background: session.current ? 'var(--brand-soft)' : 'var(--surface-2)'
+                    background: session.isCurrent ? 'var(--brand-soft)' : 'var(--surface-2)'
                   }}
                 >
                   <div className="row">
-                    {session.device?.toLowerCase().includes('mobile') ? (
+                    {session.deviceType === 'mobile' ? (
                       <Smartphone size={20} color="var(--text-muted)" />
                     ) : (
                       <Laptop size={20} color="var(--text-muted)" />
                     )}
                     <div style={{ marginLeft: 'var(--space-3)' }}>
-                      <div style={{ fontWeight: 600 }}>{session.device || 'Unknown Device'}</div>
+                      <div style={{ fontWeight: 600 }}>{session.deviceName || 'Unknown Device'}</div>
                       <div className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>
-                        {session.location || 'Unknown location'} • Last active{' '}
-                        {new Date(session.lastActive || Date.now()).toLocaleDateString()}
+                        {session.ipAddress || 'Unknown location'} • Last active{' '}
+                        {new Date(session.lastUsedAt || Date.now()).toLocaleDateString()}
                       </div>
                     </div>
                   </div>
 
-                  {session.current ? (
+                  {session.isCurrent ? (
                     <Badge variant="success">Current</Badge>
                   ) : (
                     <Button

@@ -95,11 +95,12 @@ export default function Sidebar({ isOpen, onClose }) {
               to={item.path}
               className={({ isActive }) => `row ${isActive ? 'active' : ''}`}
               style={({ isActive }) => ({
-                padding: 'var(--space-2) var(--space-3)',
+                padding: 'var(--space-3) var(--space-3)',
                 borderRadius: 'var(--radius-sm)',
                 color: isActive ? 'var(--brand)' : 'var(--text-secondary)',
                 background: isActive ? 'var(--brand-soft)' : 'transparent',
-                fontWeight: isActive ? 600 : 500
+                fontWeight: isActive ? 700 : 600,
+                border: isActive ? '1px solid var(--brand-border)' : '1px solid transparent'
               })}
               onClick={onClose}
             >
@@ -121,11 +122,12 @@ export default function Sidebar({ isOpen, onClose }) {
               to={item.path}
               className={({ isActive }) => `row ${isActive ? 'active' : ''}`}
               style={({ isActive }) => ({
-                padding: 'var(--space-2) var(--space-3)',
+                padding: 'var(--space-3) var(--space-3)',
                 borderRadius: 'var(--radius-sm)',
                 color: isActive ? 'var(--brand)' : 'var(--text-secondary)',
                 background: isActive ? 'var(--brand-soft)' : 'transparent',
-                fontWeight: isActive ? 600 : 500
+                fontWeight: isActive ? 700 : 600,
+                border: isActive ? '1px solid var(--brand-border)' : '1px solid transparent'
               })}
               onClick={onClose}
             >

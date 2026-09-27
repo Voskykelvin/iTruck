@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import NotificationPanel from '../domain/NotificationPanel';
 import SearchPalette from '../domain/SearchPalette';
 import { useSessionBootstrap } from '../../queries/session';
+import { useNotifications } from '../../queries/notifications';
+import { normalizeNotificationRecord } from '../../utils/helpers';
 import { roleForUser } from '../../utils/roles';
 import BrandHomeLink from '../ui/BrandHomeLink';
 import NetworkStatus from '../ui/NetworkStatus';
@@ -15,6 +17,9 @@ export default function TopBar({ onToggleSidebar, isSidebarOpen }) {
   const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'light');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+
+  const { data: rawNotifications = [] } = useNotifications(user);
+  const unreadCount = rawNotifications.filter((n) => !normalizeNotificationRecord(n).read).length;
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
@@ -96,22 +101,24 @@ export default function TopBar({ onToggleSidebar, isSidebarOpen }) {
             <button
               onClick={() => setIsNotifOpen(!isNotifOpen)}
               className="btn btn-ghost"
-              style={{ padding: '0 var(--space-2)', borderRadius: 'var(--radius-full)' }}
-              aria-label="Notifications"
+              style={{ position: 'relative', padding: '0 var(--space-2)', borderRadius: 'var(--radius-full)' }}
+              aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
             >
               <Bell size={18} />
-              <span
-                style={{
-                  position: 'absolute',
-                  top: 6,
-                  right: 6,
-                  width: 8,
-                  height: 8,
-                  background: 'var(--danger)',
-                  borderRadius: '50%',
-                  border: '2px solid var(--surface-glass)'
-                }}
-              />
+              {unreadCount > 0 && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 6,
+                    right: 6,
+                    width: 8,
+                    height: 8,
+                    background: 'var(--danger)',
+                    borderRadius: '50%',
+                    border: '2px solid var(--surface-glass)'
+                  }}
+                />
+              )}
             </button>
 
             <NotificationPanel isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} />

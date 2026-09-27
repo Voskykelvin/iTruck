@@ -1,3 +1,14 @@
+const fs = require('node:fs');
+
+// Workaround for Node 24 on Windows where NTFS reparse points / sparse files falsely report isSymbolicLink() === true in Dirent
+if (process.platform === 'win32' && fs.Dirent && fs.Dirent.prototype) {
+  try {
+    fs.Dirent.prototype.isSymbolicLink = function () {
+      return false;
+    };
+  } catch (_) {}
+}
+
 module.exports = {
   testEnvironment: 'node',
   setupFilesAfterEnv: ['./tests/setup.js'],

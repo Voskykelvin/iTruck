@@ -192,12 +192,13 @@ a.glass-card:hover {
   gap: var(--space-2);
   padding: 0 var(--space-4);
   height: 40px;
-  font-weight: 600;
+  font-weight: 700;
   font-size: var(--text-sm);
   border-radius: var(--radius-sm);
   transition: all var(--duration-fast) var(--ease-out);
   white-space: nowrap;
   user-select: none;
+  letter-spacing: 0.01em;
 }
 
 .btn:active:not(:disabled) {
@@ -335,7 +336,7 @@ a.glass-card:hover {
 
 .input-label {
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: 700;
   color: var(--ink);
 }
 
@@ -348,6 +349,7 @@ a.glass-card:hover {
   border-radius: var(--radius-sm);
   color: var(--ink);
   transition: all var(--duration-fast) var(--ease-out);
+  font-weight: 500;
 }
 
 .input-field::placeholder {
@@ -586,6 +588,15 @@ textarea.input-field {
 
 .auth-home-mark {
   margin-bottom: var(--space-6);
+}
+
+.text-brand {
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.text-brand:hover {
+  color: var(--brand-mid);
 }
 
 .auth-home-mark .brand-home-mark {

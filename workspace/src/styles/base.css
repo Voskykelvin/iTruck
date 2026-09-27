@@ -15,7 +15,6 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
-[data-theme="dark"] html,
 html[data-theme="dark"] {
   color-scheme: dark;
 }

@@ -49,7 +49,10 @@ export function useRevokeSession() {
   return useMutation({
     mutationFn: (id) => api.revokeSession(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: sessionQueryKeys.current() });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: sessionQueryKeys.current() }),
+        queryClient.invalidateQueries({ queryKey: ['auth', 'sessions'] })
+      ]);
     }
   });
 }
@@ -59,7 +62,10 @@ export function useRevokeOtherSessions() {
   return useMutation({
     mutationFn: () => api.revokeOtherSessions(),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: sessionQueryKeys.current() });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: sessionQueryKeys.current() }),
+        queryClient.invalidateQueries({ queryKey: ['auth', 'sessions'] })
+      ]);
     }
   });
 }

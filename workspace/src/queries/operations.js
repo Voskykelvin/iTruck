@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api.js';
 import { commercialQueryKeys } from './commercial.js';
+import { sessionQueryKeys } from './session.js';
 
 export const operationsQueryKeys = {
   all: ['operations'],
@@ -36,7 +37,10 @@ export function useUpdateProfile() {
   return useMutation({
     mutationFn: (payload) => api.updateProfile(payload),
     onSuccess: (data) => {
-      if (data.user) queryClient.setQueryData(operationsQueryKeys.profile(), data.user);
+      if (data.user) {
+        queryClient.setQueryData(operationsQueryKeys.profile(), data.user);
+        queryClient.setQueryData(sessionQueryKeys.current(), data.user);
+      }
     }
   });
 }

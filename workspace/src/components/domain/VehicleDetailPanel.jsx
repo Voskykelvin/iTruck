@@ -31,20 +31,25 @@ export default function VehicleDetailPanel({ isOpen, onClose, truck }) {
     { type: 'inspection-report', label: 'Inspection Report' }
   ];
 
+  const truckId = truck.id || truck._id;
+
   const handleAssignDriver = (e) => {
     const driverId = e.target.value;
     if (driverId) {
       assignDriver.mutate(
-        { driverId, truckId: truck.id },
+        { driverId, truckId },
         {
           onSuccess: () => addToast({ title: 'Driver assigned', type: 'success' }),
           onError: (err) => addToast({ title: 'Failed to assign driver', message: err.message, type: 'error' })
         }
       );
-    } else if (truck.assignedDriver) {
-      unassignDriver.mutate(truck.assignedDriver, {
-        onSuccess: () => addToast({ title: 'Driver unassigned', type: 'info' })
-      });
+    } else {
+      const activeDriverId = truck.assignedDriver?._id || truck.assignedDriver?.id || truck.assignedDriver;
+      if (activeDriverId) {
+        unassignDriver.mutate(activeDriverId, {
+          onSuccess: () => addToast({ title: 'Driver unassigned', type: 'info' })
+        });
+      }
     }
   };
 
@@ -110,7 +115,7 @@ export default function VehicleDetailPanel({ isOpen, onClose, truck }) {
           bottom: 0,
           width: '100%',
           maxWidth: 500,
-          backgroundColor: 'var(--surface-1)',
+          backgroundColor: 'var(--surface)',
           zIndex: 101,
           boxShadow: 'var(--shadow-lg)',
           display: 'flex',

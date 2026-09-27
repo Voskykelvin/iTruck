@@ -25,6 +25,25 @@ export default function AuthPage() {
     countryCode: '+254'
   });
 
+  const authCopy = {
+    login: {
+      title: 'Welcome back',
+      subtitle: 'Sign in to your iTruck workspace.'
+    },
+    register: {
+      title: 'Create your account',
+      subtitle: 'Get started with iTruck today.'
+    },
+    forgot: {
+      title: 'Reset your password',
+      subtitle: 'Enter your email and we will send a secure reset link.'
+    },
+    reset: {
+      title: 'Choose a new password',
+      subtitle: 'Enter a new password for your iTruck account.'
+    }
+  }[mode];
+
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { addToast } = useToast();
@@ -70,12 +89,6 @@ export default function AuthPage() {
 
   const isLogin = mode === 'login';
   const isRegister = mode === 'register';
-  const heading = {
-    login: 'Welcome back',
-    register: 'Create your account',
-    forgot: 'Reset your password',
-    reset: 'Choose a new password'
-  }[mode];
 
   return (
     <div className="auth-layout animate-fade-in">
@@ -95,12 +108,11 @@ export default function AuthPage() {
         <div style={{ width: '100%', maxWidth: 400 }}>
           <BrandHomeLink compact className="auth-mobile-brand" />
           <div style={{ marginBottom: 'var(--space-8)' }}>
-            <h2 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-2)' }}>{heading}</h2>
-            <p className="text-secondary">
-              {mode === 'login' && 'Sign in to your iTruck workspace.'}
-              {mode === 'register' && 'Get started with iTruck today.'}
-              {mode === 'forgot' && 'Enter your email and we will send a secure reset link.'}
-              {mode === 'reset' && 'Enter a new password for your iTruck account.'}
+            <h2 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-2)', color: 'var(--ink)' }}>
+              {authCopy.title}
+            </h2>
+            <p className="text-secondary" style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+              {authCopy.subtitle}
             </p>
           </div>
 
