@@ -173,7 +173,7 @@ export default function ShipmentsPage() {
             ? [
                 {
                   id: 'bids',
-                  label: `Submitted Bids (${ownerBids.length})`,
+                  label: `My Bids (${ownerBids.length})`,
                   content: (
                     <DataTable
                       columns={bidColumns}
