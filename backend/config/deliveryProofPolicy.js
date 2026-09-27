@@ -1,5 +1,7 @@
 function normalizeDeliveryProofMode(value = process.env.DELIVERY_PROOF_MODE) {
-  const normalized = String(value ?? 'simple').trim().toLowerCase();
+  const normalized = String(value ?? 'simple')
+    .trim()
+    .toLowerCase();
   if (['strict', 'true', '1', 'enabled', 'on'].includes(normalized)) return 'strict';
   return 'simple';
 }

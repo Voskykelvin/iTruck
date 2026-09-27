@@ -146,7 +146,9 @@ export default function SettingsPage() {
 
             <div className="stack-sm">
               {sessions.length === 0 && (
-                <p className="text-muted" style={{ fontSize: 'var(--text-sm)' }}>No active sessions found.</p>
+                <p className="text-muted" style={{ fontSize: 'var(--text-sm)' }}>
+                  No active sessions found.
+                </p>
               )}
               {sessions.map((session, i) => (
                 <div

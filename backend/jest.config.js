@@ -6,7 +6,9 @@ if (process.platform === 'win32' && fs.Dirent && fs.Dirent.prototype) {
     fs.Dirent.prototype.isSymbolicLink = function () {
       return false;
     };
-  } catch (_) {}
+  } catch (_) {
+    // Ignore environment patch failures
+  }
 }
 
 module.exports = {
