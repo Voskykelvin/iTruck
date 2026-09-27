@@ -48,39 +48,63 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {role !== 'owner' && role !== 'admin' && (
-          <Button variant="primary" icon={Package} onClick={() => navigate('/app/book')}>
-            New Booking
+        {role === 'owner' ? (
+          <Button variant="primary" icon={Search} onClick={() => navigate('/app/bids')}>
+            Browse Load Board
           </Button>
-        )}
+        ) : role !== 'admin' ? (
+          <Button variant="primary" icon={Package} onClick={() => navigate('/app/book')}>
+            Book a Truck
+          </Button>
+        ) : null}
       </div>
 
       <div className="grid-3 metrics-grid" aria-label="Shipment summary">
         {role === 'owner' ? (
           <>
-            <MetricCard title="Available Loads" value={activeLoads} icon={Search} subtitle="Matching your fleet" />
-            <MetricCard title="Active Trips" value={activeShipments.length} icon={Truck} trend={12} />
-            <MetricCard title="Completed" value={completedShipments.length} icon={CheckCircle} />
+            <MetricCard title="Available Loads" value={activeLoads} icon={Search} subtitle="Open on the Load Board" />
+            <MetricCard
+              title="Active Trips"
+              value={activeShipments.length}
+              icon={Truck}
+              trend={12}
+              subtitle="Fleet in transit"
+            />
+            <MetricCard
+              title="Completed Runs"
+              value={completedShipments.length}
+              icon={CheckCircle}
+              subtitle="Delivered & verified"
+            />
           </>
         ) : (
           <>
-            <MetricCard title="In Transit" value={activeShipments.length} icon={Truck} trend={5} />
             <MetricCard
-              title="Pending Action"
+              title="In Transit"
+              value={activeShipments.length}
+              icon={Truck}
+              trend={5}
+              subtitle="Live tracking active"
+            />
+            <MetricCard
+              title="Pending Dispatch"
               value={pendingShipments.length}
               icon={Clock}
-              subtitle="Waiting for dispatch"
+              subtitle="Quotes & confirmations"
             />
-            <MetricCard title="Delivered" value={completedShipments.length} icon={CheckCircle} />
+            <MetricCard
+              title="Delivered"
+              value={completedShipments.length}
+              icon={CheckCircle}
+              subtitle="POD verified"
+            />
           </>
         )}
       </div>
 
       <div>
         <div className="row-between" style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 style={{ fontSize: 'var(--text-lg)' }}>
-            {role === 'owner' ? 'Your Active Shipments' : 'Recent Shipments'}
-          </h2>
+          <h2 style={{ fontSize: 'var(--text-lg)' }}>{role === 'owner' ? 'Active Fleet Trips' : 'Recent Shipments'}</h2>
           <Button variant="ghost" size="sm" onClick={() => navigate('/app/shipments')}>
             View All
           </Button>
@@ -88,19 +112,23 @@ export default function DashboardPage() {
 
         {shipments.length === 0 ? (
           <EmptyState
-            icon={Package}
-            title="No active shipments"
+            icon={role === 'owner' ? Truck : Package}
+            title={role === 'owner' ? 'No active fleet trips' : 'No active shipments'}
             description={
               role === 'owner'
-                ? "You don't have any active deliveries right now."
-                : "You haven't booked any shipments yet."
+                ? 'Your fleet currently has no trips on the road. Bid on open loads to get assigned.'
+                : 'You have not booked any shipments yet. Get transparent rates and instant carrier matching.'
             }
             action={
-              role !== 'owner' ? (
-                <Button variant="primary" onClick={() => navigate('/app/book')}>
+              role === 'owner' ? (
+                <Button variant="primary" icon={Search} onClick={() => navigate('/app/bids')}>
+                  Browse Available Loads
+                </Button>
+              ) : (
+                <Button variant="primary" icon={Package} onClick={() => navigate('/app/book')}>
                   Book a Truck
                 </Button>
-              ) : null
+              )
             }
           />
         ) : (

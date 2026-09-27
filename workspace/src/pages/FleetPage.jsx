@@ -15,7 +15,7 @@ import Badge from '../components/ui/Badge';
 import Modal from '../components/ui/Modal';
 import Tabs from '../components/ui/Tabs';
 import { Search, Plus, Truck, Trash2, ShieldCheck, Star, Users, UserPlus, Mail } from 'lucide-react';
-import { ratingSummary } from '../utils/helpers';
+import { ratingSummary, vehicleCategoryOptions } from '../utils/helpers';
 import { useToast } from '../components/ui/Toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
@@ -120,8 +120,11 @@ function VehiclesTab({ trucks, isLoading, search, onAddClick }) {
           <div className="divider" style={{ margin: 'var(--space-2) 0' }} />
 
           <div className="row-between text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
-            <span>Type</span>
-            <span style={{ color: 'var(--ink)' }}>{truck.company || truck.capacity || 'Lorry'}</span>
+            <span>Category</span>
+            <span style={{ color: 'var(--ink)', fontWeight: 600 }}>
+              {truck.type || truck.vehicleType || truck.company || 'Medium Lorry'}{' '}
+              {truck.capacity ? `(${truck.capacity}t)` : ''}
+            </span>
           </div>
 
           <div className="row-between text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
@@ -351,7 +354,7 @@ export default function FleetPage() {
           />
           <input
             className="input-field"
-            placeholder="Search..."
+            placeholder="Search fleet by model, plate, or vehicle category..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ paddingLeft: 'var(--space-10)' }}
@@ -363,7 +366,7 @@ export default function FleetPage() {
         tabs={[
           {
             id: 'vehicles',
-            label: 'Vehicles',
+            label: `Fleet Vehicles (${trucks.length})`,
             content: (
               <VehiclesTab
                 trucks={trucks}
@@ -375,18 +378,18 @@ export default function FleetPage() {
           },
           {
             id: 'drivers',
-            label: 'Drivers',
+            label: 'Drivers & Operators',
             content: <DriversTab search={search} onInviteClick={() => setIsInviteModalOpen(true)} />
           }
         ]}
       />
 
-      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Add Vehicle">
+      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Register Fleet Vehicle">
         <form onSubmit={handleAddTruck} className="stack">
           <Input
             label="Vehicle Name / Model"
             required
-            placeholder="e.g. Volvo FH16"
+            placeholder="e.g. Scania R500 or Isuzu FRR"
             value={newTruck.name}
             onChange={(e) => setNewTruck({ ...newTruck, name: e.target.value })}
           />
@@ -399,20 +402,38 @@ export default function FleetPage() {
           />
           <div className="grid-2">
             <div className="input-group">
-              <label className="input-label">Vehicle Type</label>
+              <label className="input-label">Vehicle Category</label>
               <select
                 className="input-field"
                 value={newTruck.type}
-                onChange={(e) => setNewTruck({ ...newTruck, type: e.target.value })}
+                onChange={(e) => {
+                  const selectedType = e.target.value;
+                  const defaultCap =
+                    selectedType === 'Pickup'
+                      ? '2.5'
+                      : selectedType === 'Lorry'
+                        ? '10'
+                        : selectedType === 'Large Truck'
+                          ? '18'
+                          : selectedType === 'Trailer'
+                            ? '30'
+                            : selectedType === 'Specialised'
+                              ? '40'
+                              : newTruck.capacity;
+                  setNewTruck({ ...newTruck, type: selectedType, capacity: newTruck.capacity || defaultCap });
+                }}
               >
-                <option value="Lorry">Lorry</option>
-                <option value="Trailer">Trailer</option>
-                <option value="Refrigerated">Refrigerated</option>
+                {vehicleCategoryOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label} ({opt.capacity})
+                  </option>
+                ))}
               </select>
             </div>
             <Input
-              label="Capacity (Tonnes)"
+              label="Payload Capacity (Tonnes)"
               type="number"
+              step="0.5"
               required
               placeholder="e.g. 15"
               value={newTruck.capacity}

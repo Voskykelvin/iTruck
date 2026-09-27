@@ -64,8 +64,10 @@ export default function TopBar({ onToggleSidebar, isSidebarOpen }) {
 
           {/* Command Palette Trigger */}
           <button
+            type="button"
             onClick={() => setIsSearchOpen(true)}
             className="row topbar-search"
+            aria-label="Open search palette"
             style={{
               background: 'var(--surface)',
               border: '1px solid var(--border)',
@@ -74,11 +76,13 @@ export default function TopBar({ onToggleSidebar, isSidebarOpen }) {
               color: 'var(--text-muted)',
               fontSize: 'var(--text-sm)',
               width: '240px',
-              cursor: 'text'
+              cursor: 'pointer'
             }}
           >
             <Search size={14} />
-            <span style={{ flex: 1, textAlign: 'left' }}>Search bookings...</span>
+            <span style={{ flex: 1, textAlign: 'left' }}>
+              {role === 'owner' ? 'Search loads, fleet...' : 'Search shipments...'}
+            </span>
             <div className="badge badge-default" style={{ fontSize: '10px' }}>
               ⌘K
             </div>

@@ -6,7 +6,7 @@ import Input from '../components/ui/Input';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import { useCreateBooking, useBookingEstimate, useBookingDraft } from '../queries/commercial';
-import { defaultBooking, money } from '../utils/helpers';
+import { defaultBooking, money, cargoCategories, vehicleCategoryOptions, cargoHandlingOptions } from '../utils/helpers';
 import { useToast } from '../components/ui/Toast';
 
 export default function BookPage() {
@@ -154,40 +154,64 @@ export default function BookPage() {
             {/* Step 2: Cargo */}
             {step === 2 && (
               <div className="stack animate-slide-up">
-                <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-2)' }}>What are we shipping?</h2>
+                <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-2)' }}>
+                  Cargo Details & Classification
+                </h2>
+
+                <div className="input-group">
+                  <label className="input-label">Cargo Category</label>
+                  <select
+                    className="input-field"
+                    value={formData.cargoCategory || 'General Freight'}
+                    onChange={(e) => setFormData({ ...formData, cargoCategory: e.target.value })}
+                  >
+                    {cargoCategories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <Input
                   label="Cargo Description"
-                  placeholder="e.g., 500 bags of maize"
+                  placeholder="e.g., 500 bags of white maize (50kg each)"
                   required
                   value={formData.cargo}
                   onChange={(e) => setFormData({ ...formData, cargo: e.target.value })}
                 />
+
                 <div className="grid-2">
                   <Input
                     label="Total Weight (Tonnes)"
                     type="number"
+                    step="0.1"
                     required
+                    placeholder="e.g., 12.5"
                     value={formData.weight}
                     onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
                   />
                   <Input
-                    label="Declared Value (KES)"
+                    label="Declared Cargo Value (KES)"
                     type="number"
-                    placeholder="For insurance purposes"
+                    placeholder="For transit insurance protection"
                     value={formData.cargoValue}
                     onChange={(e) => setFormData({ ...formData, cargoValue: e.target.value })}
                   />
                 </div>
+
                 <div className="grid-2">
                   <Input
-                    label="Receiver Name"
+                    label="Receiver Full Name"
                     required
+                    placeholder="Receiver contact person"
                     value={formData.receiverName}
                     onChange={(e) => setFormData({ ...formData, receiverName: e.target.value })}
                   />
                   <Input
-                    label="Receiver Phone"
+                    label="Receiver Phone Number"
                     required
+                    placeholder="+254 7XX XXX XXX"
                     value={formData.receiverPhone}
                     onChange={(e) => setFormData({ ...formData, receiverPhone: e.target.value })}
                   />
@@ -198,43 +222,78 @@ export default function BookPage() {
             {/* Step 3: Vehicle */}
             {step === 3 && (
               <div className="stack animate-slide-up">
-                <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-2)' }}>Vehicle requirements</h2>
+                <div>
+                  <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-1)' }}>
+                    Select Vehicle Category
+                  </h2>
+                  <p className="text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
+                    Choose the vehicle category and capacity best suited for your payload.
+                  </p>
+                </div>
 
-                <div className="grid-3">
-                  {['Lorry', 'Trailer', 'Refrigerated'].map((type) => (
-                    <div
-                      key={type}
-                      className="glass-panel"
-                      style={{
-                        padding: 'var(--space-4)',
-                        cursor: 'pointer',
-                        borderColor: formData.vehicleType === type ? 'var(--brand)' : 'var(--border)',
-                        background: formData.vehicleType === type ? 'var(--brand-soft)' : 'var(--surface)',
-                        textAlign: 'center'
-                      }}
-                      onClick={() => setFormData({ ...formData, vehicleType: type })}
-                    >
-                      <Truck
-                        size={32}
-                        color={formData.vehicleType === type ? 'var(--brand)' : 'var(--text-muted)'}
-                        style={{ margin: '0 auto var(--space-2)' }}
-                      />
-                      <div style={{ fontWeight: 600 }}>{type}</div>
-                    </div>
-                  ))}
+                <div className="grid-2" style={{ gap: 'var(--space-3)' }}>
+                  {vehicleCategoryOptions.map((opt) => {
+                    const isSelected = formData.vehicleType === opt.value;
+                    return (
+                      <div
+                        key={opt.value}
+                        className="glass-panel hover-lift"
+                        style={{
+                          padding: 'var(--space-4)',
+                          cursor: 'pointer',
+                          borderColor: isSelected ? 'var(--brand)' : 'var(--border)',
+                          background: isSelected ? 'var(--brand-soft)' : 'var(--surface)',
+                          borderRadius: 'var(--radius)',
+                          borderWidth: isSelected ? 2 : 1,
+                          transition: 'all var(--duration-fast)'
+                        }}
+                        onClick={() => setFormData({ ...formData, vehicleType: opt.value })}
+                      >
+                        <div className="row-between" style={{ marginBottom: 'var(--space-2)' }}>
+                          <div className="row" style={{ gap: 'var(--space-2)' }}>
+                            <div
+                              style={{
+                                width: 32,
+                                height: 32,
+                                borderRadius: 'var(--radius-sm)',
+                                background: isSelected ? 'var(--brand)' : 'var(--surface-2)',
+                                color: isSelected ? 'white' : 'var(--text-muted)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                            >
+                              <Truck size={18} />
+                            </div>
+                            <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{opt.label}</span>
+                          </div>
+                          <span
+                            className={`badge ${isSelected ? 'badge-primary' : 'badge-default'}`}
+                            style={{ fontSize: '11px', fontWeight: 600 }}
+                          >
+                            {opt.capacity}
+                          </span>
+                        </div>
+                        <div className="text-secondary" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
+                          {opt.description}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 <div className="input-group" style={{ marginTop: 'var(--space-4)' }}>
-                  <label className="input-label">Special Handling</label>
+                  <label className="input-label">Handling & Transit Category</label>
                   <select
                     className="input-field"
                     value={formData.requirements}
                     onChange={(e) => setFormData({ ...formData, requirements: e.target.value })}
                   >
-                    <option value="Standard">Standard Cargo</option>
-                    <option value="Fragile">Fragile Handling</option>
-                    <option value="Hazmat">Hazardous Materials</option>
-                    <option value="Cold Chain">Temperature Controlled</option>
+                    {cargoHandlingOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label} — {opt.description}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -252,17 +311,17 @@ export default function BookPage() {
                       {formData.pickup || '—'} → {formData.destination || '—'}
                     </div>
                     <div className="text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
-                      {formData.border} • {formData.distance} km
+                      {formData.border} • {formData.distance ? `${formData.distance} km` : 'Pending calculation'}
                     </div>
                   </div>
 
                   <div className="stack-sm">
-                    <div className="eyebrow">Cargo & Vehicle</div>
+                    <div className="eyebrow">Cargo & Classification</div>
                     <div style={{ fontWeight: 600, color: 'var(--ink)' }}>
-                      {formData.cargo || '—'} ({formData.weight}t)
+                      {formData.cargo || '—'} ({formData.weight || 0} Tonnes)
                     </div>
                     <div className="text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
-                      {formData.vehicleType} • {formData.requirements}
+                      {formData.cargoCategory || 'General Freight'} • {formData.vehicleType} ({formData.requirements})
                     </div>
                   </div>
                 </div>

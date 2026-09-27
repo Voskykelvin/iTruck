@@ -31,21 +31,20 @@ export function documentStatusMeta(status = 'missing', labels = {}) {
 export const roleNavigation = {
   client: [
     { path: '/app/shipper', label: 'Dashboard', icon: 'LayoutDashboard' },
-    { path: '/app/book', label: 'Book', icon: 'Plus' },
-
-    { path: '/app/marketplace', label: 'Trucks', icon: 'Search' },
-    { path: '/app/shipments', label: 'Orders', icon: 'Map' },
+    { path: '/app/onboarding', label: 'Verification', icon: 'ShieldCheck' },
+    { path: '/app/book', label: 'Book a Truck', icon: 'Truck' },
+    { path: '/app/shipments', label: 'My Shipments', icon: 'PackageSearch' },
     { path: '/app/documents', label: 'Documents', icon: 'FileText' },
     { path: '/app/payments', label: 'Payments', icon: 'Wallet' },
     { path: '/app/messages', label: 'Messages', icon: 'MessageSquare' },
     { path: '/app/profile', label: 'Settings', icon: 'UserRound' }
   ],
   owner: [
-    { path: '/app/owner', label: 'Dashboard', icon: 'LayoutDashboard' },
+    { path: '/app/owner', label: 'Fleet Dashboard', icon: 'LayoutDashboard' },
     { path: '/app/onboarding', label: 'Verification', icon: 'ShieldCheck' },
-    { path: '/app/vehicles', label: 'Vehicles', icon: 'Truck' },
-    { path: '/app/bids', label: 'Find Work', icon: 'Search' },
-    { path: '/app/shipments', label: 'Jobs', icon: 'Map' },
+    { path: '/app/vehicles', label: 'Fleet Vehicles', icon: 'Truck' },
+    { path: '/app/bids', label: 'Load Board', icon: 'Search' },
+    { path: '/app/shipments', label: 'My Bids & Trips', icon: 'Map' },
     { path: '/app/documents', label: 'Documents', icon: 'FileText' },
     { path: '/app/payments', label: 'Payments', icon: 'Wallet' },
     { path: '/app/messages', label: 'Messages', icon: 'MessageSquare' },
@@ -97,6 +96,62 @@ export const defaultNotificationPreferences = {
 };
 
 export const vehicleTypes = ['Matatu', 'Pickup', 'Lorry', 'Large Truck', 'Trailer', 'Bus', 'Specialised'];
+
+export const vehicleCategoryOptions = [
+  {
+    value: 'Pickup',
+    label: 'Pickup / Light Duty',
+    capacity: 'Up to 3 Tonnes',
+    description: 'Urban & local express distribution'
+  },
+  {
+    value: 'Lorry',
+    label: 'Medium Duty Lorry',
+    capacity: '3 – 10 Tonnes',
+    description: 'Regional, farm & intercity freight'
+  },
+  {
+    value: 'Large Truck',
+    label: 'Heavy Duty Truck',
+    capacity: '10 – 20 Tonnes',
+    description: 'Bulk dry freight & long-distance hauls'
+  },
+  {
+    value: 'Trailer',
+    label: 'Semi-Trailer / Flatbed',
+    capacity: '20 – 35 Tonnes',
+    description: 'Containers, steel & cross-border freight'
+  },
+  {
+    value: 'Specialised',
+    label: 'Specialised / Heavy Haul',
+    capacity: '35+ Tonnes',
+    description: 'Lowbed, tanker & oversized machinery'
+  }
+];
+
+export const cargoCategories = [
+  'Agricultural & Farm Produce',
+  'FMCG & Packaged Goods',
+  'Building & Construction Materials',
+  'Industrial & Machinery Parts',
+  'Dry Bulk & Minerals',
+  'Temperature Controlled / Perishable',
+  'Hazardous Materials (Hazmat)',
+  'General Freight'
+];
+
+export const cargoHandlingOptions = [
+  { value: 'Standard', label: 'Standard Freight', description: 'Standard dry cargo handling' },
+  { value: 'Fragile', label: 'Fragile / High-Care', description: 'Requires gentle loading & securing' },
+  {
+    value: 'Cold Chain',
+    label: 'Temperature Controlled (Cold Chain)',
+    description: 'Refrigerated / insulated transit'
+  },
+  { value: 'Hazmat', label: 'Hazardous Materials (Hazmat)', description: 'Flammables, chemicals & regulated materials' }
+];
+
 export const ownerProfileDocuments = ['Owner KYC', 'Driver ID', 'Business registration', 'Insurance'];
 export const shipperProfileDocuments = ['Shipper KYC', 'Business registration', 'Tax certificate'];
 export const ownerVehicleDocuments = [
@@ -133,6 +188,7 @@ export const defaultBooking = {
   pickupWindow: 'Flexible pickup window',
   vehicleType: 'Lorry',
   cargo: '',
+  cargoCategory: 'General Freight',
   weight: '',
   requirements: 'Standard',
   cargoValue: '',

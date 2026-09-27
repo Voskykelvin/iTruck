@@ -131,15 +131,23 @@ export default function ShipmentsPage() {
       <div className="page-header" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
         <div className="row-between" style={{ marginBottom: 'var(--space-4)' }}>
           <div>
-            <h1 className="page-title">Shipments</h1>
-            <p className="text-secondary">Track and manage all your logistics operations.</p>
+            <h1 className="page-title">{role === 'owner' ? 'Fleet Trips & Bids' : 'My Shipments'}</h1>
+            <p className="text-secondary">
+              {role === 'owner'
+                ? 'Track your active carrier hauls, submitted bids, and completed runs.'
+                : 'Monitor active cargo in transit, track dispatches, and review receipts.'}
+            </p>
           </div>
 
-          {role !== 'owner' && role !== 'admin' && (
-            <Button variant="primary" icon={Plus} onClick={() => navigate('/app/book')}>
-              New Booking
+          {role === 'owner' ? (
+            <Button variant="primary" icon={Search} onClick={() => navigate('/app/bids')}>
+              Browse Load Board
             </Button>
-          )}
+          ) : role !== 'admin' ? (
+            <Button variant="primary" icon={Plus} onClick={() => navigate('/app/book')}>
+              Book a Truck
+            </Button>
+          ) : null}
         </div>
 
         <div className="input-group" style={{ margin: 0, position: 'relative', maxWidth: 400 }}>
@@ -165,7 +173,7 @@ export default function ShipmentsPage() {
             ? [
                 {
                   id: 'bids',
-                  label: `My Bids (${ownerBids.length})`,
+                  label: `Submitted Bids (${ownerBids.length})`,
                   content: (
                     <DataTable
                       columns={bidColumns}
@@ -179,12 +187,12 @@ export default function ShipmentsPage() {
             : []),
           {
             id: 'active',
-            label: `${role === 'owner' ? 'Active Jobs' : 'Active'} (${activeShipments.length})`,
+            label: `${role === 'owner' ? 'Active Trips' : 'Active Shipments'} (${activeShipments.length})`,
             content: <TableContent data={activeShipments} />
           },
           {
             id: 'past',
-            label: 'Past Shipments',
+            label: `${role === 'owner' ? 'Completed Runs' : 'Past Deliveries'} (${pastShipments.length})`,
             content: <TableContent data={pastShipments} />
           }
         ]}
